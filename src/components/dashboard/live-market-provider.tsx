@@ -1,0 +1,451 @@
+"use client";
+
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { toast } from "sonner";
+import { MarketState, type SymbolState, type MarketStore, type StockQuote } from "@/types/stock";
+import { useMockLive } from "./mock-live-provider";
+
+interface LiveMarketContextType {
+    selectedSymbol: string;
+    marketStore: MarketStore;
+    setSelectedSymbol: (symbol: string) => void;
+    // Helper selectors for easier UI consumption
+    currentSymbolState: SymbolState | null;
+    indices: { kospi: SymbolState | null; kosdaq: SymbolState | null };
+}
+
+const LiveMarketContext = createContext<LiveMarketContextType | undefined>(undefined);
+
+export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const mock = useMockLive();
+    
+    // Use useMemo to prevent re-bootstrapping when mock data updates (only on symbol list change)
+    const mockWatchlistSymbols = mock.watchlist.map(i => i.symbol).join(",");
+    const watchlistSymbols = useMemo(() => mockWatchlistSymbols.split(","), [mockWatchlistSymbols]);
+    
+    const [selectedSymbol, setSelectedSymbol] = useState("005930");
+    const [marketStore, setMarketStore] = useState<MarketStore>({});
+    
+    // Track last update time for stale detection
+    const lastUpdateTsRef = useRef<number>(0);
+    const prevSourceRef = useRef<MarketState | null>(null);
+    const currentAbortControllerRef = useRef<AbortController | null>(null);
+
+    // Watch for recovery to LIVE state to show toast notification
+    useEffect(() => {
+        const currentSource = marketStore[selectedSymbol]?.source;
+        if (currentSource) {
+            const prevSource = prevSourceRef.current;
+            if (
+                prevSource &&
+                prevSource !== MarketState.LIVE &&
+                prevSource !== MarketState.CONNECTING &&
+                currentSource === MarketState.LIVE
+            ) {
+                toast.success("실시간 데이터 연결이 복구되었습니다.");
+            }
+            prevSourceRef.current = currentSource;
+        }
+    }, [marketStore, selectedSymbol]);
+    
+    // List of stocks to bootstrap (selected + watchlist)
+    const bootstrap = useCallback(async (symbol: string, extras: string[] = [], signal?: AbortSignal) => {
+        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        
+        console.log(`[LiveMarket] Starting normalized bootstrap for ${symbol}`);
+        
+        const updateSymbol = (s: string, data: Partial<SymbolState>) => {
+            setMarketStore(prev => {
+                const existing = prev[s];
+                // Smart Merge: If incoming is fallback/error but existing is LIVE, keep the LIVE quote/chart
+                const isIncomingDegraded = data.source === MarketState.MOCK_FALLBACK || data.source === MarketState.ERROR;
+                const isExistingLive = existing?.source === MarketState.LIVE;
+
+                const shouldKeepExistingQuote = isIncomingDegraded && isExistingLive;
+
+                return {
+                    ...prev,
+                    [s]: {
+                        symbol: s,
+                        quote: shouldKeepExistingQuote ? existing.quote : (data.quote ?? existing?.quote ?? null),
+                        orderbook: shouldKeepExistingQuote ? existing.orderbook : (data.orderbook ?? existing?.orderbook ?? null),
+                        chart: shouldKeepExistingQuote ? existing.chart : (data.chart ?? existing?.chart ?? []),
+                        source: data.source ?? existing?.source ?? MarketState.CONNECTING,
+                        lastUpdated: data.lastUpdated ?? existing?.lastUpdated ?? Date.now()
+                    }
+                };
+            });
+        };
+
+        try {
+            // 1. Primary Selection (Stock or Index)
+            const isIndex = symbol === "0001" || symbol === "1001";
+            // NOTE: Do NOT set CONNECTING here - it destroys existing LIVE data!
+            // Only set CONNECTING if there's no existing data yet
+            setMarketStore(prev => {
+                if (!prev[symbol]) {
+                    return { ...prev, [symbol]: { symbol, quote: null, orderbook: null, chart: [], source: MarketState.CONNECTING, lastUpdated: 0 } };
+                }
+                return prev;
+            });
+            
+            const endpoint = isIndex 
+                ? `/api/kis/bootstrap?symbol=${symbol}&type=index` 
+                : `/api/kis/bootstrap?symbol=${symbol}`;
+                
+            const stockRes = await fetch(endpoint, { signal });
+            const stockData = await stockRes.json();
+            
+            if (signal?.aborted) return;
+
+            if (stockData.ok) {
+                const rawPrice = isIndex ? (stockData.index?.value) : (stockData.quote?.price);
+                const currentPrice = (rawPrice && !isNaN(rawPrice) && rawPrice !== 0) ? rawPrice : 1;
+                
+                const quote = isIndex ? {
+                    symbol,
+                    name: stockData.index?.name || (symbol === "0001" ? "KOSPI" : "KOSDAQ"),
+                    price: currentPrice,
+                    change: stockData.index?.change || 0,
+                    changeRate: stockData.index?.changeRate || 0,
+                    volume: 0, high: 0, low: 0, open: 0, timestamp: new Date().toISOString()
+                } : stockData.quote;
+                
+                let chart = [];
+                if (!isIndex && process.env.NEXT_PUBLIC_ENABLE_INTRADAY_CHART === "1") {
+                    try {
+                        const ohlcRes = await fetch(`/api/stocks/${symbol}/ohlc?mode=intraday`, { signal });
+                        const ohlcData = await ohlcRes.json();
+                        if (ohlcData.ok) {
+                            chart = ohlcData.chart;
+                        }
+                    } catch (e) {
+                        console.warn("[LiveMarket] OHLC backfill fetch failed:", e);
+                    }
+                }
+                
+                chart.push({ 
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
+                    price: currentPrice 
+                });
+
+                updateSymbol(symbol, {
+                    quote,
+                    orderbook: isIndex ? null : stockData.orderbook,
+                    chart,
+                    source: stockData.source === "mock-fallback" ? MarketState.MOCK_FALLBACK : MarketState.LIVE,
+                    lastUpdated: Date.now()
+                });
+                
+                lastUpdateTsRef.current = Date.now();
+            } else {
+                updateSymbol(symbol, { source: MarketState.MOCK_FALLBACK });
+                return;
+            }
+
+            // 2. Sequential background loads
+            await sleep(1000);
+            if (signal?.aborted) return;
+
+            // Indices (KOSPI, KOSDAQ) initial fetch
+            // KIS API provides period closing values which we use as initial state if market is closed
+            for (const idx of ["0001", "1001"]) {
+                if (signal?.aborted) return;
+                try {
+                    // 1. Mark as connecting if not already loaded
+                    setMarketStore(prev => {
+                        if (!prev[idx]) {
+                            return { ...prev, [idx]: { symbol: idx, quote: null, orderbook: null, chart: [], source: MarketState.CONNECTING, lastUpdated: 0 } };
+                        }
+                        return prev;
+                    });
+                    
+                    // 2. Fetch bootstrap
+                    const res = await fetch(`/api/kis/bootstrap?symbol=${idx}&type=index`, { signal });
+                    const data = await res.json();
+                    
+                    if (data.ok && data.index) {
+                        setMarketStore(prev => {
+                            const existing = prev[idx] || { symbol: idx, chart: [], orderbook: null, lastUpdated: 0 };
+                            const updatedQuote = {
+                                symbol: idx,
+                                name: data.index.name,
+                                price: data.index.value,
+                                change: data.index.change,
+                                changeRate: data.index.changeRate,
+                                volume: 0, high: 0, low: 0, open: 0, timestamp: new Date().toISOString()
+                            } as StockQuote;
+                            
+                            return {
+                                ...prev,
+                                [idx]: {
+                                    ...existing,
+                                    quote: updatedQuote,
+                                    source: data.source === "live" ? MarketState.LIVE : MarketState.MOCK_FALLBACK,
+                                    lastUpdated: Date.now()
+                                }
+                            };
+                        });
+                    }
+                } catch (e) {
+                    console.error(`[LiveMarket] Index ${idx} bootstrap failed`, e);
+                }
+                
+                await sleep(500); // Prevent rate limit
+            }
+
+            // Load extras (watchlist) - only if not already loaded with LIVE data
+            for (const s of extras) {
+                if (s === symbol || signal?.aborted) continue;
+                // Skip if already have LIVE/STALE data - prevents unnecessary Rate Limit
+                let skipSymbol = false;
+                setMarketStore(prev => { 
+                    const src = prev[s]?.source;
+                    skipSymbol = src === MarketState.LIVE || src === MarketState.STALE;
+                    return prev; 
+                });
+                if (skipSymbol) {
+                    console.log(`[LiveMarket] Skipping extras ${s} - already LIVE`);
+                    continue;
+                }
+                try {
+                    const res = await fetch(`/api/kis/bootstrap?symbol=${s}`, { signal });
+                    const data = await res.json();
+                    if (data.ok) {
+                        updateSymbol(s, {
+                            quote: data.quote,
+                            orderbook: data.orderbook,
+                            source: data.source === "mock-fallback" ? MarketState.MOCK_FALLBACK : MarketState.LIVE,
+                            lastUpdated: Date.now()
+                        });
+                    } else {
+                        updateSymbol(s, { source: MarketState.MOCK_FALLBACK });
+                    }
+                } catch (e) {
+                    if (e instanceof Error && e.name === 'AbortError') break;
+                    console.error(`[LiveMarket] Failed background extra load for ${s}:`, e);
+                    updateSymbol(s, { source: MarketState.ERROR });
+                }
+                await sleep(1000);
+            }
+
+        } catch (e) {
+            if (e instanceof Error && e.name === 'AbortError') return;
+            console.error("[LiveMarket] Bootstrap failed:", e);
+            updateSymbol(symbol, { source: MarketState.MOCK_FALLBACK });
+        }
+    }, [mock.chartData]);
+
+
+    // 4. Initial bootstrap and on symbol change
+    const lastSymbolRef = useRef<string>("");
+    useEffect(() => {
+        // Only trigger full bootstrap when selectedSymbol changes
+        if (lastSymbolRef.current === selectedSymbol) return;
+        lastSymbolRef.current = selectedSymbol;
+        
+        // Cancel previous if any
+        if (currentAbortControllerRef.current) {
+            currentAbortControllerRef.current.abort();
+        }
+        
+        const controller = new AbortController();
+        currentAbortControllerRef.current = controller;
+        
+        // Use a wrapper to call bootstrap safely
+        const startBootstrap = async () => {
+            try {
+                await bootstrap(selectedSymbol, watchlistSymbols, controller.signal);
+            } catch (e) {
+                if (e instanceof Error && e.name === 'AbortError') return;
+                console.error("[LiveMarket] Bootstrap effect error:", e);
+            }
+        };
+        
+        startBootstrap();
+
+        return () => {};
+    }, [selectedSymbol, bootstrap]); // Removed watchlistSymbols from deps to avoid re-triggering on mock updates
+
+    // SSE: Real-time updates
+    useEffect(() => {
+        const eventSource = new EventSource(`/api/kis/stream?symbol=${selectedSymbol}`);
+
+        eventSource.addEventListener("trade", (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data);
+                const symbol = data.symbol;
+                const price = data.price;
+
+                setMarketStore(prev => {
+                    const existing = prev[symbol] || {
+                        symbol,
+                        quote: null,
+                        orderbook: null,
+                        chart: [],
+                        source: MarketState.CONNECTING,
+                        lastUpdated: 0
+                    };
+
+                    const updatedQuote = existing.quote 
+                        ? { ...existing.quote, price, change: data.change, changeRate: data.changeRate, volume: data.volume }
+                        : { symbol, price, change: data.change, changeRate: data.changeRate, volume: data.volume, name: "", high: 0, low: 0, open: 0, timestamp: new Date().toISOString() } as StockQuote;
+
+                    let updatedChart = existing.chart;
+                    // Always try to keep some history even if not selected, but only update active chart points for selected
+                    if (symbol === selectedSymbol) {
+                        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        updatedChart = [...existing.chart, { time, price }].slice(-50);
+                    }
+
+                    return {
+                        ...prev,
+                        [symbol]: {
+                            ...existing,
+                            quote: updatedQuote,
+                            chart: updatedChart,
+                            source: MarketState.LIVE, // Automatically recover to LIVE on any data
+                            lastUpdated: Date.now()
+                        }
+                    };
+                });
+
+                lastUpdateTsRef.current = Date.now();
+            } catch (err) {
+                console.error("Failed to parse trade SSE:", err);
+            }
+        });
+
+        eventSource.addEventListener("index", (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data);
+                const symbol = data.symbol; // "0001" or "1001"
+                
+                setMarketStore(prev => {
+                    const existing = prev[symbol] || {
+                        symbol,
+                        quote: null,
+                        orderbook: null,
+                        chart: [],
+                        source: MarketState.CONNECTING,
+                        lastUpdated: 0
+                    };
+
+                    const updatedQuote = existing.quote 
+                        ? { ...existing.quote, price: data.value, change: data.change, changeRate: data.changeRate }
+                        : { symbol, price: data.value, change: data.change, changeRate: data.changeRate, name: "", high: 0, low: 0, open: 0, timestamp: new Date().toISOString() } as StockQuote;
+
+                    let updatedChart = existing.chart;
+                    if (symbol === selectedSymbol) {
+                        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        updatedChart = [...existing.chart, { time, price: data.value }].slice(-50);
+                    }
+
+                    return {
+                        ...prev,
+                        [symbol]: {
+                            ...existing,
+                            quote: updatedQuote,
+                            chart: updatedChart,
+                            source: MarketState.LIVE, // Recover indices too
+                            lastUpdated: Date.now()
+                        }
+                    };
+                });
+
+                lastUpdateTsRef.current = Date.now();
+            } catch (err) {
+                console.error("Failed to parse index SSE:", err);
+            }
+        });
+
+        eventSource.addEventListener("ping", () => {
+            lastUpdateTsRef.current = Date.now();
+        });
+
+        eventSource.addEventListener("status", () => {
+            lastUpdateTsRef.current = Date.now();
+        });
+
+        eventSource.onerror = (e) => {
+            console.error("SSE Connection Error:", e);
+        };
+
+        return () => {
+            eventSource.close();
+        };
+    }, [selectedSymbol]);
+
+    // Stale detection timer
+    useEffect(() => {
+        const checkStale = () => {
+            const now = Date.now();
+            if (lastUpdateTsRef.current === 0) return;
+            
+            // 전역 SSE 연결 건강성 확인 (ping 포함)
+            const globalDiff = now - lastUpdateTsRef.current;
+
+            setMarketStore(prev => {
+                let hasChanges = false;
+                const nextStore = { ...prev };
+
+                for (const s in nextStore) {
+                    const item = nextStore[s];
+                    
+                    // SSE 활성 구독 중인 심볼(현재 선택종목 + 지수)만 STALE 감시 대상
+                    if (s !== selectedSymbol && s !== "0001" && s !== "1001") continue;
+                    
+                    // 정상/지연 상태 혹은 연결 중인 것들만 감시
+                    if (item.source !== MarketState.LIVE && item.source !== MarketState.STALE && item.source !== MarketState.CONNECTING) continue;
+
+                    let nextSource: MarketState = item.source;
+
+                    // 거래가 없어도 ping이 오면 정상 연결로 간주
+                    if (globalDiff > 45000) {      // 45초 이상 지연 - RECONNECTING
+                        nextSource = MarketState.RECONNECTING;
+                    } else if (globalDiff > 25000) { // 25초 이상 지연 - STALE
+                        nextSource = MarketState.STALE;
+                    } else if (item.source === MarketState.STALE || item.source === MarketState.CONNECTING) {
+                        nextSource = MarketState.LIVE;
+                    }
+
+                    if (nextSource !== item.source) {
+                        nextStore[s] = { ...item, source: nextSource };
+                        hasChanges = true;
+                    }
+                }
+
+                return hasChanges ? nextStore : prev;
+            });
+        };
+
+        const timer = setInterval(checkStale, 2000);
+        return () => clearInterval(timer);
+    }, [selectedSymbol]);
+
+    const currentSymbolState = marketStore[selectedSymbol] || null;
+    const indices = {
+        kospi: marketStore["0001"] || null,
+        kosdaq: marketStore["1001"] || null
+    };
+
+    return (
+        <LiveMarketContext.Provider value={{
+            selectedSymbol,
+            marketStore,
+            setSelectedSymbol,
+            currentSymbolState,
+            indices
+        }}>
+            {children}
+        </LiveMarketContext.Provider>
+    );
+};
+
+export const useLiveMarket = () => {
+    const context = useContext(LiveMarketContext);
+    if (context === undefined) {
+        throw new Error("useLiveMarket must be used within a LiveMarketProvider");
+    }
+    return context;
+};

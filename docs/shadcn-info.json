@@ -1,0 +1,65 @@
+{
+  "project": {
+    "framework": "Next.js",
+    "frameworkName": "next-app",
+    "frameworkVersion": "16.1.6",
+    "srcDirectory": true,
+    "rsc": true,
+    "typescript": true,
+    "tailwindVersion": "v4",
+    "tailwindConfig": null,
+    "tailwindCss": "src/app/globals.css",
+    "importAlias": "@"
+  },
+  "config": {
+    "style": "base-nova",
+    "base": "base",
+    "rsc": true,
+    "typescript": true,
+    "iconLibrary": "lucide",
+    "rtl": false,
+    "menuColor": "default",
+    "menuAccent": "subtle",
+    "aliases": {
+      "components": "@/components",
+      "utils": "@/lib/utils",
+      "ui": "@/components/ui",
+      "lib": "@/lib",
+      "hooks": "@/hooks"
+    },
+    "resolvedPaths": {
+      "cwd": "/Users/hyuna/Desktop/heina/Stockker/stockker",
+      "tailwindConfig": null,
+      "tailwindCss": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/app/globals.css",
+      "utils": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/lib/utils",
+      "components": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/components",
+      "lib": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/lib",
+      "hooks": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/hooks",
+      "ui": "/Users/hyuna/Desktop/heina/Stockker/stockker/src/components/ui"
+    },
+    "registries": {
+      "@shadcn": "https://ui.shadcn.com/r/styles/{style}/{name}.json"
+    }
+  },
+  "components": [
+    "badge",
+    "button",
+    "card",
+    "input",
+    "scroll-area",
+    "separator",
+    "sheet",
+    "skeleton",
+    "sonner",
+    "table",
+    "tabs",
+    "tooltip"
+  ],
+  "links": {
+    "docs": "https://ui.shadcn.com/docs",
+    "components": "https://ui.shadcn.com/docs/components/base/[component].md",
+    "ui": "https://raw.githubusercontent.com/shadcn-ui/ui/refs/heads/main/apps/v4/registry/bases/base/ui/[component].tsx",
+    "examples": "https://raw.githubusercontent.com/shadcn-ui/ui/refs/heads/main/apps/v4/registry/bases/base/examples/[component]-example.tsx",
+    "schema": "https://ui.shadcn.com/schema.json"
+  }
+}

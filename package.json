@@ -4,14 +4,39 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:reset": "lsof -ti:3000,3001 | xargs kill -9 || true && rm -rf .next && next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run lint && npm run typecheck",
+    "test:unit": "vitest run",
+    "test:charts": "vitest run src/**/*.chart.test.ts src/**/*.candlestick.test.ts",
+    "test:charts:intraday": "vitest run src/**/intraday*.test.ts src/**/aggregateToOHLC*.test.ts",
+    "test:charts:daily": "vitest run src/**/daily*.test.ts src/**/movingAverage*.test.ts",
+    "test:persistence": "vitest run src/**/buy-price*.test.ts src/**/user-storage*.test.ts",
+    "test:contracts": "vitest run src/**/contracts*.test.ts src/**/ohlc-route*.test.ts",
+    "validate:full": "npm run validate && npm run test:charts && npm run test:persistence && npm run test:contracts && npm run build",
+    "mock:research": "echo 'Mock data is built-in; no separate server needed.'"
   },
   "dependencies": {
+    "@base-ui/react": "^1.2.0",
+    "@google/genai": "^1.44.0",
+    "@types/ws": "^8.18.1",
+    "@upstash/redis": "^1.36.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.577.0",
     "next": "16.1.6",
+    "next-themes": "^0.4.6",
+    "openai": "^6.27.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "recharts": "^3.8.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,6 +46,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.0.0"
   }
 }
