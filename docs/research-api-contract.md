@@ -1,99 +1,42 @@
-# Stockker Research API Contract
+# Research API Contract
 
-본 문서는 프론트엔드와 Model Router(`src/server/research/model-router.ts`) 간의 데이터 규격을 정의합니다. Phase 5 기준 모든 엔드포인트는 `mock-data.ts`를 통해 결정론적으로 응답합니다.
+## 1. 개요
+Stockker 리서치 도메인의 데이터 파이프라인 계약 및 인터페이스를 정의합니다.
 
-## 1. Search API
-**Endpoint**: `GET /api/stocks/search?q={query}`
-**Response**:
-```json
-{
-  "ok": true,
-  "results": [
-    {
-      "symbol": "005930",
-      "name": "삼성전자",
-      "type": "stock",
-      "market": "KOSPI",
-      "matchScore": 100
-    }
-  ]
+## 2. Core Interfaces (`src/types/research.ts`)
+
+### IssueItem (AI 이슈/리포트 원문)
+```typescript
+export interface IssueItem {
+  id: string;             // 식별자 (news-{id}, dart-{id})
+  title: string;          // 이슈/공시 제목
+  summary: string;        // 본문 또는 AI 요약
+  timestamp: string;      // 수집/발생 시간 (ISO 8601)
+  source: string;         // 제공처 (예: 한국경제, Open DART)
+  sourceType: "news" | "disclosure" | "sns" | "analyst";
+  impact: "positive" | "negative" | "neutral";
+  link?: string;          // 원문 링크 (가능한 경우)
 }
 ```
 
-## 2. Report Summary API
-**Endpoint**: `GET /api/stocks/[symbol]/report`
-**Response**:
-```json
-{
-  "ok": true,
-  "report": {
-    "symbol": "005930",
-    "name": "삼성전자",
-    "currentPrice": 75000,
-    "change": 1500,
-    "changeRate": 2.0,
-    "aiHeadline": "반도체 수급 개선 기대로 단기 모멘텀 유지",
-    "aiSummary": "글로벌 파운드리 수요 회복 파급 효과...",
-    "priceFreshness": "live",
-    "reportFreshness": "recent",
-    "lastUpdated": "2026-03-20T17:00:00Z"
-  }
+### RelatedStock (AI 포착 연관 종목)
+```typescript
+export interface RelatedStock {
+  symbol: string;
+  name: string;
+  reason: string;         // 연관 이유
+  price?: number;
+  changeRate?: number;
+  freshness?: "live" | "recent" | "stale" | "loading" | "error"; // 데이터 신선도
 }
 ```
 
-## 3. Issues Timeline API
-**Endpoint**: `GET /api/stocks/[symbol]/issues`
-**Response**:
-```json
-{
-  "ok": true,
-  "issues": [
-    {
-      "id": "issue-1",
-      "title": "AI 메모리 수요 폭발",
-      "summary": "...",
-      "timestamp": "2026-03-20T16:50:00Z",
-      "source": "한국경제",
-      "sourceType": "news",
-      "impact": "positive"
-    }
-  ]
-}
-```
+## 3. 파이프라인 흐름
+1. **`collect.ts`**: `getDomesticStockNews`와 `getDisclosures`를 병렬 호출하여 원시(raw) 데이터를 수집.
+2. **`normalize.ts`**: 서로 다른 스키마를 가진 뉴스/공시를 `IssueItem` 배열로 매핑 및 중복 제목 제거.
+3. **`rank.ts`**: 시간순 정렬 및 우선순위(클러스터링) 산정.
+4. **`summarize.ts`**: (추후) 최상위 이슈들을 LLM API에 전달하여 1~2줄 요약 리포트 생성.
 
-## 4. Sentiment Analysis API
-**Endpoint**: `GET /api/stocks/[symbol]/sentiment`
-**Response**:
-```json
-{
-  "ok": true,
-  "sentiment": {
-    "score": 75,
-    "label": "강세",
-    "positiveFactors": ["...", "..."],
-    "negativeFactors": ["...", "..."],
-    "freshness": "recent",
-    "lastUpdated": "2026-03-20T17:00:00Z"
-  }
-}
-```
-
-## 5. Buy Position Strategy API
-**Endpoint**: `POST /api/stocks/[symbol]/buy-plan`
-**Body**: `{ "targetPrice": 80000 }`
-**Response**:
-```json
-{
-  "ok": true,
-  "buyPlan": {
-    "targetPrice": 80000,
-    "currentProfitLossRate": -6.25,
-    "positionAnalysis": "평균 매수가 대비 손실권에 위치해 있습니다.",
-    "actionGuides": [
-      "추가 하락 시 분할 매수 고려",
-      "기술적 반등 지표 집중 관찰"
-    ],
-    "generatedAt": "2026-03-20T17:05:00Z"
-  }
-}
-```
+## 4. Provider 연동
+- **Disclosure**: `opendart.fss.or.kr/api/list.json` 연동. API 실패 시 Deterministic Mock으로 우회.
+- **News**: 기존 KIS News API (`FHKST01012200`) 사용. In-flight Dedupe 캐시 레이어 거침.

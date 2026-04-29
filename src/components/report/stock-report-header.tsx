@@ -6,10 +6,27 @@ import { FreshnessLabel } from "./freshness-label";
 import { formatNumber, formatChange } from "@/lib/utils";
 import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { getStockName } from "@/lib/stocks/metadata";
+import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
+import { Bookmark, BookmarkCheck } from "lucide-react";
 
 export function StockReportHeader({ symbol }: { symbol: string }) {
   const [data, setData] = useState<StockReportSummary | null>(null);
   const { marketStore, setSelectedSymbol, selectedSymbol } = useLiveMarket();
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  useEffect(() => {
+    // Hydration for bookmark state
+    const savedBookmarks = LocalStorageAdapter.getAll().bookmarkedReports;
+    setIsBookmarked(savedBookmarks.includes(symbol));
+
+    // Save to recent viewed
+    LocalStorageAdapter.addRecentViewed(symbol);
+  }, [symbol]);
+
+  const toggleBookmark = () => {
+    LocalStorageAdapter.toggleBookmark(symbol);
+    setIsBookmarked(prev => !prev);
+  };
 
   useEffect(() => {
     // 종목 페이지 마운트 시, 실시간 스트림 포커스를 해당 종목으로 설정
@@ -54,12 +71,21 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 md:p-8 shadow-sm border flex flex-col md:flex-row md:items-start justify-between gap-6">
       <div className="flex-1">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{getStockName(symbol)}</h1>
-          <span className="text-sm font-medium text-slate-400 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded">
-            {symbol}
-          </span>
-          <FreshnessLabel type="report" state={data.reportFreshness} timestamp={data.lastUpdated} />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{getStockName(symbol)}</h1>
+            <span className="text-sm font-medium text-slate-400 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded">
+              {symbol}
+            </span>
+            <FreshnessLabel type="report" state={data.reportFreshness} timestamp={data.lastUpdated} />
+          </div>
+          <button 
+            onClick={toggleBookmark}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+            title={isBookmarked ? "북마크 해제" : "북마크 저장"}
+          >
+            {isBookmarked ? <BookmarkCheck className="w-6 h-6 text-indigo-500" /> : <Bookmark className="w-6 h-6" />}
+          </button>
         </div>
         
         <div className="flex items-end gap-3 mb-6">

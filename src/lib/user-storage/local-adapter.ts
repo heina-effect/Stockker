@@ -10,6 +10,7 @@ export interface UserPreferences {
 export interface UserStorageSchema {
   watchlist: string[];
   recentSearches: string[];
+  recentViewed: string[];
   buyPrices: Record<string, number>;
   bookmarkedReports: string[];
   preferences: UserPreferences;
@@ -18,6 +19,7 @@ export interface UserStorageSchema {
 const DEFAULT_STATE: UserStorageSchema = {
   watchlist: ["005930", "000660"],
   recentSearches: [],
+  recentViewed: [],
   buyPrices: {},
   bookmarkedReports: [],
   preferences: {
@@ -39,7 +41,7 @@ export const LocalStorageAdapter = {
     if (!raw) return DEFAULT_STATE;
     try {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_STATE, ...parsed }; // Migration & fallback
+      return { ...DEFAULT_STATE, ...parsed, preferences: { ...DEFAULT_STATE.preferences, ...(parsed.preferences || {}) } }; // Migration & fallback
     } catch {
       return DEFAULT_STATE;
     }
@@ -63,6 +65,12 @@ export const LocalStorageAdapter = {
     this.setAll({ buyPrices: data.buyPrices });
   },
 
+  removeBuyPrice(symbol: string) {
+    const data = this.getAll();
+    delete data.buyPrices[symbol];
+    this.setAll({ buyPrices: data.buyPrices });
+  },
+
   addToWatchlist(symbol: string) {
     const data = this.getAll();
     if (!data.watchlist.includes(symbol)) {
@@ -79,5 +87,25 @@ export const LocalStorageAdapter = {
     const data = this.getAll();
     const updated = [symbol, ...data.recentSearches.filter(s => s !== symbol)].slice(0, 10);
     this.setAll({ recentSearches: updated });
+  },
+
+  addRecentViewed(symbol: string) {
+    const data = this.getAll();
+    const updated = [symbol, ...data.recentViewed.filter(s => s !== symbol)].slice(0, 10);
+    this.setAll({ recentViewed: updated });
+  },
+
+  toggleBookmark(symbol: string) {
+    const data = this.getAll();
+    if (data.bookmarkedReports.includes(symbol)) {
+      this.setAll({ bookmarkedReports: data.bookmarkedReports.filter(s => s !== symbol) });
+    } else {
+      this.setAll({ bookmarkedReports: [...data.bookmarkedReports, symbol] });
+    }
+  },
+
+  setPreference<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) {
+    const data = this.getAll();
+    this.setAll({ preferences: { ...data.preferences, [key]: value } });
   }
 };

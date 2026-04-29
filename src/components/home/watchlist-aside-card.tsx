@@ -4,12 +4,22 @@ import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import Link from "next/link";
 import { formatNumber, formatChange } from "@/lib/utils";
 import { getStockName } from "@/lib/stocks/metadata";
-
-// Home 화면 맞춤형 데스크톱 전용 Watchlist 간략 카드
-const DEFAULT_WATCHLIST = ["005930", "000660", "035420", "035720"];
+import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
+import { useEffect, useState } from "react";
 
 export function WatchlistAsideCard() {
   const { marketStore } = useLiveMarket();
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setWatchlist(LocalStorageAdapter.getAll().watchlist);
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm h-full flex flex-col animate-pulse" />;
+  }
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm h-full flex flex-col">
@@ -21,7 +31,7 @@ export function WatchlistAsideCard() {
       </div>
 
       <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-2">
-        {DEFAULT_WATCHLIST.map((symbol) => {
+        {watchlist.map((symbol) => {
           const itemState = marketStore[symbol];
           const isLoading = !itemState || itemState.source === "connecting";
           const quote = itemState?.quote;
@@ -71,11 +81,16 @@ export function WatchlistAsideCard() {
             </Link>
           );
         })}
+        {watchlist.length === 0 && (
+          <div className="flex items-center justify-center h-24 text-slate-400 text-sm">
+            저장된 관심 종목이 없습니다.
+          </div>
+        )}
       </div>
 
       <div className="mt-6 pt-4 border-t border-slate-100 dark:border-zinc-800 flex justify-center">
-        <Link href="/stocks/005930" className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors">
-          관심 종목 편집하기 &raquo;
+        <Link href="/" className="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors">
+          검색하여 종목 추가 &raquo;
         </Link>
       </div>
     </div>

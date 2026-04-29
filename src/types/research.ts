@@ -55,6 +55,7 @@ export interface RelatedStock {
   reason: string;
   price?: number;
   changeRate?: number;
+  freshness?: FreshnessState;
 }
 
 export interface ResearchSourceItem {

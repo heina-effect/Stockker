@@ -42,3 +42,10 @@ next-env.d.ts
 
 # local test files
 test-*
+
+# Phase 12 Data & Scripts
+CORPCODE.xml
+dart.zip
+fetch_dart.js
+parse_xml.js
+parse_xml.py

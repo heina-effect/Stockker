@@ -1,25 +1,26 @@
-# Stockker (Phase 5: Research API Pivot)
+# Stockker (Phase 12: Real AI Pipeline & Persistence)
 
-Stockker는 정보 과부하를 초래하는 기존의 실시간-호가 중심 트레이딩 대시보드 구조에서 탈피하여, KIS 실시간 API와 AI 요약 모델을 접목한 **심플한 검색 기반 리서치 및 시뮬레이션 서비스**로 재설계되었습니다.
+Stockker는 단순한 시세 대시보드를 넘어, 실제 시장 뉴스(KIS)와 공식 공시(Open DART) 데이터를 통합한 **데이터 기반 AI 리서치 및 개인화 플랫폼**으로 진화했습니다.
 
 ## 🌟 주요 특징 (Features)
 
-*   **Search-First UX**: 접속하자마자 방대한 "호가창"을 마주하지 않습니다. 궁금한 종목을 직관적인 검색창(Hero)에서 검색하여 AI 리포트를 발급받습니다.
-*   **Simple & Clean Report**: 종목 진입 시 캔들 차트를 단순화한 유선형 트렌드 차트와 함께 `AI 한 줄 요약`, `실시간 이슈 타임라인`, `현재 감성 점수(Sentiment)`를 받아볼 수 있습니다.
-*   **Actionable Plan**: 자신의 평균 매수가(평단가)를 입력하면, AI가 포지션을 진단하고 앞으로 어떻게 비중을 조절해야 할지 3단계 액션 가이드 지침을 제안해 줍니다.
-*   **Background Data Freshness**: 기존 Phase 1~4 구동 엔진이었던 KIS (한국투자증권) API와 SSE 웹소켓 갱신은 삭제되지 않고 여전히 "가격의 신선도"를 실시간으로 맞추는 훌륭한 백엔드로 백그라운드에서 조용하게 구동되고 있습니다. (Orderbook 기능 보류)
+*   **Search-First UX**: 접속하자마자 방대한 "호가창"을 마주하지 않습니다. 궁금한 종목을 직관적인 검색창(Hero)에서 검색하여 AI 리포트를 발급받습니다. 최근 검색어와 관심 종목도 즉시 확인 가능합니다.
+*   **Real Data AI Pipeline**: KIS 실시간 뉴스 API와 Open DART 공시 API를 결합하고 중복 제거/정렬을 거쳐 정규화된 `핵심 이슈 타임라인`을 제공합니다.
+*   **Actionable Plan**: 자신의 평균 매수가(평단가)를 명시적으로 입력하고 저장할 수 있으며, AI가 포지션을 진단하고 액션 가이드 지침을 제안해 줍니다.
+*   **Local-First Persistence**: 사용자의 테마, 북마크, 최근 본 종목, 검색어, 관심 종목, 평단가 등이 브라우저 로컬 스토리지 기반으로 빠르고 안전하게 동기화됩니다.
+*   **Background Data Freshness**: KIS API와 SSE 웹소켓은 "가격의 신선도"를 실시간으로 맞추는 백그라운드 엔진으로 조용하게 구동되고 있습니다. 상세 진입 시 Fan-out을 억제하여 Rate-limit 에러(EGW00201)를 완벽히 통제합니다.
 
 ## 🛠️ 기술 스택 (Tech Stack)
 
 *   **Framework**: Next.js 16.1.6 (App Router)
 *   **Language**: TypeScript (Strict)
 *   **Styling**: Tailwind CSS v4, shadcn/ui
-*   **State & Viz**: Recharts (Simple Line), Zod
-*   **AI Router**: `gemini-3.1-flash-lite`, `gemini-3-flash` 기반 결정론적 Stub 컨트롤러 
+*   **Data Sources**: KIS API (Live Quote/News), Open DART API (Disclosures)
+*   **AI Router**: `pipeline/*` 기반 데이터 수집/정규화 모델
 
 ## 🚀 개발 및 실행 (Getting Started)
 
-최신 노드 환경에서 의존성을 설치하고 컴파일/실행합니다. (KIS API Key 필요 없음 - Phase 5는 결정론적 Mock-data 기본 사용)
+최신 노드 환경에서 의존성을 설치하고 컴파일/실행합니다.
 
 ```bash
 # 1. 의존성 설치
@@ -35,11 +36,9 @@ npm run dev
 > **버그 우회 / 초기화 팁** : `.next` 캐시 등으로 Next.js가 꼬이거나 스타일이 깨진다면 `npm run dev:reset` 명령어를 사용하여 깨끗하게 서버를 다시 켤 수 있습니다.
 
 ## 📝 프로젝트 페이즈 마일스톤
-- Phase 1: 기본 UI 스캐폴딩 및 Vercel/Mock 환경 세팅
-- Phase 2: KIS Open API 토큰 매니저 연동
-- Phase 3: SSE WebSocket 체결/틱 데이터 연동 및 스토어 고도화
-- Phase 4: 지수(KOSPI) 컴포넌트 데이터 처리 및 Stale UX 안정화
-- Phase 5: 실시간 Dashboard에서 Research-first로 프로덕트 피벗 및 AI Mock API 구축
-- Phase 6~8: UI Validation, Local Persistence, Candlestick 도입
+- Phase 1~4: 실시간 Dashboard 엔진 구축
+- Phase 5: Research-first 프로덕트 피벗 및 Mock API 구축
+- Phase 6~8: UI Validation 및 차트 도입 기초
 - Phase 9~10: KIS 실제 시세/뉴스 API 연동 및 데이터 무결성 검증
-- **Phase 11 (현재): KIS Rate-Limit 핫픽스, 당일 차트 억제, 오픈 DART 공시 연동 구조 기반 리포트 신뢰도 제고**
+- Phase 11: KIS Rate-Limit 핫픽스, 당일 차트 억제, API 리소스 실체화 준비
+- **Phase 12 (현재): Open DART 공시 실연동, AI 파이프라인 정규화, 로컬 영속성 레이어(User Persistence) 완성**

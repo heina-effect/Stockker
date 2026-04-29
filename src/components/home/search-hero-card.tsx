@@ -1,17 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Search, ArrowRight, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, ArrowRight, Loader2, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { StockSearchItem } from "@/types/research";
+import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
+import { getStockName } from "@/lib/stocks/metadata";
 
 export function SearchHeroCard() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<StockSearchItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const router = useRouter();
+
+  useEffect(() => {
+    setRecentSearches(LocalStorageAdapter.getAll().recentSearches);
+  }, []);
 
   const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -38,6 +45,7 @@ export function SearchHeroCard() {
   };
 
   const handleSelect = (symbol: string) => {
+    LocalStorageAdapter.addRecentSearch(symbol);
     router.push(`/stocks/${symbol}`);
   };
 
@@ -132,6 +140,34 @@ export function SearchHeroCard() {
                 검색 결과가 없습니다.
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Recent Searches */}
+        {query.trim().length === 0 && recentSearches.length > 0 && (
+          <div className="absolute top-full mt-2 w-full bg-white dark:bg-zinc-900 rounded-2xl border shadow-lg overflow-hidden z-20 text-left p-4">
+             <div className="text-xs font-semibold text-slate-400 mb-3 flex items-center gap-1">
+               <Clock className="w-3 h-3" />
+               최근 검색
+             </div>
+             <div className="flex flex-wrap gap-2">
+               {recentSearches.map(symbol => {
+                 const name = getStockName(symbol);
+                 return (
+                   <button 
+                     key={symbol} 
+                     type="button" 
+                     onClick={() => handleSelect(symbol)}
+                     className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-medium text-slate-600 dark:text-zinc-300 transition-colors flex items-center gap-1.5"
+                   >
+                     <span>{name}</span>
+                     {name !== symbol && (
+                       <span className="text-[10px] opacity-40 font-mono">{symbol}</span>
+                     )}
+                   </button>
+                 );
+               })}
+             </div>
           </div>
         )}
       </form>
