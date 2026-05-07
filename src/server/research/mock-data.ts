@@ -16,9 +16,11 @@ export const mockSearchData: StockSearchItem[] = [
   { symbol: "0001", name: "KOSPI", type: "index", matchScore: 60 },
 ];
 
+import { getServerStockName } from "@/lib/stocks/search-master";
+
 export const mockReportSummary = (symbol: string): StockReportSummary => ({
   symbol,
-  name: symbol === "005930" ? "삼성전자" : symbol === "000660" ? "SK하이닉스" : "Unknown",
+  name: getServerStockName(symbol),
   currentPrice: symbol === "005930" ? 75000 : 150000,
   change: 1500,
   changeRate: 2.0,

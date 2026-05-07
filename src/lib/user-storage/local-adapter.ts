@@ -7,9 +7,15 @@ export interface UserPreferences {
   chartMode: "daily" | "intraday";
 }
 
+export interface RecentSearchItem {
+  symbol: string;
+  name: string;
+  type?: string;
+}
+
 export interface UserStorageSchema {
   watchlist: string[];
-  recentSearches: string[];
+  recentSearches: RecentSearchItem[];
   recentViewed: string[];
   buyPrices: Record<string, number>;
   bookmarkedReports: string[];
@@ -83,9 +89,9 @@ export const LocalStorageAdapter = {
     this.setAll({ watchlist: data.watchlist.filter(s => s !== symbol) });
   },
   
-  addRecentSearch(symbol: string) {
+  addRecentSearch(item: RecentSearchItem) {
     const data = this.getAll();
-    const updated = [symbol, ...data.recentSearches.filter(s => s !== symbol)].slice(0, 10);
+    const updated = [item, ...data.recentSearches.filter(s => typeof s === "string" ? s !== item.symbol : s.symbol !== item.symbol)].slice(0, 10);
     this.setAll({ recentSearches: updated });
   },
 

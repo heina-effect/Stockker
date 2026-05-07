@@ -48,4 +48,5 @@ npm run test:persistence
 - Phase 11: KIS Rate-Limit 핫픽스, 당일 차트 억제, API 리소스 실체화 준비
 - Phase 12: Open DART 공시 실연동, AI 파이프라인 정규화, 로컬 영속성 레이어(User Persistence) 완성
 - Phase 13: Corp-Code 매핑 자동화(전종목 확장), 이슈/출처 구조적 분리, 검색 UX 폴리싱 및 계산 로직 회귀 테스트 구축
-- **Phase 14 (현재): Sector/Theme Taxonomy 도입, 홈 대시보드 인텔리전스 레이어(이슈/섹터/AI픽) 구축, 설명 가능한 추천·감성 모델 및 법적 비권유 안전망 적용**
+- Phase 14: Sector/Theme Taxonomy 도입, 홈 대시보드 인텔리전스 레이어(이슈/섹터/AI픽) 구축, 설명 가능한 추천·감성 모델 및 법적 비권유 안전망 적용
+- **Phase 15 (현재): Search Alias 및 전체 검색 무결성 완성, Gemini/OpenAI 기반 실모델 AI Orchestration 연동 (프롬프트/구조화된 JSON 추출 적용)**

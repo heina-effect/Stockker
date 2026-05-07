@@ -73,7 +73,7 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
       <div className="flex-1">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{getStockName(symbol)}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{data.name || getStockName(symbol)}</h1>
             <span className="text-sm font-medium text-slate-400 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded">
               {symbol}
             </span>

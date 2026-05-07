@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { StockSearchItem } from "@/types/research";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
-import { getStockName } from "@/lib/stocks/metadata";
+import type { RecentSearchItem } from "@/lib/user-storage/local-adapter";
 
 export function SearchHeroCard() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<StockSearchItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [recentSearches, setRecentSearches] = useState<RecentSearchItem[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const router = useRouter();
 
@@ -45,28 +45,31 @@ export function SearchHeroCard() {
     }
   };
 
-  const handleSelect = (symbol: string, type?: string) => {
-    LocalStorageAdapter.addRecentSearch(symbol);
-    if (type === "sector" || symbol.startsWith("sec-")) {
-      router.push(`/sectors/${symbol}`);
+  const handleSelect = (item: { symbol: string, name: string, type?: string }) => {
+    LocalStorageAdapter.addRecentSearch(item);
+    if (item.type === "sector" || item.symbol.startsWith("sec-")) {
+      router.push(`/sectors/${item.symbol}`);
     } else {
-      router.push(`/stocks/${symbol}`);
+      router.push(`/stocks/${item.symbol}`);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (focusedIndex >= 0 && focusedIndex < results.length) {
-      handleSelect(results[focusedIndex].symbol, results[focusedIndex].type);
+      handleSelect(results[focusedIndex]);
     } else if (results.length > 0) {
-      handleSelect(results[0].symbol, results[0].type);
+      handleSelect(results[0]);
     } else if (query.trim().length > 0 && /^[A-Za-z0-9-]+$/.test(query)) {
-        handleSelect(query); // Fallback to raw query if it looks like a symbol
+      handleSelect({ symbol: query, name: query }); // Fallback
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
+    if (e.key === "Escape") {
+      setIsFocused(false);
+      (e.currentTarget as HTMLInputElement).blur();
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusedIndex(prev => (prev < results.length - 1 ? prev + 1 : prev));
     } else if (e.key === "ArrowUp") {
@@ -128,7 +131,7 @@ export function SearchHeroCard() {
                           ? "bg-slate-100 dark:bg-zinc-800 border-l-4 border-indigo-500 pl-5" 
                           : "hover:bg-slate-50 dark:hover:bg-zinc-800 border-l-4 border-transparent"
                       }`}
-                      onClick={() => handleSelect(item.symbol, item.type)}
+                      onClick={() => handleSelect(item)}
                       onMouseEnter={() => setFocusedIndex(idx)}
                     >
                       <div>
@@ -158,18 +161,22 @@ export function SearchHeroCard() {
                최근 검색
              </div>
              <div className="flex flex-wrap gap-2">
-               {recentSearches.map(symbol => {
-                 const name = getStockName(symbol);
+               {recentSearches.map(item => {
+                 let s = item;
+                 // backward compatibility with string
+                 if (typeof item === "string") {
+                   s = { symbol: item, name: item };
+                 }
                  return (
                    <button 
-                     key={symbol} 
+                     key={s.symbol} 
                      type="button" 
-                     onClick={() => handleSelect(symbol)}
+                     onClick={() => handleSelect(s)}
                      className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-medium text-slate-600 dark:text-zinc-300 transition-colors flex items-center gap-1.5"
                    >
-                     <span>{name}</span>
-                     {name !== symbol && (
-                       <span className="text-[10px] opacity-40 font-mono">{symbol}</span>
+                     <span>{s.name}</span>
+                     {s.name !== s.symbol && (
+                       <span className="text-[10px] opacity-40 font-mono">{s.symbol}</span>
                      )}
                    </button>
                  );
