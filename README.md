@@ -1,24 +1,25 @@
-# Stockker (Phase 14: AI Intelligence & Recommendation Layer Expansion)
+# Stockker (Phase 15: Search Reliability & Production AI Orchestration)
 
-Stockker는 단순한 시세 대시보드를 넘어, 실제 시장 뉴스(KIS)와 공식 공시(Open DART) 데이터를 통합한 **데이터 기반 AI 리서치 및 개인화 플랫폼**으로 진화했습니다.
+Stockker는 단순한 시세 대시보드를 넘어, 실제 시장 뉴스(KIS)와 공식 공시(Open DART) 데이터를 통합하고 **Gemini/OpenAI 실모델을 연동한 프로덕션급 AI 인텔리전스 플랫폼**으로 진화했습니다.
 
 ## 🌟 주요 특징 (Features)
 
-*   **Search-First UX**: 접속하자마자 방대한 "호가창"을 마주하지 않습니다. 궁금한 종목을 직관적인 검색창(Hero)에서 검색하여 AI 리포트를 발급받습니다. 최근 검색어와 관심 종목도 즉시 확인 가능하며, 검색 UX는 사용자의 명시적 포커스(Focus)에만 반응하도록 최적화되었습니다.
-*   **Real Data AI Pipeline & Source Hardening**: KIS 실시간 뉴스 API와 Open DART 공시 API를 결합하여 약 3,900여 개 전 상장사(Corp-Code 자동 매핑)에 대한 정규화된 정보를 수집합니다.
-*   **Sector & Theme Intelligence**: 단일 종목을 넘어 업종(Sector)/테마(Theme) 단위 탐색을 지원하며, 홈 화면에서 실시간 핵심 이슈, 섹터 전망, AI 포착 후보 등을 종합 큐레이션합니다.
-*   **Transparent Sentiment & Recommendation**: AI 감성 점수와 추천 후보(관찰/체크리스트) 제공 시 그 판단 근거(출처)를 명시하여 AI의 블랙박스 문제를 해결하고, 법률적 비권유 가이드라인(Non-Advisory Guardrails)을 엄수합니다.
-*   **Actionable Plan with Regression Test**: 자신의 평균 매수가(평단가)를 입력하면 AI가 포지션을 진단합니다. 계산 로직은 자동화된 회귀 테스트(Vitest)로 고정되어 오차 없는 수익률 기반 대응 가이드를 제안합니다.
-*   **Local-First Persistence**: 사용자의 테마, 북마크, 최근 본 종목, 검색어, 관심 종목, 평단가 등이 브라우저 로컬 스토리지 기반으로 빠르고 안전하게 동기화됩니다.
+*   **Production AI Orchestration**: Gemini 2.5 Flash와 OpenAI GPT-4o를 결합한 하이브리드 오케스트레이션을 통해 실시간 뉴스/공시 데이터를 분석합니다. 데이터 추출과 감성 분석은 Gemini가, 고품질 리포트 요약과 홈 인텔리전스는 OpenAI가 담당합니다.
+*   **Search Reliability & Alias Support**: 3,900여 개 전체 상장사 검색이 완벽하게 동작하며, "현대중공업"과 같은 구명칭이나 별칭 검색 시에도 "HD현대중공업"으로 정확히 매핑되는 Alias 시스템을 구축했습니다.
+*   **Search-First UX**: 접속하자마자 방대한 "호가창"을 마주하지 않습니다. 궁금한 종목을 직관적인 검색창(Hero)에서 검색하여 AI 리포트를 발급받습니다. 최근 검색어는 이제 종목명과 티커를 함께 저장하여 시인성을 높였습니다.
+*   **Real Data AI Pipeline & Source Hardening**: KIS 실시간 뉴스 API와 Open DART 공시 API를 결합하여 약 3,900여 개 전 상장사에 대한 정규화된 정보를 수집합니다.
+*   **Sector & Theme Intelligence**: 단일 종목을 넘어 업종(Sector)/테마(Theme) 단위 탐색을 지원하며, 홈 화면에서 AI가 생성한 실시간 핵심 이슈, 섹터 전망, AI 포착 후보 등을 종합 큐레이션합니다.
+*   **Transparent Sentiment & Recommendation**: AI 감성 점수 제공 시 그 판단 근거가 된 원문 출처를 1:1로 매핑하여 설명 가능성을 확보하고, 비보장 고지 등 법적 가이드라인을 준수합니다.
 
 ## 🛠️ 기술 스택 (Tech Stack)
 
 *   **Framework**: Next.js 16.1.6 (App Router)
 *   **Language**: TypeScript (Strict)
-*   **Styling**: Tailwind CSS v4, shadcn/ui
+*   **AI Models**: Google Gemini 2.5 Flash, OpenAI GPT-4o (Hybrid Orchestration)
 *   **Data Sources**: KIS API (Live Quote/News), Open DART API (Disclosures)
-*   **AI Router**: `pipeline/*` 기반 데이터 수집/정규화 모델
-*   **Testing**: Vitest (Logic/Regression)
+*   **AI Router**: `src/server/ai/orchestrator.ts` 기반 지능형 데이터 처리
+*   **Testing**: Vitest (Logic/Regression/Search Alias)
+*   **Styling**: Tailwind CSS v4, shadcn/ui
 
 ## 🚀 개발 및 실행 (Getting Started)
 
