@@ -51,16 +51,19 @@ export function HomeIntelligenceProvider({ children }: { children: React.ReactNo
   return (
     <HomeIntelligenceContext.Provider value={{ data, isLoading, error }}>
       {children}
-      {data && data._meta && process.env.NODE_ENV === "development" && (
+      {data && (data._meta || data._cacheState) && process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 bg-slate-900/80 text-white text-[10px] px-3 py-2 rounded-lg shadow-lg z-50 backdrop-blur-sm pointer-events-none flex flex-col gap-1">
           <div className="font-bold border-b border-slate-700 pb-1 mb-1 flex items-center justify-between">
-            <span>AI Home Intelligence (Dev)</span>
-            <span className={data._meta.mode === 'real' ? 'text-green-400' : 'text-amber-400 ml-2'}>{data._meta.mode.toUpperCase()}</span>
+            <span>Home Intelligence (Dev)</span>
+            {data._meta && <span className={data._meta.mode === 'real' ? 'text-green-400 ml-2' : 'text-amber-400 ml-2'}>{data._meta.mode?.toUpperCase()}</span>}
           </div>
-          <div className="flex justify-between gap-4"><span>Provider:</span> <span className="font-mono">{data._meta.provider}</span></div>
-          <div className="flex justify-between gap-4"><span>Model:</span> <span className="font-mono">{data._meta.model}</span></div>
-          <div className="flex justify-between gap-4"><span>Latency:</span> <span className="font-mono">{data._meta.latencyMs}ms</span></div>
-          {data._meta.fallbackReason && <div className="text-amber-400 truncate max-w-[200px] mt-1">Reason: {data._meta.fallbackReason}</div>}
+          {data._meta && <>
+            <div className="flex justify-between gap-4"><span>Model:</span> <span className="font-mono">{data._meta.model}</span></div>
+            <div className="flex justify-between gap-4"><span>Latency:</span> <span className="font-mono">{data._meta.latencyMs}ms</span></div>
+            {data._meta.budgetDecision && <div className="flex justify-between gap-4"><span>Budget:</span> <span className="font-mono">{data._meta.budgetDecision}</span></div>}
+            {data._meta.fallbackReason && <div className="text-amber-400 mt-1 truncate max-w-[200px]">Reason: {data._meta.fallbackReason}</div>}
+          </>}
+          {data._cacheState && <div className="flex justify-between gap-4"><span>Cache:</span> <span className={`font-mono ${data._cacheState === 'hit' ? 'text-green-400' : data._cacheState === 'stale' ? 'text-amber-400' : 'text-slate-400'}`}>{data._cacheState}</span></div>}
         </div>
       )}
     </HomeIntelligenceContext.Provider>

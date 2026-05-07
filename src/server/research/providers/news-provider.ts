@@ -10,7 +10,7 @@ export async function fetchCompanyNews(config: NewsProviderConfig): Promise<Sour
   try {
     const rawNews = await getDomesticStockNews(config.symbol);
     if (!rawNews || rawNews.length === 0) {
-      return getDeterministicFallback(config.symbol);
+      return [];
     }
 
     const seen = new Set<string>();
@@ -44,15 +44,16 @@ export async function fetchCompanyNews(config: NewsProviderConfig): Promise<Sour
       if (results.length >= (config.limit || 10)) break;
     }
 
-    return results;
+    return results.length > 0 ? results : [];
 
   } catch (e) {
-    console.warn(`[News Provider] API call failed for ${config.symbol}, using fallback.`, e);
-    return getDeterministicFallback(config.symbol);
+    console.warn(`[News Provider] API call failed for ${config.symbol}, returning empty.`, e);
+    return [];
   }
 }
 
-function getDeterministicFallback(symbol: string): SourceItem[] {
+/** @internal Only exported for testing. Do NOT call in production code paths. */
+export function getMockNewsForTesting(symbol: string): SourceItem[] {
   return [
     {
       id: `news-${symbol}-fallback-1`,
@@ -61,7 +62,8 @@ function getDeterministicFallback(symbol: string): SourceItem[] {
       provider: "Mock News",
       collectedAt: new Date().toISOString(),
       generatedAt: new Date(Date.now() - 3600000).toISOString(),
-    },
+      _isMock: true,
+    } as any,
     {
       id: `news-${symbol}-fallback-2`,
       sourceType: "news",
@@ -69,6 +71,7 @@ function getDeterministicFallback(symbol: string): SourceItem[] {
       provider: "Mock News",
       collectedAt: new Date().toISOString(),
       generatedAt: new Date(Date.now() - 7200000).toISOString(),
-    }
+      _isMock: true,
+    } as any
   ];
 }

@@ -93,18 +93,30 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
       </div>
 
       <div className="pt-4 border-t border-slate-100 dark:border-zinc-800">
-        <h4 className="text-xs font-bold text-slate-500 mb-2">분석 근거 출처 ({data.basisSources?.length || 0}건)</h4>
-        <div className="flex flex-col gap-2">
-          {data.basisSources?.map((src) => (
-            <a key={src.id} href={src.url || "#"} target={src.url ? "_blank" : undefined} rel={src.url ? "noopener noreferrer" : undefined} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-2 rounded border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 transition-colors group">
-              <div className="flex items-center gap-2 truncate">
-                <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
-                <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
-              </div>
-              <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
-            </a>
-          ))}
-        </div>
+        {(data as any)._isFallback ? (
+          <div className="flex items-center gap-2 py-3 px-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-xl text-xs text-amber-700 dark:text-amber-400">
+            <span className="shrink-0">⚠</span>
+            <span>충분한 실시간 데이터를 수집하지 못했습니다. 잠시 후 다시 시도해 주세요.</span>
+          </div>
+        ) : (
+          <>
+            <h4 className="text-xs font-bold text-slate-500 mb-2">분석 근거 출처 ({data.basisSources?.length || 0}건)</h4>
+            <div className="flex flex-col gap-2">
+              {data.basisSources?.map((src) => (
+                <a key={src.id} href={src.url || "#"} target={src.url ? "_blank" : undefined} rel={src.url ? "noopener noreferrer" : undefined} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-2 rounded border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 transition-colors group">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
+                    <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
+                  </div>
+                  <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
+                </a>
+              ))}
+              {(!data.basisSources || data.basisSources.length === 0) && (
+                <p className="text-xs text-slate-400">출처 정보가 없습니다.</p>
+              )}
+            </div>
+          </>
+        )}
       </div>
       {(data as any)._meta && process.env.NODE_ENV === "development" && (
         <div className="mt-4 pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800 text-[9px] text-slate-400 flex flex-wrap gap-2">

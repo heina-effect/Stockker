@@ -15,9 +15,13 @@ export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
     const corpCode = corpCodeObj?.corp_code;
 
     // Fallback if no corpCode found (e.g., Index or ETF)
-    if (!corpCode || !DART_API_KEY) {
-        if (!DART_API_KEY) console.warn("[Disclosure Provider] DART_API_KEY is missing in .env.local");
-        return getDeterministicFallback(symbol, stockName);
+    if (!DART_API_KEY) {
+        console.warn("[Disclosure Provider] DART_API_KEY is missing in .env.local — returning empty.");
+        return [];
+    }
+    if (!corpCode) {
+        console.warn(`[Disclosure Provider] No corp_code found for ${symbol} — returning empty.`);
+        return [];
     }
 
     try {
@@ -61,12 +65,13 @@ export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
         });
 
     } catch (error) {
-        console.warn(`[Disclosure Provider] API call failed for ${symbol}, using deterministic fallback. Error:`, error);
-        return getDeterministicFallback(symbol, stockName);
+        console.warn(`[Disclosure Provider] API call failed for ${symbol}, returning empty. Error:`, error);
+        return [];
     }
 }
 
-function getDeterministicFallback(symbol: string, stockName: string): SourceItem[] {
+/** @internal Only exported for testing. Do NOT call in production code paths. */
+export function getMockDisclosuresForTesting(symbol: string, stockName: string): SourceItem[] {
     return [
         {
             id: `dart-${symbol}-1`,
@@ -75,16 +80,18 @@ function getDeterministicFallback(symbol: string, stockName: string): SourceItem
             provider: "Open DART",
             collectedAt: new Date().toISOString(),
             generatedAt: new Date().toISOString(),
-            url: `https://dart.fss.or.kr/`
-        },
+            url: `https://dart.fss.or.kr/`,
+            _isMock: true,
+        } as any,
         {
             id: `dart-${symbol}-2`,
             sourceType: "disclosure",
             title: `현금ㆍ현물배당결정`,
             provider: "Open DART",
             collectedAt: new Date().toISOString(),
-            generatedAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-            url: `https://dart.fss.or.kr/`
-        }
+            generatedAt: new Date(Date.now() - 86400000).toISOString(),
+            url: `https://dart.fss.or.kr/`,
+            _isMock: true,
+        } as any
     ];
 }

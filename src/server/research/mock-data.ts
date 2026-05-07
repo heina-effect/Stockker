@@ -18,44 +18,40 @@ export const mockSearchData: StockSearchItem[] = [
 
 import { getServerStockName } from "@/lib/stocks/search-master";
 
-export const mockReportSummary = (symbol: string): StockReportSummary => ({
-  symbol,
-  name: getServerStockName(symbol),
-  currentPrice: symbol === "005930" ? 75000 : 150000,
-  change: 1500,
-  changeRate: 2.0,
-  aiHeadline: "반도체 수급 개선 및 HBM3 수주 기대로 단기 모멘텀 유지",
-  aiSummary: "최근 글로벌 파운드리 수요 회복과 AI 가속기 탑재 메모리 공급 부족 현상이 겹치며, 관련 밸류체인 전 영역에서 기대감이 높아지고 있습니다. 특히 4분기 실적 컨센서스를 상회할 가능성이 제기되면서 기관 매수세가 강하게 유입 중입니다.",
-  priceFreshness: "live",
-  reportFreshness: "recent",
-  lastUpdated: new Date().toISOString()
-});
+export const mockReportSummary = (symbol: string): StockReportSummary => {
+  const name = getServerStockName(symbol);
+  return {
+    symbol,
+    name,
+    currentPrice: symbol === "005930" ? 75000 : symbol === "000660" ? 182000 : 150000,
+    change: 0,
+    changeRate: 0,
+    aiHeadline: `${name} — 충분한 실시간 분석 근거를 확보하지 못했습니다`,
+    aiSummary: `${name}에 대한 최신 뉴스 및 공시 데이터를 수집하지 못했거나, 분석에 필요한 근거가 부족합니다. 잠시 후 다시 시도하거나, 해당 종목의 최신 공시·뉴스를 직접 확인하시기 바랍니다.`,
+    priceFreshness: "stale",
+    reportFreshness: "stale",
+    lastUpdated: new Date().toISOString()
+  };
+};
 
-export const mockSentiment = (symbol: string): any => ({
-  score: 75,
-  label: "긍정",
-  trend: "up",
-  positiveFactors: [
-    "HBM 양산 본궤도 진입 및 주요 고객사 인증 임박",
-    "파운드리 가동률 상승에 따른 고정비 완화 구조 진입",
-    "외국인 연속 순매수 기록 지속"
-  ],
-  negativeFactors: [
-    "경쟁사 대비 차세대 공정 수율 확보 지연 가능성",
-    "글로벌 거시 경제 불확실성에 따른 하반기 세트(Set) 수요 부진 우려"
-  ],
-  basisSources: [
-    {
-      id: "src-1",
-      sourceType: "news",
-      title: "HBM 수주 확대 전망",
-      provider: "한국경제",
-      url: "https://example.com"
-    }
-  ],
-  freshness: "recent",
-  generatedAt: new Date().toISOString()
-});
+export const mockSentiment = (symbol: string): any => {
+  const name = getServerStockName(symbol);
+  return {
+    score: 50,
+    label: "중립",
+    trend: "flat",
+    positiveFactors: [
+      `${name} 관련 최신 뉴스 수집 대기 중`,
+    ],
+    negativeFactors: [
+      `${name} 관련 데이터 수집 불완전 — 실시간 데이터를 기반으로 한 분석이 이루어지지 않았습니다`,
+    ],
+    basisSources: [],
+    freshness: "stale",
+    generatedAt: new Date().toISOString(),
+    _isFallback: true,
+  };
+};
 
 export const mockIssues = (symbol: string): { clusters: any[], sources: any[] } => ({
   clusters: [

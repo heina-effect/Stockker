@@ -16,7 +16,7 @@ import { generateRelatedStocks as genRelatedStocks } from "./pipeline/related-st
  * 리서치 AI 라우터
  */
 
-import { searchStock } from "@/lib/stocks/search-master";
+import { searchStock, getServerStockName } from "@/lib/stocks/search-master";
 import { aiSummarizeIssues, aiAnalyzeSentiment } from "@/server/ai/orchestrator";
 
 export async function generateSearch(query: string) {
@@ -34,14 +34,22 @@ export async function generateSentiment(symbol: string) {
 }
 
 export async function generateIssues(symbol: string): Promise<{ clusters: IssueCluster[], sources: SourceItem[] }> {
+  const name = getServerStockName(symbol);
   try {
     const { rawNews, disclosures } = await collectRawSources(symbol);
     
     if ((!rawNews || rawNews.length === 0) && (!disclosures || disclosures.length === 0)) {
-      return mockIssues(symbol) as any; // Fallback
+      console.warn(`[AI Router] No real sources for ${symbol} (${name}), using mock issues.`);
+      return mockIssues(symbol) as any;
     }
 
-    const sources = normalizeSources(rawNews, disclosures);
+    const sources = normalizeSources(rawNews, disclosures, { companyName: name });
+    
+    if (sources.length === 0) {
+      console.warn(`[AI Router] All sources filtered out for ${symbol} (${name}), using mock issues.`);
+      return mockIssues(symbol) as any;
+    }
+    
     const clusters = rankAndCluster(sources);
     
     return { clusters, sources };

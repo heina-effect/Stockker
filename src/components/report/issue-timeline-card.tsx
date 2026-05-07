@@ -2,21 +2,51 @@
 
 import { useEffect, useState } from "react";
 import type { IssueCluster } from "@/types/research";
-import { Clock } from "lucide-react";
+import { Clock, Newspaper, FileText } from "lucide-react";
 
 export function IssueTimelineCard({ symbol }: { symbol: string }) {
-  const [clusters, setClusters] = useState<IssueCluster[]>([]);
+  const [clusters, setClusters] = useState<IssueCluster[] | null>(null);
 
   useEffect(() => {
     fetch(`/api/stocks/${symbol}/issues`)
       .then(r => r.json())
       .then(d => {
         if (d.ok) setClusters(d.clusters);
-      });
+        else setClusters([]);
+      })
+      .catch(() => setClusters([]));
   }, [symbol]);
 
+  // Loading state
+  if (clusters === null) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border flex flex-col h-full max-h-[400px]">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="font-bold text-slate-900 dark:text-zinc-50">최근 핵심 이슈</h3>
+          <span className="text-xs text-slate-400 animate-pulse">불러오는 중...</span>
+        </div>
+        <div className="flex flex-col gap-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="pl-4 border-l-2 border-slate-100 dark:border-zinc-800 pb-2">
+              <div className="h-3 bg-slate-100 dark:bg-zinc-800 rounded w-1/4 mb-2 animate-pulse" />
+              <div className="h-4 bg-slate-100 dark:bg-zinc-800 rounded w-3/4 mb-1 animate-pulse" />
+              <div className="h-3 bg-slate-50 dark:bg-zinc-850 rounded w-2/3 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state
   if (clusters.length === 0) {
-    return <div className="h-64 bg-white dark:bg-zinc-900 rounded-[24px] border animate-pulse" />;
+    return (
+      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border flex flex-col items-center justify-center h-[200px]">
+        <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
+        <p className="text-sm text-slate-400">수집된 이슈가 없습니다</p>
+        <p className="text-xs text-slate-300 mt-1">잠시 후 다시 확인해 주세요</p>
+      </div>
+    );
   }
 
   return (
@@ -45,6 +75,16 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
               <span className="text-[10px] text-slate-400">
                 관련 출처 {cluster.sourceCount}건
               </span>
+              {/* Source type icon */}
+              {cluster.representativeSource === "Open DART" ? (
+                <span className="flex items-center gap-0.5 text-[9px] text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-1 rounded">
+                  <FileText className="w-2.5 h-2.5" />공시
+                </span>
+              ) : (
+                <span className="flex items-center gap-0.5 text-[9px] text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded">
+                  <Newspaper className="w-2.5 h-2.5" />뉴스
+                </span>
+              )}
             </div>
             
             <h4 className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mb-1 leading-snug">

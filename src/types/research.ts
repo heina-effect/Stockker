@@ -42,6 +42,7 @@ export interface IssueCluster {
   representativeSource: string;
   sourceCount: number;
   relatedSymbols?: string[];
+  basisSourceIds?: string[];   // IDs referencing SourceItem.id
   timestamp: string;
 }
 
