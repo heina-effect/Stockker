@@ -14,6 +14,7 @@ export function SearchHeroCard() {
   const [isSearching, setIsSearching] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -44,18 +45,22 @@ export function SearchHeroCard() {
     }
   };
 
-  const handleSelect = (symbol: string) => {
+  const handleSelect = (symbol: string, type?: string) => {
     LocalStorageAdapter.addRecentSearch(symbol);
-    router.push(`/stocks/${symbol}`);
+    if (type === "sector" || symbol.startsWith("sec-")) {
+      router.push(`/sectors/${symbol}`);
+    } else {
+      router.push(`/stocks/${symbol}`);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (focusedIndex >= 0 && focusedIndex < results.length) {
-      handleSelect(results[focusedIndex].symbol);
+      handleSelect(results[focusedIndex].symbol, results[focusedIndex].type);
     } else if (results.length > 0) {
-      handleSelect(results[0].symbol);
-    } else if (query.trim().length > 0 && /^[A-Za-z0-9]+$/.test(query)) {
+      handleSelect(results[0].symbol, results[0].type);
+    } else if (query.trim().length > 0 && /^[A-Za-z0-9-]+$/.test(query)) {
         handleSelect(query); // Fallback to raw query if it looks like a symbol
     }
   };
@@ -89,6 +94,8 @@ export function SearchHeroCard() {
             value={query}
             onChange={handleSearch}
             onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           />
           <div className="absolute right-2">
             <Button 
@@ -103,7 +110,7 @@ export function SearchHeroCard() {
         </div>
 
         {/* Search Results Dropdown */}
-        {query.trim().length > 0 && (
+        {query.trim().length > 0 && isFocused && (
           <div className="absolute top-full mt-2 w-full bg-white dark:bg-zinc-900 rounded-2xl border shadow-lg overflow-hidden z-20 text-left">
             {isSearching ? (
               <div className="p-6 flex items-center justify-center text-slate-500">
@@ -121,7 +128,7 @@ export function SearchHeroCard() {
                           ? "bg-slate-100 dark:bg-zinc-800 border-l-4 border-indigo-500 pl-5" 
                           : "hover:bg-slate-50 dark:hover:bg-zinc-800 border-l-4 border-transparent"
                       }`}
-                      onClick={() => handleSelect(item.symbol)}
+                      onClick={() => handleSelect(item.symbol, item.type)}
                       onMouseEnter={() => setFocusedIndex(idx)}
                     >
                       <div>
@@ -144,7 +151,7 @@ export function SearchHeroCard() {
         )}
         
         {/* Recent Searches */}
-        {query.trim().length === 0 && recentSearches.length > 0 && (
+        {query.trim().length === 0 && recentSearches.length > 0 && isFocused && (
           <div className="absolute top-full mt-2 w-full bg-white dark:bg-zinc-900 rounded-2xl border shadow-lg overflow-hidden z-20 text-left p-4">
              <div className="text-xs font-semibold text-slate-400 mb-3 flex items-center gap-1">
                <Clock className="w-3 h-3" />

@@ -22,7 +22,7 @@ describe('Chart Utils - Intraday', () => {
   });
 
   it('should calculate MA correctly and skip if null exists in interval', () => {
-    const data = [
+    const data: any[] = [
       { close: 10 },
       { close: 20 },
       { close: null },
@@ -31,7 +31,7 @@ describe('Chart Utils - Intraday', () => {
       { close: 50 },
     ];
     
-    const maData = calculateMA(data, 3);
+    const maData = calculateMA(data, 3) as any[];
     
     // First 2 should have no ma3
     expect(maData[0].ma3).toBeUndefined();

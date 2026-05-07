@@ -1,16 +1,6 @@
 import { STOCK_UNIVERSE } from "@/lib/stocks/metadata";
-import corpCodeMap from "./corp-code-map.json";
-
-export interface DisclosureItem {
-    id: string;
-    title: string;
-    summary: string;
-    timestamp: string;
-    source: string;
-    sourceType: "disclosure";
-    impact: "positive" | "negative" | "neutral";
-    link?: string;
-}
+import corpMaster from "@/data/dart/corp-master.json";
+import { SourceItem } from "@/types/research";
 
 const DART_API_KEY = process.env.DART_API_KEY;
 
@@ -18,10 +8,11 @@ const DART_API_KEY = process.env.DART_API_KEY;
  * Open DART API 기반 공시 수집 프로바이더.
  * 일일 허용건수 40,000건.
  */
-export async function getDisclosures(symbol: string): Promise<DisclosureItem[]> {
+export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
     const stock = Object.values(STOCK_UNIVERSE).find(s => s.symbol === symbol);
     const stockName = stock?.name || symbol;
-    const corpCode = (corpCodeMap as Record<string, string>)[symbol];
+    const corpCodeObj = (corpMaster as Record<string, any>)[symbol];
+    const corpCode = corpCodeObj?.corp_code;
 
     // Fallback if no corpCode found (e.g., Index or ETF)
     if (!corpCode || !DART_API_KEY) {
@@ -60,13 +51,12 @@ export async function getDisclosures(symbol: string): Promise<DisclosureItem[]> 
 
             return {
                 id: `dart-${item.rcept_no}`,
-                title: item.report_nm,
-                summary: `${stockName} 공시: ${item.report_nm}`,
-                timestamp,
-                source: "Open DART",
                 sourceType: "disclosure",
-                impact: "neutral", // Basic fallback sentiment
-                link: `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${item.rcept_no}`
+                title: `${stockName} 공시: ${item.report_nm}`,
+                provider: "Open DART",
+                collectedAt: new Date().toISOString(),
+                generatedAt: timestamp,
+                url: `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${item.rcept_no}`
             };
         });
 
@@ -76,27 +66,25 @@ export async function getDisclosures(symbol: string): Promise<DisclosureItem[]> 
     }
 }
 
-function getDeterministicFallback(symbol: string, stockName: string): DisclosureItem[] {
+function getDeterministicFallback(symbol: string, stockName: string): SourceItem[] {
     return [
         {
             id: `dart-${symbol}-1`,
-            title: `[기재정정]사업보고서 (2025.12)`,
-            summary: `${stockName}의 2025년도 사업보고서 주요 기재사항 정정 (매출액 및 영업이익 등 핵심 지표 변동 없음)`,
-            timestamp: new Date().toISOString(),
-            source: "Open DART",
             sourceType: "disclosure",
-            impact: "neutral",
-            link: `https://dart.fss.or.kr/`
+            title: `[기재정정]사업보고서 (2025.12)`,
+            provider: "Open DART",
+            collectedAt: new Date().toISOString(),
+            generatedAt: new Date().toISOString(),
+            url: `https://dart.fss.or.kr/`
         },
         {
             id: `dart-${symbol}-2`,
-            title: `현금ㆍ현물배당결정`,
-            summary: `보통주 1주당 1,500원 현금 배당 결정. (배당기준일: 2025.12.31)`,
-            timestamp: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-            source: "Open DART",
             sourceType: "disclosure",
-            impact: "positive",
-            link: `https://dart.fss.or.kr/`
+            title: `현금ㆍ현물배당결정`,
+            provider: "Open DART",
+            collectedAt: new Date().toISOString(),
+            generatedAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+            url: `https://dart.fss.or.kr/`
         }
     ];
 }

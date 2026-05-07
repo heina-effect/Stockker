@@ -110,19 +110,21 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
         <div className="h-12 bg-slate-50 dark:bg-zinc-950 animate-pulse border-2 rounded-xl" />
       ) : !plan ? (
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          <div className="flex gap-3 relative">
-            <input
-              type="text"
-              placeholder="예: 120,000"
-              value={displayValue}
-              onChange={handleChange}
-              className="flex-1 h-12 bg-slate-50 dark:bg-zinc-950 border-2 border-slate-100 dark:border-zinc-800 rounded-xl px-4 pr-8 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-right font-mono"
-            />
-            <span className="absolute right-24 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">원</span>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="예: 120,000"
+                value={displayValue}
+                onChange={handleChange}
+                className="w-full h-12 bg-slate-50 dark:bg-zinc-950 border-2 border-slate-100 dark:border-zinc-800 rounded-xl px-4 pr-10 text-sm focus:outline-none focus:border-indigo-500 transition-colors text-right font-mono"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">원</span>
+            </div>
             <Button 
               type="submit" 
               disabled={!displayValue || loading}
-              className="h-12 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-medium min-w-[100px]"
+              className="h-12 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-medium w-full sm:w-auto px-6"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "가이드 받기"}
             </Button>

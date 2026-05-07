@@ -1,23 +1,74 @@
-import { IssueItem } from "@/types/research";
-import { mockIssues } from "../mock-data";
+import { SourceItem } from "@/types/research";
+import { getDomesticStockNews } from "@/server/kis/rest-client";
 
 export interface NewsProviderConfig {
   symbol: string;
   limit?: number;
 }
 
-/**
- * 리서치 파이프라인의 핵심: 뉴스/공시 수력 프로바이더 (Interface)
- * 향후 실제 API(예: KIS 뉴스검색, 네이버 뉴스 API 등)를 연동할 수 있도록 분리된 추상화 계층입니다.
- */
-export async function fetchCompanyNews(config: NewsProviderConfig): Promise<IssueItem[]> {
-  // 실제 연동 시 fetch('https://open-api.news.com/...', ...)
-  // 현재는 외부 API 키 제약으로 Mock Fallback 사용
-  const data = mockIssues(config.symbol);
-  
-  // 수집 시점 명시 (Pipeline 규칙)
-  return data.map(item => ({
-    ...item,
-    timestamp: new Date().toISOString() // 수집 시점 갱신
-  })).slice(0, config.limit || 5);
+export async function fetchCompanyNews(config: NewsProviderConfig): Promise<SourceItem[]> {
+  try {
+    const rawNews = await getDomesticStockNews(config.symbol);
+    if (!rawNews || rawNews.length === 0) {
+      return getDeterministicFallback(config.symbol);
+    }
+
+    const seen = new Set<string>();
+    const results: SourceItem[] = [];
+
+    for (const item of rawNews) {
+      const title = item.hts_kor_isnm || item.title || "제목 없음";
+      if (seen.has(title)) continue;
+      seen.add(title);
+
+      let timestamp = new Date().toISOString();
+      if (item.data_dt && item.data_tm) {
+          timestamp = new Date(
+              item.data_dt.substring(0, 4) + "-" + 
+              item.data_dt.substring(4, 6) + "-" + 
+              item.data_dt.substring(6, 8) + "T" + 
+              item.data_tm.substring(0, 2) + ":" + 
+              item.data_tm.substring(2, 4) + ":00Z"
+          ).toISOString();
+      }
+
+      results.push({
+        id: `news-${item.data_dt}-${item.data_tm}-${Math.random().toString(36).substr(2, 9)}`,
+        sourceType: "news",
+        title: title,
+        provider: item.isnm || "KIS News",
+        collectedAt: new Date().toISOString(),
+        generatedAt: timestamp,
+      });
+
+      if (results.length >= (config.limit || 10)) break;
+    }
+
+    return results;
+
+  } catch (e) {
+    console.warn(`[News Provider] API call failed for ${config.symbol}, using fallback.`, e);
+    return getDeterministicFallback(config.symbol);
+  }
+}
+
+function getDeterministicFallback(symbol: string): SourceItem[] {
+  return [
+    {
+      id: `news-${symbol}-fallback-1`,
+      sourceType: "news",
+      title: `${symbol} 글로벌 시장 점유율 확대 전망`,
+      provider: "Mock News",
+      collectedAt: new Date().toISOString(),
+      generatedAt: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: `news-${symbol}-fallback-2`,
+      sourceType: "news",
+      title: `${symbol} 신제품 출시 및 실적 기대감`,
+      provider: "Mock News",
+      collectedAt: new Date().toISOString(),
+      generatedAt: new Date(Date.now() - 7200000).toISOString(),
+    }
+  ];
 }

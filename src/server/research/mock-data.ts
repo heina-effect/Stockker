@@ -1,8 +1,9 @@
 import type { 
   StockSearchItem, 
   StockReportSummary, 
-  SentimentInsight, 
-  IssueItem, 
+  SentimentScore, 
+  IssueCluster,
+  SourceItem,
   BuyPricePlan, 
   RelatedStock 
 } from "@/types/research";
@@ -28,9 +29,10 @@ export const mockReportSummary = (symbol: string): StockReportSummary => ({
   lastUpdated: new Date().toISOString()
 });
 
-export const mockSentiment = (symbol: string): SentimentInsight => ({
+export const mockSentiment = (symbol: string): any => ({
   score: 75,
-  label: "강세",
+  label: "긍정",
+  trend: "up",
   positiveFactors: [
     "HBM 양산 본궤도 진입 및 주요 고객사 인증 임박",
     "파운드리 가동률 상승에 따른 고정비 완화 구조 진입",
@@ -40,43 +42,73 @@ export const mockSentiment = (symbol: string): SentimentInsight => ({
     "경쟁사 대비 차세대 공정 수율 확보 지연 가능성",
     "글로벌 거시 경제 불확실성에 따른 하반기 세트(Set) 수요 부진 우려"
   ],
+  basisSources: [
+    {
+      id: "src-1",
+      sourceType: "news",
+      title: "HBM 수주 확대 전망",
+      provider: "한국경제",
+      url: "https://example.com"
+    }
+  ],
   freshness: "recent",
-  lastUpdated: new Date().toISOString()
+  generatedAt: new Date().toISOString()
 });
 
-export const mockIssues = (symbol: string): IssueItem[] => [
-  {
-    id: "issue-1",
-    title: "AI 메모리 수요 폭발... 차세대 HBM 수주전 승자는?",
-    summary: "글로벌 빅테크들의 자체 AI 칩 개발 가속화로 인해 커스텀 다이(Custom Die)를 포함한 차세대 메모리 요구치가 급증하고 있습니다.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    source: "한국경제",
-    sourceType: "news",
-    impact: "positive"
-  },
-  {
-    id: "issue-2",
-    title: "반도체 장비 반입량 증가세 지속, 업사이클 초입 분석",
-    summary: "관세청 수출입 무역통계에 따르면, 핵심 장비 수입액이 전년 평균을 상회하며 Capa 확장 신호로 해석됩니다.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    source: "증권사 리포트",
-    sourceType: "analyst",
-    impact: "positive"
-  },
-  {
-    id: "issue-3",
-    title: "경쟁사 3분기 어닝쇼크 발표, 섹터 투자 심리 일시 냉각 우려",
-    summary: "동종 업계 경쟁사의 예상 밖 부진으로 전반적인 IT 섹터 밸류에이션 재점검 필요성이 제기됨.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    source: "금융감독원",
-    sourceType: "disclosure",
-    impact: "negative"
-  }
-];
+export const mockIssues = (symbol: string): { clusters: any[], sources: any[] } => ({
+  clusters: [
+    {
+      id: "cluster-1",
+      title: "AI 메모리 수요 폭발... 차세대 HBM 수주전 승자는?",
+      summary: "글로벌 빅테크들의 자체 AI 칩 개발 가속화로 인해 커스텀 다이(Custom Die)를 포함한 차세대 메모리 요구치가 급증하고 있습니다.",
+      sentiment: "positive",
+      representativeSource: "한국경제",
+      sourceCount: 3,
+      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    },
+    {
+      id: "cluster-2",
+      title: "경쟁사 3분기 어닝쇼크 발표",
+      summary: "동종 업계 경쟁사의 예상 밖 부진으로 전반적인 IT 섹터 밸류에이션 재점검 필요성이 제기됨.",
+      sentiment: "negative",
+      representativeSource: "금융감독원",
+      sourceCount: 1,
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString()
+    }
+  ],
+  sources: [
+    {
+      id: "issue-1",
+      title: "AI 메모리 수요 폭발... 차세대 HBM 수주전 승자는?",
+      sourceType: "news",
+      provider: "한국경제",
+      collectedAt: new Date().toISOString(),
+      generatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    },
+    {
+      id: "issue-2",
+      title: "반도체 장비 반입량 증가세 지속, 업사이클 초입 분석",
+      sourceType: "analyst",
+      provider: "증권사 리포트",
+      collectedAt: new Date().toISOString(),
+      generatedAt: new Date(Date.now() - 1000 * 60 * 120).toISOString()
+    },
+    {
+      id: "issue-3",
+      title: "경쟁사 3분기 어닝쇼크 발표, 섹터 투자 심리 일시 냉각 우려",
+      sourceType: "disclosure",
+      provider: "금융감독원",
+      collectedAt: new Date().toISOString(),
+      generatedAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString()
+    }
+  ]
+});
+
+import { calculateProfitLossRate } from "./buy-plan-utils";
 
 export const mockBuyPlan = (symbol: string, targetPrice: number): BuyPricePlan => {
   const current = symbol === "005930" ? 75000 : 150000;
-  const plRate = ((current - targetPrice) / targetPrice) * 100;
+  const plRate = calculateProfitLossRate(current, targetPrice);
   
   let analysis = "현재가 대비 충분한 안전마진을 확보한 상태입니다.";
   let actionGuides = [

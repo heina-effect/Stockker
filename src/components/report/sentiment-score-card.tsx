@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SentimentInsight } from "@/types/research";
-import { CheckCircle2, TrendingDown } from "lucide-react";
+import type { SentimentScore } from "@/types/research";
+import { CheckCircle2, TrendingDown, Clock, Link2 } from "lucide-react";
 
 export function SentimentScoreCard({ symbol }: { symbol: string }) {
-  const [data, setData] = useState<SentimentInsight | null>(null);
+  const [data, setData] = useState<SentimentScore | null>(null);
 
   useEffect(() => {
     fetch(`/api/stocks/${symbol}/sentiment`)
@@ -19,14 +19,24 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
-        <div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-3 py-1 text-sm font-bold rounded-full">
-          {data.score}점 / 100
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
+          <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
+            <Clock className="w-3 h-3" />
+            {new Date(data.generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <div className={`px-4 py-2 text-sm font-bold rounded-full ${
+          data.label === "긍정" ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400" :
+          data.label === "부정" ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" :
+          "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+        }`}>
+          {data.score}점 / 100 ({data.label})
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Positive */}
         <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3 text-red-700 dark:text-red-400 font-bold text-sm">
@@ -58,6 +68,21 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
               <li className="text-sm text-slate-500">뚜렷한 악재가 감지되지 않았습니다.</li>
             )}
           </ul>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-zinc-800">
+        <h4 className="text-xs font-bold text-slate-500 mb-2">분석 근거 출처 ({data.basisSources?.length || 0}건)</h4>
+        <div className="flex flex-col gap-2">
+          {data.basisSources?.map((src) => (
+            <a key={src.id} href={src.url || "#"} target={src.url ? "_blank" : undefined} rel={src.url ? "noopener noreferrer" : undefined} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-2 rounded border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 transition-colors group">
+              <div className="flex items-center gap-2 truncate">
+                <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
+                <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
+              </div>
+              <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
+            </a>
+          ))}
         </div>
       </div>
     </div>

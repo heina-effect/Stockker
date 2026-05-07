@@ -21,23 +21,35 @@ export interface StockReportSummary {
   lastUpdated: string;
 }
 
-export interface SentimentInsight {
-  score: number; // 0 (Worst) to 100 (Best)
-  label: "강세" | "약세" | "중립" | "주의";
+export interface SentimentScore {
+  score: number; // 0 to 100
+  label: "긍정" | "중립" | "부정";
+  trend: "up" | "down" | "flat";
   positiveFactors: string[];
   negativeFactors: string[];
+  basisSources: SourceItem[];
   freshness: FreshnessState;
-  lastUpdated: string;
+  generatedAt: string;
 }
 
-export interface IssueItem {
+export interface IssueCluster {
   id: string;
   title: string;
   summary: string;
+  sentiment: "positive" | "negative" | "neutral";
+  representativeSource: string;
+  sourceCount: number;
+  relatedSymbols?: string[];
   timestamp: string;
-  source: string;
-  sourceType: "news" | "disclosure" | "sns" | "analyst";
-  impact: "positive" | "negative" | "neutral";
+}
+
+export interface SourceItem {
+  id: string;
+  sourceType: "news" | "disclosure" | "analyst";
+  title: string;
+  provider: string;
+  collectedAt: string;
+  generatedAt?: string;
   url?: string;
 }
 
@@ -64,4 +76,42 @@ export interface ResearchSourceItem {
   publisher: string;
   publishedAt: string;
   url?: string;
+}
+
+export interface RecommendationReason {
+  summary: string;
+  sourceType?: "news" | "disclosure" | "technical" | "fundamental";
+  referenceId?: string;
+}
+
+export interface RecommendationCandidate {
+  id: string;
+  type: "stock" | "sector";
+  targetId: string; // symbol or sectorId
+  name: string;
+  recommendationType: "ai_pick" | "close_watch" | "checklist";
+  reasons: RecommendationReason[];
+  riskSummary: string;
+  confidenceScore?: number; // 0 to 100
+  disclaimer: string;
+  generatedAt: string;
+}
+
+export interface TrendSurfaceItem {
+  id: string;
+  type: "issue" | "stock" | "sector";
+  title: string;
+  description: string;
+  targetId?: string; // related symbol or sectorId
+  trendStrength: number; // 0 to 100
+  timestamp: string;
+}
+
+export interface SectorTheme {
+  sectorId: string;
+  name: string;
+  aliases: string[];
+  description: string;
+  memberSymbols: string[];
+  representativeSymbols: string[];
 }

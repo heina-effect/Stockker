@@ -1,7 +1,10 @@
 import { DashboardHeader } from "@/components/home/dashboard-header";
 import { SearchHeroCard } from "@/components/home/search-hero-card";
 import { WatchlistAsideCard } from "@/components/home/watchlist-aside-card";
-import { CategoryPreviewCard } from "@/components/home/category-preview-card";
+import { TrendIssuesCard } from "@/components/home/trend-issues-card";
+import { TrendStocksCard } from "@/components/home/trend-stocks-card";
+import { TrendSectorsCard } from "@/components/home/trend-sectors-card";
+import { AIPicksCard } from "@/components/home/ai-picks-card";
 
 export default function HomePage() {
   return (
@@ -16,16 +19,10 @@ export default function HomePage() {
             <SearchHeroCard />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <CategoryPreviewCard 
-                title="지금 주목받는 종목" 
-                description="최근 24시간 동안 AI가 가장 긍정적으로 분석한 종목들을 확인하세요."
-                icon="trending"
-              />
-              <CategoryPreviewCard 
-                title="실시간 핵심 이슈" 
-                description="시장을 움직이는 핵심 뉴스와 공시, SNS 반응을 실시간으로 추적합니다."
-                icon="news"
-              />
+              <TrendIssuesCard />
+              <TrendStocksCard />
+              <TrendSectorsCard />
+              <AIPicksCard />
             </div>
           </div>
           

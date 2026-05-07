@@ -1,5 +1,3 @@
-import { KisApiError } from "./auth"; // May not exist, we'll avoid it if possible.
-
 // In-memory single-flight promise map
 const inFlightRequests = new Map<string, Promise<any>>();
 

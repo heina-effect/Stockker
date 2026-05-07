@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IssueItem } from "@/types/research";
+import type { SourceItem } from "@/types/research";
 import { Link2, Clock, CheckCircle2 } from "lucide-react";
 
 export function SourceListCard({ symbol }: { symbol: string }) {
-  const [sources, setSources] = useState<IssueItem[]>([]);
+  const [sources, setSources] = useState<SourceItem[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string>("");
 
   useEffect(() => {
@@ -13,7 +13,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       .then(r => r.json())
       .then(d => {
         if (d.ok) {
-          setSources(d.issues);
+          setSources(d.sources);
           setGeneratedAt(new Date().toISOString());
         }
       });
@@ -44,22 +44,22 @@ export function SourceListCard({ symbol }: { symbol: string }) {
                 {src.sourceType}
               </span>
               <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                수집: {new Date(src.timestamp).toLocaleDateString("ko-KR")} {new Date(src.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                수집: {new Date(src.collectedAt).toLocaleDateString("ko-KR")} {new Date(src.collectedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
             
             <a 
-              href={src.link || "#"} 
-              target={src.link ? "_blank" : undefined}
-              rel={src.link ? "noopener noreferrer" : undefined}
-              className={`text-xs font-medium text-slate-700 dark:text-zinc-300 mt-1 line-clamp-2 ${src.link ? 'hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer group' : ''}`}
+              href={src.url || "#"} 
+              target={src.url ? "_blank" : undefined}
+              rel={src.url ? "noopener noreferrer" : undefined}
+              className={`text-xs font-medium text-slate-700 dark:text-zinc-300 mt-1 line-clamp-2 ${src.url ? 'hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer group' : ''}`}
             >
               {src.title}
             </a>
             
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] text-slate-500 font-medium">출처: {src.source}</span>
-              {src.link && <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-500" />}
+              <span className="text-[10px] text-slate-500 font-medium">출처: {src.provider}</span>
+              {src.url && <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-500" />}
             </div>
           </li>
         ))}
