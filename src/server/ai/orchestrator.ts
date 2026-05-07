@@ -7,17 +7,25 @@ import { mockReportSummary, mockSentiment } from "../research/mock-data";
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
+// Developer Observability Metadata Helper
+function createMeta(provider: string, model: string, mode: "real" | "fallback", reason?: string, latencyMs?: number) {
+  if (process.env.NODE_ENV !== "development") return undefined;
+  return { provider, model, mode, fallbackReason: reason, latencyMs };
+}
+
 // Helper to fallback to mock safely
-function safeMock<T>(fallback: T, err: any): T {
-  console.error("[AI Orchestrator Error]", err);
-  return fallback;
+function safeMock<T>(fallback: T, err: any, provider: string, model: string, startTime: number): T {
+  console.error(`[AI Orchestrator Error - ${provider}/${model}]`, err);
+  const latencyMs = Date.now() - startTime;
+  return { ...fallback, _meta: createMeta(provider, model, "fallback", err.message || "Unknown error", latencyMs) };
 }
 
 export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]): Promise<StockReportSummary> {
   const name = getServerStockName(symbol);
+  const startTime = Date.now();
   
   if (!openai || clusters.length === 0) {
-    return mockReportSummary(symbol);
+    return { ...mockReportSummary(symbol), _meta: createMeta("openai", "gpt-5.5", "fallback", "No key or data", Date.now() - startTime) };
   }
 
   try {
@@ -35,12 +43,13 @@ export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]
     Respond with raw JSON only. Do not use markdown blocks.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.5",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" }
     });
 
     const parsed = JSON.parse(response.choices[0].message.content || "{}");
+    const latencyMs = Date.now() - startTime;
     
     return {
       symbol,
@@ -52,16 +61,18 @@ export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]
       aiSummary: parsed.aiSummary || "최근 이슈를 종합 중입니다.",
       priceFreshness: "stale",
       reportFreshness: "live",
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      _meta: createMeta("openai", "gpt-5.5", "real", undefined, latencyMs)
     };
   } catch (e) {
-    return safeMock(mockReportSummary(symbol), e);
+    return safeMock(mockReportSummary(symbol), e, "openai", "gpt-5.5", startTime);
   }
 }
 
 export async function aiAnalyzeSentiment(symbol: string, sources: SourceItem[]): Promise<SentimentScore> {
+  const startTime = Date.now();
   if (!ai || sources.length === 0) {
-    return mockSentiment(symbol);
+    return { ...mockSentiment(symbol), _meta: createMeta("gemini", "gemini-3.0-flash", "fallback", "No key or data", Date.now() - startTime) };
   }
 
   try {
@@ -93,6 +104,7 @@ export async function aiAnalyzeSentiment(symbol: string, sources: SourceItem[]):
 
     const parsed = JSON.parse(response.text || "{}");
     const basisSources = sources.filter(s => parsed.basisSourceIds?.includes(s.id));
+    const latencyMs = Date.now() - startTime;
 
     return {
       score: parsed.score || 50,
@@ -102,16 +114,18 @@ export async function aiAnalyzeSentiment(symbol: string, sources: SourceItem[]):
       negativeFactors: parsed.negativeFactors || [],
       basisSources: basisSources.length > 0 ? basisSources : sources.slice(0, 3), // Fallback to top 3 if failed to map
       freshness: "live",
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      _meta: createMeta("gemini", "gemini-2.5-flash", "real", undefined, latencyMs)
     };
   } catch (e) {
-    return safeMock(mockSentiment(symbol), e);
+    return safeMock(mockSentiment(symbol), e, "gemini", "gemini-2.5-flash", startTime);
   }
 }
 
 export async function aiGenerateHomeIntelligence() {
+  const startTime = Date.now();
   if (!openai) {
-    return null; // Let the caller fallback to mock
+    return { _meta: createMeta("openai", "gpt-5.4-mini", "fallback", "No key", Date.now() - startTime) };
   }
 
   try {
@@ -143,14 +157,18 @@ export async function aiGenerateHomeIntelligence() {
     Limit to 3 issues, 4 stocks, 3 sectors, 2 picks. Respond with raw JSON only.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5.4-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" }
     });
 
-    return JSON.parse(response.choices[0].message.content || "{}");
-  } catch (e) {
+    const parsed = JSON.parse(response.choices[0].message.content || "{}");
+    const latencyMs = Date.now() - startTime;
+    parsed._meta = createMeta("openai", "gpt-5.4-mini", "real", undefined, latencyMs);
+    
+    return parsed;
+  } catch (e: any) {
     console.error("[AI Orchestrator Error Home Intelligence]", e);
-    return null;
+    return { _meta: createMeta("openai", "gpt-5.4-mini", "fallback", e.message, Date.now() - startTime) };
   }
 }
