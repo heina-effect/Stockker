@@ -4,21 +4,36 @@ let cachedIntelligence: any = null;
 let lastFetched = 0;
 const TTL = 1000 * 60 * 15; // 15 minutes
 
+let inFlightPromise: Promise<any> | null = null;
+
 export async function getHomeIntelligence() {
   const now = Date.now();
   if (cachedIntelligence && now - lastFetched < TTL) {
     return cachedIntelligence;
   }
 
-  const fresh = await aiGenerateHomeIntelligence();
-  if (fresh) {
-    cachedIntelligence = fresh;
-    lastFetched = now;
-    return fresh;
+  if (inFlightPromise) {
+    return inFlightPromise;
   }
 
-  // Fallback if AI fails or no key
-  return getMockHomeIntelligence();
+  inFlightPromise = (async () => {
+    try {
+      const fresh = await aiGenerateHomeIntelligence();
+      if (fresh) {
+        cachedIntelligence = fresh;
+        lastFetched = Date.now();
+        return fresh;
+      }
+      return getMockHomeIntelligence();
+    } catch (e) {
+      console.error("[getHomeIntelligence Error]", e);
+      return getMockHomeIntelligence();
+    } finally {
+      inFlightPromise = null;
+    }
+  })();
+
+  return inFlightPromise;
 }
 
 function getMockHomeIntelligence() {

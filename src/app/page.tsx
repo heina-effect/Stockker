@@ -5,6 +5,7 @@ import { TrendIssuesCard } from "@/components/home/trend-issues-card";
 import { TrendStocksCard } from "@/components/home/trend-stocks-card";
 import { TrendSectorsCard } from "@/components/home/trend-sectors-card";
 import { AIPicksCard } from "@/components/home/ai-picks-card";
+import { HomeIntelligenceProvider } from "@/components/home/home-intelligence-provider";
 
 export default function HomePage() {
   return (
@@ -18,12 +19,14 @@ export default function HomePage() {
           <div className="lg:col-span-8 flex flex-col gap-8">
             <SearchHeroCard />
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <TrendIssuesCard />
-              <TrendStocksCard />
-              <TrendSectorsCard />
-              <AIPicksCard />
-            </div>
+            <HomeIntelligenceProvider>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <TrendIssuesCard />
+                <TrendStocksCard />
+                <TrendSectorsCard />
+                <AIPicksCard />
+              </div>
+            </HomeIntelligenceProvider>
           </div>
           
           {/* Right Column: Watchlist Overview */}

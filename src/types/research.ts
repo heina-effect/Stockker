@@ -19,6 +19,7 @@ export interface StockReportSummary {
   priceFreshness: FreshnessState;
   reportFreshness: FreshnessState;
   lastUpdated: string;
+  _meta?: any;
 }
 
 export interface SentimentScore {
@@ -30,6 +31,7 @@ export interface SentimentScore {
   basisSources: SourceItem[];
   freshness: FreshnessState;
   generatedAt: string;
+  _meta?: any;
 }
 
 export interface IssueCluster {
@@ -59,6 +61,7 @@ export interface BuyPricePlan {
   positionAnalysis: string;
   actionGuides: string[];
   generatedAt: string;
+  _meta?: any;
 }
 
 export interface RelatedStock {
@@ -95,6 +98,7 @@ export interface RecommendationCandidate {
   confidenceScore?: number; // 0 to 100
   disclaimer: string;
   generatedAt: string;
+  _meta?: any;
 }
 
 export interface TrendSurfaceItem {

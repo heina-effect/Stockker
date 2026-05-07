@@ -3,12 +3,11 @@ import { useEffect, useState } from "react";
 import { Sparkles, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
-export function AIPicksCard() {
-  const [picks, setPicks] = useState<any[]>([]);
+import { useHomeIntelligence } from "./home-intelligence-provider";
 
-  useEffect(() => {
-    fetch("/api/home/ai-picks").then(r => r.json()).then(d => setPicks(d.picks || []));
-  }, []);
+export function AIPicksCard() {
+  const { data, isLoading } = useHomeIntelligence();
+  const picks: any[] = data?.aiPicks || [];
 
   return (
     <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-900 rounded-[24px] p-6 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col h-full">

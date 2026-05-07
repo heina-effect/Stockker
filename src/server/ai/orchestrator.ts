@@ -24,8 +24,10 @@ export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]
   const name = getServerStockName(symbol);
   const startTime = Date.now();
   
-  if (!openai || clusters.length === 0) {
-    return { ...mockReportSummary(symbol), _meta: createMeta("openai", "gpt-5.5", "fallback", "No key or data", Date.now() - startTime) };
+  const isMockClusters = clusters.some(c => c.items.some(i => i.sourceId.includes("fallback")));
+
+  if (!openai || clusters.length === 0 || isMockClusters) {
+    return { ...mockReportSummary(symbol), _meta: createMeta("openai", "gpt-5.5", "fallback", isMockClusters ? "Mock clusters detected" : "No key or data", Date.now() - startTime) };
   }
 
   try {
@@ -71,8 +73,10 @@ export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]
 
 export async function aiAnalyzeSentiment(symbol: string, sources: SourceItem[]): Promise<SentimentScore> {
   const startTime = Date.now();
-  if (!ai || sources.length === 0) {
-    return { ...mockSentiment(symbol), _meta: createMeta("gemini", "gemini-3.0-flash", "fallback", "No key or data", Date.now() - startTime) };
+  const isMockSources = sources.some(s => s.provider === "Mock News" || s.id.includes("fallback"));
+
+  if (!ai || sources.length === 0 || isMockSources) {
+    return { ...mockSentiment(symbol), _meta: createMeta("gemini", "gemini-2.5-flash", "fallback", isMockSources ? "Mock sources detected" : "No key or data", Date.now() - startTime) };
   }
 
   try {

@@ -15,7 +15,28 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
       });
   }, [symbol]);
 
-  if (!data) return <div className="h-48 bg-white dark:bg-zinc-900 rounded-[24px] border animate-pulse" />;
+  if (!data) return (
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border h-[340px] flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
+          <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
+            <Clock className="w-3 h-3" />
+            분석 중...
+          </span>
+        </div>
+        <div className="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800 animate-pulse w-24 h-8" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 flex-1">
+        <div className="bg-slate-50 dark:bg-zinc-950/20 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 animate-pulse" />
+        <div className="bg-slate-50 dark:bg-zinc-950/20 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 animate-pulse" />
+      </div>
+      <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 animate-pulse">
+        <div className="h-4 bg-slate-100 dark:bg-zinc-800 rounded w-1/3 mb-2" />
+        <div className="h-8 bg-slate-50 dark:bg-zinc-950 rounded border border-slate-100 dark:border-zinc-800" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border">
@@ -85,6 +106,16 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
           ))}
         </div>
       </div>
+      {(data as any)._meta && process.env.NODE_ENV === "development" && (
+        <div className="mt-4 pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800 text-[9px] text-slate-400 flex flex-wrap gap-2">
+          <span className="font-mono bg-slate-100 dark:bg-zinc-800 px-1 rounded">Dev Meta</span>
+          <span>{`Provider: ${(data as any)._meta.provider}`}</span>
+          <span>{`Model: ${(data as any)._meta.model}`}</span>
+          <span className={(data as any)._meta.mode === 'real' ? 'text-green-500' : 'text-amber-500'}>{`Mode: ${(data as any)._meta.mode}`}</span>
+          <span>{`Latency: ${(data as any)._meta.latencyMs}ms`}</span>
+          {(data as any)._meta.fallbackReason && <span className="text-amber-500 break-all">{`Reason: ${(data as any)._meta.fallbackReason}`}</span>}
+        </div>
+      )}
     </div>
   );
 }

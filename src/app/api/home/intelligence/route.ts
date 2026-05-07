@@ -3,5 +3,5 @@ import { getHomeIntelligence } from "@/server/ai/home-cache";
 
 export async function GET() {
   const intel = await getHomeIntelligence();
-  return NextResponse.json({ ok: true, trending: intel.stocks });
+  return NextResponse.json({ ok: true, intelligence: intel });
 }

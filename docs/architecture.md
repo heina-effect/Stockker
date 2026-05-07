@@ -27,3 +27,17 @@ Stockker는 초기 실시간 호가/트레이딩 대시보드에서 **“검색 
    - `StockReportHeader` (가격/북마크/AI 한줄요약)
    - `BuyPricePlanCard` (평단가 입력형 명시적 액션 플랜 폼)
    - `DailyCandlestickChartCard`, `IssueTimelineCard`, `SentimentScoreCard`, `RelatedStocksCard`, `SourceListCard`
+
+## 6. AI Model Routing (Phase 16)
+비용과 Latency 최적화를 위해 역할을 분담합니다. 모든 AI 호출은 Fallback 메커니즘을 내장하고 있으며, 개발 환경(Dev)에서는 `_meta` 필드를 통해 관측성(Observability)을 확보합니다.
+
+| 기능 | 권장 모델 | 역할 |
+|---|---|---|
+| 홈 화면 대시보드 | **OpenAI GPT-5.4-mini** | 속도와 저비용이 필수인 실시간 트렌드/섹터 텍스트 요약 |
+| 리포트 요약(Summary) | **OpenAI GPT-5.5** | 고도의 문맥 이해가 필요한 깊이 있는 투자 분석 리포팅 |
+| 감성 점수 측정 | **Gemini 3.0 Flash** | 다량의 텍스트에서 긍/부정 추출 및 원문 Source 매핑 |
+| (추후 확장 예정) | **Gemini 3.1 Flash-Lite**| 단순 엔티티 태깅, 섹터 분류 등 가벼운 Structured Task |
+
+## 7. 홈 캐시 및 동시성 제어 (In-flight Dedupe)
+홈 화면의 경우 여러 카드가 동시에 데이터를 요구하지만, `/api/home/intelligence` 단일 엔드포인트와 `HomeIntelligenceProvider`를 통해 1회만 호출됩니다.
+서버단(`home-cache.ts`)에서는 Promise in-flight dedupe 기법을 적용하여, 캐시 미스 시 동시에 여러 모델을 호출하는 Race Condition을 원천 차단합니다.

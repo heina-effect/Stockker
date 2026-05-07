@@ -2,12 +2,11 @@
 import { useEffect, useState } from "react";
 import { Clock, TrendingUp } from "lucide-react";
 
-export function TrendIssuesCard() {
-  const [issues, setIssues] = useState<any[]>([]);
+import { useHomeIntelligence } from "./home-intelligence-provider";
 
-  useEffect(() => {
-    fetch("/api/home/issues").then(r => r.json()).then(d => setIssues(d.issues || []));
-  }, []);
+export function TrendIssuesCard() {
+  const { data, isLoading } = useHomeIntelligence();
+  const issues: any[] = data?.issues || [];
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm flex flex-col h-full">
