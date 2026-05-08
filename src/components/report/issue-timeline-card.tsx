@@ -55,7 +55,7 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           최근 핵심 이슈
         </h3>
-        <span className="text-xs text-slate-400">AI 요약</span>
+        <span className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full font-medium">AI 선별</span>
       </div>
 
       <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-5">
@@ -94,6 +94,12 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed line-clamp-2">
               {cluster.summary}
             </p>
+            {/* Phase 19: Cross-confirmation indicator */}
+            {cluster.sourceCount > 1 && (
+              <span className="inline-flex items-center gap-1 mt-1 text-[9px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">
+                근거 충분 ({cluster.sourceCount}개 소스 확인)
+              </span>
+            )}
           </div>
         ))}
       </div>

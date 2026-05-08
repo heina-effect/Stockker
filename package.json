@@ -16,12 +16,17 @@
     "test:charts:daily": "vitest run src/**/daily*.test.ts src/**/movingAverage*.test.ts",
     "test:persistence": "vitest run src/**/buy-price*.test.ts src/**/user-storage*.test.ts",
     "test:contracts": "vitest run src/**/contracts*.test.ts src/**/ohlc-route*.test.ts",
+    "test:vectors": "vitest run src/**/vector*.test.ts src/**/embedding*.test.ts",
+    "test:storage": "vitest run src/**/source*.test.ts src/**/news*.test.ts",
+    "test:report": "vitest run src/**/report*.test.ts src/**/sentiment*.test.ts",
+    "migrate:supabase": "node scripts/migrate-supabase.mjs",
     "validate:full": "npm run validate && npm run test:charts && npm run test:persistence && npm run test:contracts && npm run build",
     "mock:research": "echo 'Mock data is built-in; no separate server needed.'"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
     "@google/genai": "^1.44.0",
+    "@supabase/supabase-js": "^2.105.3",
     "@types/ws": "^8.18.1",
     "@upstash/redis": "^1.36.4",
     "class-variance-authority": "^0.7.1",

@@ -100,33 +100,66 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
           </div>
         ) : (
           <>
-            <h4 className="text-xs font-bold text-slate-500 mb-2">분석 근거 출처 ({data.basisSources?.length || 0}건)</h4>
-            <div className="flex flex-col gap-2">
-              {data.basisSources?.map((src) => (
-                <a key={src.id} href={src.url || "#"} target={src.url ? "_blank" : undefined} rel={src.url ? "noopener noreferrer" : undefined} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-2 rounded border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 transition-colors group">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
-                    <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
-                  </div>
-                  <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
-                </a>
-              ))}
-              {(!data.basisSources || data.basisSources.length === 0) && (
-                <p className="text-xs text-slate-400">출처 정보가 없습니다.</p>
-              )}
-            </div>
+            <h4 className="text-xs font-bold text-slate-500 mb-2">AI 분석 출처 ({data.basisSources?.length || 0}건)</h4>
+            <SourceList sources={data.basisSources} />
           </>
         )}
       </div>
       {(data as any)._meta && process.env.NODE_ENV === "development" && (
         <div className="mt-4 pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800 text-[9px] text-slate-400 flex flex-wrap gap-2">
           <span className="font-mono bg-slate-100 dark:bg-zinc-800 px-1 rounded">Dev Meta</span>
-          <span>{`Provider: ${(data as any)._meta.provider}`}</span>
           <span>{`Model: ${(data as any)._meta.model}`}</span>
           <span className={(data as any)._meta.mode === 'real' ? 'text-green-500' : 'text-amber-500'}>{`Mode: ${(data as any)._meta.mode}`}</span>
           <span>{`Latency: ${(data as any)._meta.latencyMs}ms`}</span>
+          {(data as any)._meta.sourceCount !== undefined && <span>{`Sources: ${(data as any)._meta.sourceCount}`}</span>}
           {(data as any)._meta.fallbackReason && <span className="text-amber-500 break-all">{`Reason: ${(data as any)._meta.fallbackReason}`}</span>}
         </div>
+      )}
+    </div>
+  );
+}
+
+const QUALITY_BADGE: Record<string, { label: string; cls: string }> = {
+  high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" },
+  medium: { label: "근거 보통", cls: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
+  low:    { label: "근거 부족", cls: "text-slate-500 bg-slate-100 dark:bg-zinc-800" },
+};
+
+function SourceList({ sources }: { sources?: any[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const items = sources ?? [];
+  const visible = expanded ? items : items.slice(0, 3);
+
+  if (items.length === 0) {
+    return <p className="text-xs text-slate-400">출처 정보가 없습니다.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {visible.map((src) => {
+        const badge = src._qualityLabel ? QUALITY_BADGE[src._qualityLabel] : null;
+        return (
+          <a key={src.id} href={src.url || "#"} target={src.url ? "_blank" : undefined}
+            rel={src.url ? "noopener noreferrer" : undefined}
+            className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-2 rounded border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 transition-colors group">
+            <div className="flex flex-col gap-0.5 truncate">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
+                {badge && (
+                  <span className={`text-[9px] px-1 rounded ${badge.cls}`}>{badge.label}</span>
+                )}
+              </div>
+              <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
+            </div>
+            <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
+          </a>
+        );
+      })}
+      {items.length > 3 && (
+        <button onClick={() => setExpanded(e => !e)}
+          className="text-xs text-indigo-500 hover:text-indigo-700 mt-1 text-center transition-colors">
+          {expanded ? "접기 ↑" : `더 보기 (${items.length - 3}건 더) ↓`}
+        </button>
       )}
     </div>
   );

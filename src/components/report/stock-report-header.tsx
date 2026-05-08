@@ -14,6 +14,9 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
   const { marketStore, setSelectedSymbol, selectedSymbol } = useLiveMarket();
   const [isBookmarked, setIsBookmarked] = useState(false);
 
+  // metadata-first: 종목명/티커는 즉시 표시 (search master에서 동기 조회)
+  const immediateStockName = getStockName(symbol) || symbol;
+
   useEffect(() => {
     // Hydration for bookmark state
     const savedBookmarks = LocalStorageAdapter.getAll().bookmarkedReports;
@@ -34,7 +37,7 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
       setSelectedSymbol(symbol);
     }
 
-    // AI 리포트 Mock 데이터 로드
+    // AI 리포트 로드
     fetch(`/api/stocks/${symbol}/report`)
       .then(r => r.json())
       .then(d => {
@@ -42,44 +45,41 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
       });
   }, [symbol, selectedSymbol, setSelectedSymbol]);
 
-  if (!data) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 md:p-8 shadow-sm border animate-pulse">
-        <div className="w-1/3 h-8 bg-slate-200 dark:bg-zinc-800 rounded mb-4" />
-        <div className="w-full h-16 bg-slate-100 dark:bg-zinc-800 rounded" />
-      </div>
-    );
-  }
+  // ── metadata-first: 종목명/티커/북마크는 data 로딩 전에도 즉시 표시 ──────
+  const stockName = data?.name || immediateStockName;
+  const reportFreshness = data?.reportFreshness ?? "loading";
+  const lastUpdated = data?.lastUpdated ?? new Date().toISOString();
 
   // 실시간 시세 처리
   const liveState = marketStore[symbol];
   const liveQuote = liveState?.quote;
+  const currentPrice = liveQuote?.price || data?.currentPrice || 0;
+  const change = liveQuote?.change || data?.change || 0;
+  const changeRate = liveQuote?.changeRate || data?.changeRate || 0;
 
-  const currentPrice = liveQuote?.price || data.currentPrice;
-  const change = liveQuote?.change || data.change;
-  const changeRate = liveQuote?.changeRate || data.changeRate;
-  
   const isUp = change > 0;
   const isDown = change < 0;
   const colorClass = isUp ? "text-red-500 dark:text-red-400" : isDown ? "text-blue-500 dark:text-blue-400" : "text-slate-500";
 
-  // Price Freshness는 실시간 연결 상태에서 우선
-  const priceFreshnessState = liveState?.source === "live" ? "live" : 
+  const priceFreshnessState = liveState?.source === "live" ? "live" :
                               liveState?.source === "connecting" ? "loading" :
                               liveState?.source === "error" || liveState?.source === "mock-fallback" ? "error" : "stale";
+
+
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 md:p-8 shadow-sm border flex flex-col md:flex-row md:items-start justify-between gap-6">
       <div className="flex-1">
+        {/* ── 종목명/티커: 즉시 렌더링 (no skeleton) ── */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{data.name || getStockName(symbol)}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-zinc-50">{stockName}</h1>
             <span className="text-sm font-medium text-slate-400 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded">
               {symbol}
             </span>
-            <FreshnessLabel type="report" state={data.reportFreshness} timestamp={data.lastUpdated} />
+            <FreshnessLabel type="report" state={reportFreshness} timestamp={lastUpdated} />
           </div>
-          <button 
+          <button
             onClick={toggleBookmark}
             className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400"
             title={isBookmarked ? "북마크 해제" : "북마크 저장"}
@@ -87,33 +87,54 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
             {isBookmarked ? <BookmarkCheck className="w-6 h-6 text-indigo-500" /> : <Bookmark className="w-6 h-6" />}
           </button>
         </div>
-        
+
+        {/* ── 현재가: 로딩 중이면 skeleton ── */}
         <div className="flex items-end gap-3 mb-6">
-          <span className="text-3xl font-bold text-slate-900 dark:text-zinc-50 tracking-tight">
-            {formatNumber(currentPrice)}원
-          </span>
-          <span className={`text-lg font-medium mb-1 ${colorClass}`}>
-            {isUp ? "▲" : isDown ? "▼" : ""} {formatNumber(Math.abs(change))} ({isUp ? "+" : ""}{formatChange(changeRate)}%)
-          </span>
+          {currentPrice > 0 ? (
+            <>
+              <span className="text-3xl font-bold text-slate-900 dark:text-zinc-50 tracking-tight">
+                {formatNumber(currentPrice)}원
+              </span>
+              <span className={`text-lg font-medium mb-1 ${colorClass}`}>
+                {isUp ? "▲" : isDown ? "▼" : ""} {formatNumber(Math.abs(change))} ({isUp ? "+" : ""}{formatChange(changeRate)}%)
+              </span>
+            </>
+          ) : (
+            <div className="flex gap-3 items-end animate-pulse">
+              <div className="w-36 h-9 bg-slate-200 dark:bg-zinc-800 rounded" />
+              <div className="w-24 h-6 bg-slate-100 dark:bg-zinc-800 rounded mb-1" />
+            </div>
+          )}
           {liveState && liveState.lastUpdated > 0 && (
             <div className="ml-2 mb-1">
-              <FreshnessLabel 
-                type="price" 
-                state={priceFreshnessState} 
-                timestamp={new Date(liveState.lastUpdated).toISOString()} 
+              <FreshnessLabel
+                type="price"
+                state={priceFreshnessState}
+                timestamp={new Date(liveState.lastUpdated).toISOString()}
               />
             </div>
           )}
         </div>
 
+        {/* ── AI Summary: 로딩 중이면 skeleton ── */}
         <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-2xl p-5">
-          <h2 className="text-indigo-800 dark:text-indigo-300 font-bold mb-2 flex items-center gap-2">
-            <span className="bg-indigo-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">AI Summary</span>
-            {data.aiHeadline}
-          </h2>
-          <p className="text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
-            {data.aiSummary}
-          </p>
+          {data ? (
+            <>
+              <h2 className="text-indigo-800 dark:text-indigo-300 font-bold mb-2 flex items-center gap-2">
+                <span className="bg-indigo-600 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">AI Summary</span>
+                {data.aiHeadline}
+              </h2>
+              <p className="text-sm text-slate-700 dark:text-zinc-300 leading-relaxed">
+                {data.aiSummary}
+              </p>
+            </>
+          ) : (
+            <div className="animate-pulse flex flex-col gap-2">
+              <div className="w-3/4 h-5 bg-indigo-100 dark:bg-indigo-900/40 rounded" />
+              <div className="w-full h-3 bg-indigo-50 dark:bg-indigo-900/20 rounded" />
+              <div className="w-5/6 h-3 bg-indigo-50 dark:bg-indigo-900/20 rounded" />
+            </div>
+          )}
         </div>
       </div>
     </div>

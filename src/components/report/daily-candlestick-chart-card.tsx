@@ -149,7 +149,13 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
         todayCurrent.body = [Math.min(todayCurrent.open, todayCurrent.close), Math.max(todayCurrent.open, todayCurrent.close)];
         chartData.push(todayCurrent);
       } else {
-        console.warn(`[ChartScale] Live price ${q.price} rejected for scale integrity (Hist: ${lastHist.close})`);
+        // price=0: SSE 연결 전 초기값 (정상) → debug만
+        // price>0 but scale 이상: 데이터 오류 가능 → warn
+        if (q.price > 0) {
+          console.warn(`[ChartScale] Implausible live price ${q.price} (Hist: ${lastHist.close}) — skipping`);
+        } else {
+          console.debug(`[ChartScale] price=0 skipped (SSE connecting)`);
+        }
       }
     }
   } else {
@@ -247,7 +253,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
            <p className="text-sm">당일 분봉 차트 데이터가 아직 집계되지 않았습니다.</p>
          </div>
       ) : (
-        <div className="flex-1 w-full relative mt-4">
+        <div className="flex-1 w-full relative mt-4" style={{ minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }} barCategoryGap="15%">
               <XAxis 

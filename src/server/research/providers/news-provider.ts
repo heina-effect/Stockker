@@ -46,8 +46,9 @@ export async function fetchCompanyNews(config: NewsProviderConfig): Promise<Sour
 
     return results.length > 0 ? results : [];
 
-  } catch (e) {
-    console.warn(`[News Provider] API call failed for ${config.symbol}, returning empty.`, e);
+  } catch (e: any) {
+    // getDomesticStockNews\uc5d0\uc11c \uc774\ubbf8 \ud574\ub2f9 \uc5d0\ub7ec\ub97c \ub85c\uae45\ud568 \u2014 \uc5ec\uae30\uc11c\ub294 debug\ub9cc
+    console.debug(`[News Provider] fetch failed for ${config.symbol}:`, e?.message ?? e);
     return [];
   }
 }

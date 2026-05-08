@@ -176,6 +176,7 @@ export async function getDomesticStockIntraday(symbol: string, time: string = "0
 
 /**
  * 국내 주식 뉴스 조회 (FHKST01012200)
+ * 일부 종목에서 404를 반환하는 경우 silent fallback 처리.
  */
 export async function getDomesticStockNews(symbol: string): Promise<any[]> {
   return withDedupeAndCache(`news_${symbol}`, 60000, async () => {
@@ -184,17 +185,29 @@ export async function getDomesticStockNews(symbol: string): Promise<any[]> {
         FID_INPUT_ISCD: symbol,
     });
 
-    const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-content?${query.toString()}`, {
-        method: "GET",
-        trId: "FHKST01012200"
-    });
+    try {
+      const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-content?${query.toString()}`, {
+          method: "GET",
+          trId: "FHKST01012200"
+      });
 
-    if (data.rt_cd !== "0") {
-        console.warn(`[KIS News] Failed for ${symbol}: ${data.msg1}`);
-        return [];
+      if (data.rt_cd !== "0") {
+          // rt_cd 오류는 warn 레벨 (정상 케이스 포함)
+          console.debug(`[KIS News] rt_cd=${data.rt_cd} for ${symbol}: ${data.msg1}`);
+          return [];
+      }
+
+      return (data as any).output || [];
+    } catch (e: any) {
+      // 404 / 엔드포인트 미지원 종목 → debug 레벨로 조용히 처리
+      const is404 = e?.message?.includes("404") || e?.status === 404;
+      if (is404) {
+        console.debug(`[KIS News] 404 for ${symbol} — news endpoint not available for this symbol`);
+      } else {
+        console.warn(`[KIS News] Unexpected error for ${symbol}:`, e?.message ?? e);
+      }
+      return [];
     }
-
-    return (data as any).output || [];
   });
 }
 
