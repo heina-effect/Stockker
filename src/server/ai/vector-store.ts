@@ -54,6 +54,7 @@ export interface VectorStoreAdapter {
   findNearestTrustedCentroid(vector: number[]): Promise<number>;
   findNearestSpamCentroid(vector: number[]): Promise<number>;
   getRecentCuratedSources(symbol: string, maxAgeMs?: number): Promise<EmbeddedSource[]>;
+  getGlobalRecentCuratedSources(limit?: number): Promise<EmbeddedSource[]>;
 }
 
 // ─── In-Memory Fallback ───────────────────────────────────────────────────────
@@ -112,6 +113,15 @@ class InMemoryVectorAdapter implements VectorStoreAdapter {
       s.qualityLabel !== "rejected" &&
       new Date(s.collectedAt).getTime() > cutoff
     ).sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
+  }
+
+  async getGlobalRecentCuratedSources(limit = 20): Promise<EmbeddedSource[]> {
+    const cutoff = Date.now() - 6 * 60 * 60 * 1000; // 6 hours
+    return this.embedStore.filter(s =>
+      !s.isMock &&
+      s.qualityLabel !== "rejected" &&
+      new Date(s.collectedAt).getTime() > cutoff
+    ).sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0)).slice(0, limit);
   }
 }
 
@@ -233,6 +243,27 @@ class SupabaseVectorAdapter implements VectorStoreAdapter {
 
     if (error) {
       console.warn("[VectorStore] getRecentCuratedSources error:", error.message);
+      return [];
+    }
+    return (data || []).map(mapRowToEmbeddedSource);
+  }
+
+  async getGlobalRecentCuratedSources(limit = 20): Promise<EmbeddedSource[]> {
+    const db = getSupabaseAdmin();
+    if (!db) return [];
+
+    const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await db
+      .from("source_embeddings")
+      .select("*")
+      .eq("is_mock", false)
+      .neq("quality_label", "rejected")
+      .gte("collected_at", cutoff)
+      .order("quality_score", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn("[VectorStore] getGlobalRecentCuratedSources error:", error.message);
       return [];
     }
     return (data || []).map(mapRowToEmbeddedSource);

@@ -284,7 +284,7 @@ Output JSON:
 //    Stage 1: Flash-Lite → raw aggregation / candidate generation
 //    Stage 2: Flash      → final user-facing copy
 // ═════════════════════════════════════════════════════════════════════════════
-export async function aiGenerateHomeIntelligence() {
+export async function aiGenerateHomeIntelligence(recentSources?: any[]) {
   const startTime = Date.now();
 
   if (!ai) {
@@ -296,9 +296,13 @@ export async function aiGenerateHomeIntelligence() {
   // Stage 1: Flash-Lite — lightweight candidate extraction
   let candidates: any = null;
   try {
+    const sourceContext = recentSources && recentSources.length > 0 
+      ? `Recent curated sources:\n${recentSources.map(s => `- [${s.provider}] ${s.title} (${s.symbol})`).join('\n')}\n\n`
+      : "";
+
     const s1Prompt = `Korean stock market intelligence extraction. Today's date: ${new Date().toLocaleDateString("ko-KR")}.
 
-Generate raw candidate data for a Korean stock market home dashboard.
+${sourceContext}Generate raw candidate data for a Korean stock market home dashboard.
 Be realistic and specific to current market conditions.
 
 Output JSON:
@@ -319,6 +323,7 @@ Limit: 4 symbols, 3 themes, 3 headlines, 3 sectors.`;
   try {
     const s2Prompt = `You are a Korean stock market analyst creating home dashboard content.
 ${candidates ? `Use these pre-identified candidates: ${JSON.stringify(candidates)}` : ""}
+${recentSources && recentSources.length > 0 ? `Also consider these recent real-world sources:\n${JSON.stringify(recentSources.map(s => ({ title: s.title, provider: s.provider, symbol: s.symbol })))}` : ""}
 
 CRITICAL RECOMMENDATION GUARDRAILS:
 1. No investment advice: Use neutral, observational language. Never use "매수 추천", "강력 매수", "반드시 사야할" (must buy/sell).

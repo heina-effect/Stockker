@@ -53,10 +53,14 @@ export interface SourceItem {
   id: string;
   sourceType: "news" | "disclosure" | "analyst";
   title: string;
+  snippet?: string;
+  rawTextForEmbedding?: string;
   provider: string;
   collectedAt: string;
   generatedAt?: string;
   url?: string;
+  language?: string;
+  dedupeHash?: string;
   // Phase 19 quality metadata (optional, set by embedding curator)
   _qualityScore?: number;          // 0-100
   _qualityLabel?: SourceQualityLabel; // high / medium / low / rejected

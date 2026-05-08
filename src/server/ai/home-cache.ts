@@ -43,7 +43,10 @@ export async function getHomeIntelligence(): Promise<any> {
 
 async function refreshCache(): Promise<any> {
   try {
-    const fresh = await aiGenerateHomeIntelligence();
+    const vectorStore = (await import("@/server/ai/vector-store")).getVectorStore();
+    const recentSources = await vectorStore.getGlobalRecentCuratedSources(30);
+
+    const fresh = await aiGenerateHomeIntelligence(recentSources);
     // Only cache if there is meaningful content (not just a meta error shell)
     if (fresh && (fresh.issues || fresh.stocks || fresh.sectors)) {
       cachedIntelligence = fresh;

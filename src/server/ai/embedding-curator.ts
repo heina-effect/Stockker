@@ -38,6 +38,8 @@ const PROVIDER_TRUST: Record<string, number> = {
   "이데일리": 0.8,
   "머니투데이": 0.8,
   "헤럴드경제": 0.75,
+  "GNews": 0.75,
+  "NewsAPI": 0.7,
   "Mock News": 0.0,
 };
 
@@ -228,7 +230,7 @@ export async function curateSourcesWithEmbedding(
     .map(s => ({
       id: s.id, symbol: opts.symbol, companyName: opts.companyName,
       sourceType: s.sourceType, provider: s.provider, title: s.title,
-      rawTextForEmbedding: s.title,
+      rawTextForEmbedding: s.rawTextForEmbedding || s.title,
       url: s.url, collectedAt: s.collectedAt, publishedAt: s.generatedAt,
       strategyTags: tagStrategies(s.title),
       isMock: false,
