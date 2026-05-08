@@ -50,7 +50,7 @@ export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
         return data.list.slice(0, 5).map((item: any) => {
             const dateStr = item.rcept_dt; // YYYYMMDD
             const timestamp = dateStr 
-                ? new Date(`${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T09:00:00Z`).toISOString()
+                ? new Date(`${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}T00:00:00+09:00`).toISOString()
                 : new Date().toISOString();
 
             return {

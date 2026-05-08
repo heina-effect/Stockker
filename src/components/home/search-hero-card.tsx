@@ -138,8 +138,12 @@ export function SearchHeroCard() {
                         <span className="font-semibold text-slate-900 dark:text-zinc-100 mr-2">{item.name}</span>
                         <span className="text-sm text-slate-500">{item.symbol}</span>
                       </div>
-                      <span className="text-xs bg-slate-100 dark:bg-zinc-800 text-slate-500 px-2 py-1 rounded opacity-100 transition-opacity">
-                        {item.market || item.type}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded transition-opacity ${
+                        item.type === "sector" 
+                          ? "bg-purple-50 dark:bg-purple-900/20 text-purple-600 border border-purple-100" 
+                          : "bg-slate-100 dark:bg-zinc-800 text-slate-500 border border-transparent"
+                      }`}>
+                        {item.market === "SECTOR" || item.type === "sector" ? "SECTOR" : (item.market || item.type)}
                       </span>
                     </button>
                   </li>

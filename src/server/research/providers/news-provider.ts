@@ -28,7 +28,7 @@ export async function fetchCompanyNews(config: NewsProviderConfig): Promise<Sour
               item.data_dt.substring(4, 6) + "-" + 
               item.data_dt.substring(6, 8) + "T" + 
               item.data_tm.substring(0, 2) + ":" + 
-              item.data_tm.substring(2, 4) + ":00Z"
+              item.data_tm.substring(2, 4) + ":00+09:00"
           ).toISOString();
       }
 

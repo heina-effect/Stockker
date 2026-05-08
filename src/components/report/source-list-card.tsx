@@ -104,7 +104,15 @@ export function SourceListCard({ symbol }: { symbol: string }) {
                   )}
                 </div>
                 <span className="text-[10px] text-slate-400">
-                  {new Date(src.collectedAt).toLocaleDateString("ko-KR")}
+                  {src.generatedAt 
+                    ? new Date(src.generatedAt).toLocaleString("ko-KR", { 
+                        month: "2-digit", 
+                        day: "2-digit", 
+                        hour: "2-digit", 
+                        minute: "2-digit",
+                        hour12: false 
+                      })
+                    : new Date(src.collectedAt).toLocaleDateString("ko-KR")}
                 </span>
               </div>
 

@@ -36,11 +36,21 @@ export function getSearchMaster(): StockMasterItem[] {
       if (!c.stock_code) continue;
       if (EXCLUDED_SYMBOLS.has(c.stock_code)) continue;
 
+      // Heuristic for market label
+      let market = "KOSPI";
+      if (c.stock_code.length === 6) {
+        if (c.stock_code.startsWith("00")) {
+          market = "KOSPI";
+        } else {
+          market = "KOSDAQ";
+        }
+      }
+
       master.set(c.stock_code, {
         symbol: c.stock_code,
         name: c.corp_name,
         type: "stock",
-        market: "KRX",
+        market: market,
         aliases: CUSTOM_ALIASES[c.stock_code] || []
       });
     }

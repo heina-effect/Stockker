@@ -184,6 +184,12 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSPI",
     "sector": "화학"
   },
+  "006800": {
+    "symbol": "006800",
+    "name": "미래에셋증권",
+    "market": "KOSPI",
+    "sector": "금융"
+  },
   "096770": {
     "symbol": "096770",
     "name": "SK이노베이션",
@@ -225,6 +231,30 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "name": "엔씨소프트",
     "market": "KOSPI",
     "sector": "게임"
+  },
+  "039490": {
+    "symbol": "039490",
+    "name": "키움증권",
+    "market": "KOSPI",
+    "sector": "금융"
+  },
+  "071050": {
+    "symbol": "071050",
+    "name": "한국금융지주",
+    "market": "KOSPI",
+    "sector": "금융"
+  },
+  "138040": {
+    "symbol": "138040",
+    "name": "메리츠금융지주",
+    "market": "KOSPI",
+    "sector": "금융"
+  },
+  "316140": {
+    "symbol": "316140",
+    "name": "우리금융지주",
+    "market": "KOSPI",
+    "sector": "금융"
   }
 };
 
