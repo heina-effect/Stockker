@@ -276,9 +276,12 @@ export async function curateSourcesWithEmbedding(
     .sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
 
   // ── Step 9: Persist to source_embeddings (background) ────────────────────
-  vectorStore.upsertSourceEmbeddings(curated).catch(e =>
-    console.warn("[Curator] upsertSourceEmbeddings failed (non-fatal):", e)
-  );
+  const toUpsert = curated.filter(s => s.embedding && s.embedding.length > 0);
+  if (toUpsert.length > 0) {
+    vectorStore.upsertSourceEmbeddings(toUpsert).catch(e =>
+      console.warn("[Curator] upsertSourceEmbeddings failed (non-fatal):", e)
+    );
+  }
 
   // ── Step 10: Map back to SourceItem ──────────────────────────────────────
   const curatedSourceItems: SourceItem[] = curated.map(s => ({
