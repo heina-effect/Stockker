@@ -18,6 +18,10 @@ const CUSTOM_ALIASES: Record<string, string[]> = {
   // Add other legacy names or aliases here
 };
 
+const EXCLUDED_SYMBOLS = new Set([
+  "037620", // 미래에셋증권 구형/우선주 중복
+]);
+
 export function getSearchMaster(): StockMasterItem[] {
   if (searchMasterCache) return searchMasterCache;
 
@@ -30,6 +34,8 @@ export function getSearchMaster(): StockMasterItem[] {
     const corps = JSON.parse(raw);
     for (const c of Object.values(corps) as any[]) {
       if (!c.stock_code) continue;
+      if (EXCLUDED_SYMBOLS.has(c.stock_code)) continue;
+
       master.set(c.stock_code, {
         symbol: c.stock_code,
         name: c.corp_name,

@@ -245,7 +245,18 @@ class SupabaseVectorAdapter implements VectorStoreAdapter {
       console.warn("[VectorStore] getRecentCuratedSources error:", error.message);
       return [];
     }
-    return (data || []).map(mapRowToEmbeddedSource);
+
+    // Deduplicate by title
+    const seenTitles = new Set<string>();
+    const uniqueSources = [];
+    for (const row of (data || [])) {
+      const titleKey = row.title.replace(/\s+/g, "").toLowerCase();
+      if (!seenTitles.has(titleKey)) {
+        seenTitles.add(titleKey);
+        uniqueSources.push(mapRowToEmbeddedSource(row));
+      }
+    }
+    return uniqueSources;
   }
 
   async getGlobalRecentCuratedSources(limit = 20): Promise<EmbeddedSource[]> {
@@ -266,7 +277,18 @@ class SupabaseVectorAdapter implements VectorStoreAdapter {
       console.warn("[VectorStore] getGlobalRecentCuratedSources error:", error.message);
       return [];
     }
-    return (data || []).map(mapRowToEmbeddedSource);
+
+    // Deduplicate by title
+    const seenTitles = new Set<string>();
+    const uniqueSources = [];
+    for (const row of (data || [])) {
+      const titleKey = row.title.replace(/\s+/g, "").toLowerCase();
+      if (!seenTitles.has(titleKey)) {
+        seenTitles.add(titleKey);
+        uniqueSources.push(mapRowToEmbeddedSource(row));
+      }
+    }
+    return uniqueSources;
   }
 }
 
