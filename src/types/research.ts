@@ -3,7 +3,7 @@ export type FreshnessState = "live" | "recent" | "stale" | "loading" | "error";
 export interface StockSearchItem {
   symbol: string;
   name: string;
-  type: "stock" | "index" | "etf";
+  type: "stock" | "index" | "etf" | "sector";
   market?: string; 
   matchScore?: number;
 }

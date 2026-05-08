@@ -27,7 +27,9 @@ export function WatchlistAsideCard() {
         <h2 className="font-bold text-lg text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           나의 관심 종목
         </h2>
-        <span className="text-xs text-slate-400">실시간 연동됨</span>
+        <div className="flex items-center gap-2">
+          <Link href="/workflows/watchlist" className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">모아보기 &raquo;</Link>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-2">

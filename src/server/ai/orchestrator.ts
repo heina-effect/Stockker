@@ -327,28 +327,28 @@ ${recentSources && recentSources.length > 0 ? `Also consider these recent real-w
 
 CRITICAL RECOMMENDATION GUARDRAILS:
 1. No investment advice: Use neutral, observational language. Never use "매수 추천", "강력 매수", "반드시 사야할" (must buy/sell).
-2. Source-backed: All reasons must be based on observed data or news.
-3. Classification: Categorize AI picks into 'event_driven', 'momentum', 'undervalued'.
+2. Source-backed: All reasons MUST be grounded in the provided recent sources. Do not hallucinate trends.
+3. Classification: Categorize AI picks exactly as 'event_driven', 'momentum', or 'undervalued'.
 4. Disclaimer: Must include strict legal disclaimer that users hold responsibility.
 
 Generate final home intelligence JSON with user-facing copy (all Korean):
 {
   "issues": [
-    { "id": "1", "title": "<Korean headline>", "description": "<1-2 sentences>", "trendStrength": <70-99>, "timestamp": "${new Date().toISOString()}" }
+    { "id": "1", "title": "<Korean headline>", "description": "<1-2 sentences explaining WHY it matters based on sources>", "trendStrength": <70-99>, "timestamp": "${new Date().toISOString()}" }
   ],
   "stocks": [
-    { "symbol": "<6-digit KRX>", "name": "<Korean name>", "reason": "<why trending, 1 sentence>", "trendStrength": <70-99>, "changeRate": <number>, "price": <number> }
+    { "symbol": "<6-digit KRX>", "name": "<Korean name>", "reason": "<why trending, 1 sentence source-backed>", "trendStrength": <70-99>, "changeRate": <number>, "price": <number> }
   ],
   "sectors": [
-    { "id": "<sec-id>", "name": "<Korean>", "description": "<why trending>", "trendStrength": <70-99>, "representativeSymbols": ["<sym1>", "<sym2>"] }
+    { "id": "<sec-id>", "name": "<Korean>", "description": "<why trending, source-backed>", "trendStrength": <70-99>, "representativeSymbols": ["<sym1>", "<sym2>"] }
   ],
   "aiPicks": [
     {
       "id": "pick-1", "type": "stock", "targetId": "<symbol>", "name": "<Korean name>",
       "recommendationType": "close_watch",
       "candidateCategory": "event_driven | momentum | undervalued",
-      "reasons": [{ "summary": "<Korean, observational facts>", "sourceType": "news" }],
-      "riskSummary": "<Korean, highlight potential downside>",
+      "reasons": [{ "summary": "<Korean, observational facts from sources>", "sourceType": "news" }],
+      "riskSummary": "<Korean, highlight potential downside or risk factors>",
       "disclaimer": "본 정보는 투자 참고용이며, 투자 판단과 책임은 전적으로 이용자에게 있습니다. 원금 손실이 발생할 수 있습니다."
     }
   ]

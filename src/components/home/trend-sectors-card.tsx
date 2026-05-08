@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Layers, Cpu, Battery, FlaskConical, Layout, Landmark, Music, Car } from "lucide-react";
+import Link from "next/link";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
 import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
@@ -33,15 +34,19 @@ export function TrendSectorsCard() {
           const Icon = ICON_MAP[iconKey] || Layers;
           
           return (
-            <div key={sector.id} className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 transition-colors flex items-start gap-3">
-              <div className="bg-white dark:bg-zinc-900 p-2 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm mt-0.5">
-                <Icon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            <Link 
+              href={`/sectors/${sector.id}`} 
+              key={sector.id} 
+              className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-zinc-800 transition-colors flex items-start gap-3 group"
+            >
+              <div className="bg-white dark:bg-zinc-900 p-2 rounded-lg border border-slate-100 dark:border-zinc-800 shadow-sm mt-0.5 group-hover:border-teal-200 transition-colors">
+                <Icon className="w-4 h-4 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform" />
               </div>
               <div>
-                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 mb-1">{sector.name}</div>
+                <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 mb-1 group-hover:text-teal-600 transition-colors">{sector.name}</div>
                 <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-1">{sector.description || sector.reason}</p>
               </div>
-            </div>
+            </Link>
           );
         })}
         {sectors.length === 0 && <div className="text-sm text-slate-400">불러오는 중...</div>}

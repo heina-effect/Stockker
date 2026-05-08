@@ -104,6 +104,19 @@ export async function generateSentiment(symbol: string) {
 export async function generateIssues(symbol: string): Promise<{ clusters: IssueCluster[]; sources: SourceItem[] }> {
   const name = getServerStockName(symbol);
   try {
+    const { getVectorStore } = await import("@/server/ai/vector-store");
+    const vectorStore = getVectorStore();
+    
+    // DB-first: check if we have enough fresh sources (e.g., from the last 1 hour)
+    const recentSources = await vectorStore.getRecentCuratedSources(symbol, 60 * 60 * 1000);
+    
+    // If we have a reasonable amount of fresh curated sources, skip external fetch
+    if (recentSources && recentSources.length >= 3) {
+      console.log(`[AI Router] Using ${recentSources.length} DB-cached curated sources for ${symbol}`);
+      const clusters = rankAndCluster(recentSources);
+      return { clusters, sources: recentSources };
+    }
+
     // ── Step 1: Fetch raw sources ────────────────────────────────────────────
     const { rawNews, disclosures } = await collectRawSources(symbol);
 

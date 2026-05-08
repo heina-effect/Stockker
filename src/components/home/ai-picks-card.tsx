@@ -26,7 +26,10 @@ export function AIPicksCard() {
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 uppercase mr-2">
                   {pick.recommendationType === "close_watch" ? "종가 관찰 후보" : "체크리스트 후보"}
                 </span>
-                <Link href={`/stocks/${pick.targetId}`} className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline">
+                <Link 
+                  href={pick.type === "sector" ? `/sectors/${pick.targetId}` : `/stocks/${pick.targetId}`} 
+                  className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline"
+                >
                   {pick.name}
                 </Link>
               </div>

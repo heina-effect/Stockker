@@ -1,43 +1,35 @@
-# Stockker Architecture (Phase 12 - Data Pipeline & Persistence)
+# Stockker Architecture (Phase 23 - Intelligence Quality & Snapshot Reuse)
 
 ## 1. 개요
-Stockker는 초기 실시간 호가/트레이딩 대시보드에서 **“검색 기반 주식 리서치 및 리포트 서비스(Research-first)”** 로 전면 혁신을 거쳤습니다. Phase 12를 통해 실제 데이터(뉴스, 공시) 기반의 AI 파이프라인과 로컬 우선 저장소 아키텍처가 확립되었습니다.
+Stockker는 다중 뉴스/공시 소스(KIS, DART, GNews, NewsAPI)를 기반으로 작동하는 **검색 기반 주식 리서치 서비스(Research-first)** 입니다. 실시간 API 의존도를 낮추고, 저장된 리서치 자산(Research Snapshots)을 적극적으로 재사용하여 고품질의 일간 리서치를 빠르고 일관되게 제공합니다.
 
 ## 2. 코어 모델(Research Domain) 라우팅 및 파이프라인
-- **Model Router (`src/server/research/model-router.ts`)**: 클라이언트 요청을 받아 파이프라인 모듈로 분배합니다.
+- **Model Router (`src/server/research/model-router.ts`)**: 클라이언트 요청을 처리하며 Snapshot 캐시 히트를 우선적으로 시도합니다.
 - **Pipeline (`src/server/research/pipeline/*`)**:
-  - `collect.ts`: KIS(뉴스), DART(공시) 등 다수의 프로바이더에서 Raw 데이터 수집.
-  - `normalize.ts`: 각각 다른 규격의 데이터를 `IssueItem`으로 표준화 및 중복 제거.
-  - `rank.ts`: 시간 역순, 중요도 등에 따라 데이터를 정렬 및 클러스터링.
-  - `summarize.ts`: 랭킹된 데이터를 바탕으로 AI 요약 (추후 LLM 바인딩).
+  - `collect.ts`: 4-Source (KIS, DART, GNews, NewsAPI) 병렬 수집.
+  - `normalize.ts`: `SourceItem` 규격으로 통일 및 제목 기준 중복 제거.
+  - **Persistence**: Supabase `news_sources` 테이블에 즉시 Upsert.
+  - **Embedding Curation**: Gemini Embedding 모델을 통한 품질 검증 및 랭킹 (Supabase `source_embeddings` 적재).
 
-## 3. 로컬 스토리지 어댑터 (Persistence Layer)
-- `src/lib/user-storage/local-adapter.ts`를 통해 클라이언트 측 로컬 스토리지에 데이터를 영속화합니다.
+## 3. 로컬 스토리지 어댑터 및 워크플로우 (Persistence Layer)
+- `src/lib/user-storage/local-adapter.ts`를 통한 로컬 기반 사용자 상태 저장.
 - **스키마 (Schema)**: `watchlist`, `recentSearches`, `recentViewed`, `buyPrices`, `bookmarkedReports`, `preferences`.
-- 추후 백엔드 DB 연동 시 이 어댑터 인터페이스만 교체하여 Seamless한 서버 마이그레이션이 가능합니다.
+- **Saved Workflows**: 저장된 데이터를 기반으로 관심 종목 모아보기, 최근 본 종목 히스토리 등의 개인화된 리서치 경로 제공 (Explicit Save 정책 유지).
 
-## 4. KIS 인프라의 위상 변경 (Freshness Provider)
-실시간 KIS API(웹소켓 포함)는 보조 정보(Freshness Provider)로서 백그라운드에서 동작합니다. 
-- 복잡한 당일 분봉 차트는 시스템 안정성 확보를 위해 Hidden 처리되었습니다 (`NEXT_PUBLIC_ENABLE_INTRADAY_CHART=0`).
-- KIS 트랜잭션 초과 에러(EGW00201) 방지를 위해 서버단 In-flight Deduplication이 적용되어 있습니다.
+## 4. 프론트엔드 및 가드레일 정책
+- **Metadata-First Detail Rendering**: 종목 상세 진입 시 티커, 종목명 등 메타데이터가 스켈레톤 없이 즉각 노출.
+- **Intraday Hidden**: 장중 복잡한 당일 분봉 차트 숨김 (UX 및 안정성).
+- **Recommendation Guardrails**: AI 추천 정보는 필수적으로 Disclaimer, 위험 고지, 근거 출처를 동반하며, 절대 보장성/지시성 문구를 사용하지 않음.
 
-## 5. 컴포넌트 계층도
-1. **app/page.tsx**: 홈 화면. 최근 검색어 및 Watchlist가 연동된 Search Hero 포함.
-2. **app/stocks/[symbol]/page.tsx**: 리서치 리포트 진입점.
-   - `StockReportHeader` (가격/북마크/AI 한줄요약)
-   - `BuyPricePlanCard` (평단가 입력형 명시적 액션 플랜 폼)
-   - `DailyCandlestickChartCard`, `IssueTimelineCard`, `SentimentScoreCard`, `RelatedStocksCard`, `SourceListCard`
-
-## 6. AI Model Routing (Phase 16)
-비용과 Latency 최적화를 위해 역할을 분담합니다. 모든 AI 호출은 Fallback 메커니즘을 내장하고 있으며, 개발 환경(Dev)에서는 `_meta` 필드를 통해 관측성(Observability)을 확보합니다.
+## 5. AI Model Routing (Gemini-Only Architecture)
+비용과 Latency 최적화를 위해 Gemini 3 Flash 계열 모델로 통일하여 사용합니다.
 
 | 기능 | 권장 모델 | 역할 |
 |---|---|---|
-| 홈 화면 대시보드 | **OpenAI GPT-5.4-mini** | 속도와 저비용이 필수인 실시간 트렌드/섹터 텍스트 요약 |
-| 리포트 요약(Summary) | **OpenAI GPT-5.5** | 고도의 문맥 이해가 필요한 깊이 있는 투자 분석 리포팅 |
-| 감성 점수 측정 | **Gemini 3.0 Flash** | 다량의 텍스트에서 긍/부정 추출 및 원문 Source 매핑 |
-| (추후 확장 예정) | **Gemini 3.1 Flash-Lite**| 단순 엔티티 태깅, 섹터 분류 등 가벼운 Structured Task |
+| 전처리 및 단순 추출 | **Gemini 3.1 Flash-Lite** | 가벼운 파싱, 뉴스 클러스터링 전처리 |
+| 홈/섹터/종목 요약 및 분석 | **Gemini 3.1 Flash** | 고품질 텍스트 생성, 핵심 이슈 요약, 감성 분석 |
+| 품질 스코어링 / 임베딩 | **Gemini text-embedding-004** | 벡터 생성 및 의미 기반 스팸/노이즈 필터링 |
 
-## 7. 홈 캐시 및 동시성 제어 (In-flight Dedupe)
-홈 화면의 경우 여러 카드가 동시에 데이터를 요구하지만, `/api/home/intelligence` 단일 엔드포인트와 `HomeIntelligenceProvider`를 통해 1회만 호출됩니다.
-서버단(`home-cache.ts`)에서는 Promise in-flight dedupe 기법을 적용하여, 캐시 미스 시 동시에 여러 모델을 호출하는 Race Condition을 원천 차단합니다.
+## 6. 스냅샷 기반 캐시 및 홈 동시성 제어
+- `stock_research_snapshots`, `sector_research_snapshots` (Supabase DB)에 생성된 리포트를 저장하고 TTL 내 재사용합니다.
+- 홈 화면의 여러 카드는 `/api/home/intelligence` 단일 엔드포인트에서 1회만 호출되어 in-flight deduplication을 수행, 다중 렌더링에 의한 중복 호출을 막습니다.

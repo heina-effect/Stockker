@@ -111,17 +111,22 @@ function tagStrategies(title: string): string[] {
 }
 
 function providerTrust(provider: string): number {
-  return PROVIDER_TRUST[provider] ?? 0.6;
+  const p = provider.toLowerCase();
+  if (p.includes("dart") || p.includes("fss") || p.includes("공시")) return 1.0;
+  if (p.includes("연합인포맥스") || p.includes("한국경제") || p.includes("매일경제") || p.includes("이데일리")) return 0.9;
+  if (p.includes("머니투데이") || p.includes("헤럴드경제") || p.includes("서울경제") || p.includes("파이낸셜뉴스")) return 0.8;
+  if (p.includes("gnews") || p.includes("newsapi") || p.includes("google")) return 0.7; // general aggregators
+  return 0.6; // unknown or general
 }
 
 function recencyScore(publishedAt?: string): number {
   if (!publishedAt) return 0.5;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / 86400000;
-  if (ageDays < 0.25) return 1.0;
-  if (ageDays < 1)    return 0.9;
-  if (ageDays < 3)    return 0.7;
-  if (ageDays < 7)    return 0.5;
-  return 0.2;
+  if (ageDays < 0.25) return 1.0;  // within 6 hours
+  if (ageDays < 1)    return 0.85; // within 24 hours
+  if (ageDays < 3)    return 0.6;  // within 3 days
+  if (ageDays < 7)    return 0.3;  // within a week
+  return 0.1;                      // older
 }
 
 function computeQualityScore(opts: {
@@ -129,20 +134,23 @@ function computeQualityScore(opts: {
   providerTrustScore: number; recency: number;
   strategyTagCount: number; crossConfirmCount: number;
 }): number {
-  if (opts.spamSimilarity > SPAM_REJECT_THRESHOLD) return 0;
-  const spamPenalty  = Math.max(0, 1 - opts.spamSimilarity * 1.2);
-  const trustBoost   = opts.trustedSimilarity * 0.3 + opts.providerTrustScore * 0.3;
-  const freshness    = opts.recency * 0.2;
-  const strategyBonus= Math.min(opts.strategyTagCount * 0.05, 0.15);
-  const confirmBonus = Math.min(opts.crossConfirmCount * 0.05, 0.15);
-  const raw = spamPenalty * 40 + trustBoost * 40 + freshness * 10 + strategyBonus * 10 + confirmBonus * 10;
-  return Math.round(Math.max(0, Math.min(100, raw * 2)));
+  // Stronger rejection of spam
+  if (opts.spamSimilarity > 0.8) return 0;
+  
+  const spamPenalty  = Math.max(0, 1 - opts.spamSimilarity * 1.5); // harsher penalty
+  const trustBoost   = opts.trustedSimilarity * 0.35 + opts.providerTrustScore * 0.35;
+  const freshness    = opts.recency * 0.15;
+  const strategyBonus= Math.min(opts.strategyTagCount * 0.05, 0.10);
+  const confirmBonus = Math.min(opts.crossConfirmCount * 0.10, 0.25); // reward cross-source confirmation more
+  
+  const raw = spamPenalty * 35 + trustBoost * 40 + freshness * 15 + strategyBonus * 5 + confirmBonus * 10;
+  return Math.round(Math.max(0, Math.min(100, raw * 2.2))); // slightly scale up
 }
 
 function qualityLabel(score: number): "high" | "medium" | "low" | "rejected" {
-  if (score >= 70) return "high";
-  if (score >= 45) return "medium";
-  if (score >= MIN_QUALITY_SCORE) return "low";
+  if (score >= 75) return "high";
+  if (score >= 50) return "medium";
+  if (score >= 35) return "low";
   return "rejected";
 }
 

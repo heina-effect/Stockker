@@ -1,21 +1,26 @@
 # Research API Contract
 
 ## 1. 개요
-Stockker 리서치 도메인의 데이터 파이프라인 계약 및 인터페이스를 정의합니다.
+Stockker 리서치 도메인의 데이터 파이프라인 인터페이스를 정의합니다. 다중 소스(4-Source)에서 정규화된 데이터만을 취급합니다.
 
 ## 2. Core Interfaces (`src/types/research.ts`)
 
-### IssueItem (AI 이슈/리포트 원문)
+### SourceItem (정규화된 리서치 원시 데이터)
 ```typescript
-export interface IssueItem {
-  id: string;             // 식별자 (news-{id}, dart-{id})
-  title: string;          // 이슈/공시 제목
-  summary: string;        // 본문 또는 AI 요약
-  timestamp: string;      // 수집/발생 시간 (ISO 8601)
-  source: string;         // 제공처 (예: 한국경제, Open DART)
-  sourceType: "news" | "disclosure" | "sns" | "analyst";
-  impact: "positive" | "negative" | "neutral";
-  link?: string;          // 원문 링크 (가능한 경우)
+export interface SourceItem {
+  id: string;             // 식별자
+  sourceType: "news" | "disclosure" | "analyst";
+  title: string;
+  snippet?: string;
+  rawTextForEmbedding?: string;
+  provider: string;       // KIS, Open DART, GNews, NewsAPI 등
+  collectedAt: string;    // 앱 수집 시각
+  generatedAt?: string;   // 실제 원본 기사/공시 발행 시각
+  url?: string;
+  language?: string;
+  dedupeHash?: string;
+  _qualityLabel?: SourceQualityLabel;
+  _strategyTags?: string[];
 }
 ```
 
@@ -27,16 +32,27 @@ export interface RelatedStock {
   reason: string;         // 연관 이유
   price?: number;
   changeRate?: number;
-  freshness?: "live" | "recent" | "stale" | "loading" | "error"; // 데이터 신선도
+  freshness?: "live" | "recent" | "stale" | "loading" | "error";
 }
 ```
 
-## 3. 파이프라인 흐름
-1. **`collect.ts`**: `getDomesticStockNews`와 `getDisclosures`를 병렬 호출하여 원시(raw) 데이터를 수집.
-2. **`normalize.ts`**: 서로 다른 스키마를 가진 뉴스/공시를 `IssueItem` 배열로 매핑 및 중복 제목 제거.
-3. **`rank.ts`**: 시간순 정렬 및 우선순위(클러스터링) 산정.
-4. **`summarize.ts`**: (추후) 최상위 이슈들을 LLM API에 전달하여 1~2줄 요약 리포트 생성.
+### RecommendationCandidate (추천 후보)
+```typescript
+export interface RecommendationCandidate {
+  id: string;
+  type: "stock" | "sector";
+  targetId: string;
+  name: string;
+  recommendationType: "ai_pick" | "close_watch" | "checklist";
+  reasons: RecommendationReason[];
+  riskSummary: string;
+  disclaimer: string;
+  generatedAt: string;
+}
+```
 
-## 4. Provider 연동
-- **Disclosure**: `opendart.fss.or.kr/api/list.json` 연동. API 실패 시 Deterministic Mock으로 우회.
-- **News**: 기존 KIS News API (`FHKST01012200`) 사용. In-flight Dedupe 캐시 레이어 거침.
+## 3. 파이프라인 흐름 (4-Source Pipeline)
+1. **`collect.ts`**: KIS, Open DART, GNews, NewsAPI를 병렬 호출하여 원시 데이터 수집.
+2. **`normalize.ts`**: `SourceItem`으로 스키마 표준화, 제목 및 dedupeHash 기준 중복 1차 제거.
+3. **`Persistence & Embedding`**: Supabase `news_sources` Upsert 및 빈 벡터 방어 포함 임베딩 랭킹 (`vector-store.ts`, `embedding-curator.ts`).
+4. **`Snapshot Reuse`**: DB-first 원칙으로 기존 Snapshot을 우선 조회하고, 만료(TTL) 시 재생성 및 DB 적재 후 반환.
