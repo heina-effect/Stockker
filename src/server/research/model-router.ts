@@ -12,6 +12,7 @@ import { rankAndCluster } from "./pipeline/rank";
 import { summarizeIssues } from "./pipeline/summarize";
 import { generateRelatedStocks as genRelatedStocks } from "./pipeline/related-stocks";
 import { curateSourcesWithEmbedding } from "@/server/ai/embedding-curator";
+import { getDomesticStockQuote } from "@/server/kis/rest-client";
 
 /**
  * 리서치 AI 라우터
@@ -145,7 +146,13 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
 }
 
 export async function generateBuyPlan(symbol: string, averagePrice: number): Promise<BuyPricePlan> {
-  return mockBuyPlan(symbol, averagePrice);
+  try {
+    const quote = await getDomesticStockQuote(symbol);
+    return mockBuyPlan(symbol, averagePrice, quote.price);
+  } catch (e) {
+    console.warn(`[BuyPlan] Failed to fetch live price for ${symbol}, falling back to mock:`, e);
+    return mockBuyPlan(symbol, averagePrice);
+  }
 }
 
 export async function generateRelatedStocks(symbol: string) {
