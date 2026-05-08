@@ -136,3 +136,8 @@ npm run test:report       # sentiment/report 테스트
 - **원인**: `flex-1` 자식 div에 `minHeight: 0` 미설정 → recharts `ResizeObserver`가 초기 크기 계산 실패
 - **수정**: `DailyCandlestickChartCard`의 `ResponsiveContainer` 부모 div에 `style={{ minHeight: 0 }}` 추가
 - **적용 파일**: `src/components/report/daily-candlestick-chart-card.tsx:251`
+
+### 7.4 AI 감성 점수 UI 개선
+- **데이터 부족 시 처리**: 실시간 데이터 수집 실패 또는 근거 부족으로 인한 Fallback 발생 시, 50점(중립)이 아닌 **'-점'**으로 표시하여 분석 결과가 없음을 명확히 함 (라벨은 '판단불가'로 표시).
+- **단위 표시 표준화**: 기존 `score점 / 100` 형식을 **`score점 / 100점`**으로 통일하여 가독성 향상.
+- **Muted 스타일 적용**: Fallback 상태의 점수 배지에 회색 톤 스타일을 적용하여 시각적으로 구분.

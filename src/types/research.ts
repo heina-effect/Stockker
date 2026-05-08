@@ -32,6 +32,7 @@ export interface SentimentScore {
   freshness: FreshnessState;
   generatedAt: string;
   _meta?: any;
+  _isFallback?: boolean;
 }
 
 export interface IssueCluster {

@@ -49,11 +49,12 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
           </span>
         </div>
         <div className={`px-4 py-2 text-sm font-bold rounded-full ${
+          data._isFallback ? "bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500" :
           data.label === "긍정" ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400" :
           data.label === "부정" ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" :
           "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
         }`}>
-          {data.score}점 / 100 ({data.label})
+          {data._isFallback ? "-" : data.score}점 / 100점 ({data._isFallback ? "판단불가" : data.label})
         </div>
       </div>
 
