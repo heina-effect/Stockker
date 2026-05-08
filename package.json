@@ -19,8 +19,10 @@
     "test:vectors": "vitest run src/**/vector*.test.ts src/**/embedding*.test.ts",
     "test:storage": "vitest run src/**/source*.test.ts src/**/news*.test.ts",
     "test:report": "vitest run src/**/report*.test.ts src/**/sentiment*.test.ts",
+    "test:search": "vitest run src/**/search*.test.ts",
+    "test:workflows": "vitest run src/**/workflow*.test.ts src/**/snapshots*.test.ts",
     "migrate:supabase": "node scripts/migrate-supabase.mjs",
-    "validate:full": "npm run validate && npm run test:charts && npm run test:persistence && npm run test:contracts && npm run build",
+    "validate:full": "npm run validate && npm run test:charts && npm run test:persistence && npm run test:contracts && npm run test:workflows && npm run build",
     "mock:research": "echo 'Mock data is built-in; no separate server needed.'"
   },
   "dependencies": {

@@ -19,19 +19,85 @@ import { curateSourcesWithEmbedding } from "@/server/ai/embedding-curator";
 
 import { searchStock, getServerStockName } from "@/lib/stocks/search-master";
 import { aiSummarizeIssues, aiAnalyzeSentiment } from "@/server/ai/orchestrator";
+import { getStockSnapshot, saveStockSnapshot } from "./snapshots/snapshot-manager";
+import type { StockReportSummary, SentimentScore } from "@/types/research";
+
+const SNAPSHOT_TTL_MS = 60 * 60 * 1000; // 1 hr freshness
+const snapshotPromiseCache = new Map<string, Promise<{ report: StockReportSummary, sentiment: SentimentScore }>>();
+
+async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockReportSummary, sentiment: SentimentScore }> {
+  const name = getServerStockName(symbol);
+  
+  // 1. Check DB Snapshot
+  const snapshot = await getStockSnapshot(symbol);
+  const now = Date.now();
+  if (snapshot) {
+    const age = now - new Date(snapshot.updated_at).getTime();
+    if (age < SNAPSHOT_TTL_MS) {
+      // Fresh DB Hit
+      return {
+        report: {
+          symbol, name, currentPrice: 0, change: 0, changeRate: 0,
+          aiHeadline: snapshot.ai_headline,
+          aiSummary: snapshot.ai_summary,
+          priceFreshness: "stale", reportFreshness: "live",
+          lastUpdated: snapshot.updated_at,
+          _meta: { source: "db_snapshot" }
+        },
+        sentiment: {
+          score: snapshot.sentiment_score,
+          label: snapshot.sentiment_label as any,
+          trend: snapshot.sentiment_trend as any,
+          positiveFactors: snapshot.positive_factors,
+          negativeFactors: snapshot.negative_factors,
+          basisSources: snapshot.basis_source_ids.map(id => ({ id } as any)),
+          freshness: "live",
+          generatedAt: snapshot.updated_at,
+          _isFallback: snapshot.is_fallback,
+          _meta: { source: "db_snapshot" }
+        }
+      };
+    }
+  }
+
+  // 2. Generate if miss or stale
+  if (snapshotPromiseCache.has(symbol)) {
+    return snapshotPromiseCache.get(symbol)!;
+  }
+
+  const p = (async () => {
+    try {
+      const { clusters, sources } = await generateIssues(symbol);
+      const [report, sentiment] = await Promise.all([
+        aiSummarizeIssues(symbol, clusters),
+        aiAnalyzeSentiment(symbol, sources)
+      ]);
+
+      // Fire and forget save
+      saveStockSnapshot(symbol, name, report, sentiment).catch(e => console.error("Save snapshot error:", e));
+
+      return { report, sentiment };
+    } finally {
+      snapshotPromiseCache.delete(symbol);
+    }
+  })();
+
+  snapshotPromiseCache.set(symbol, p);
+  return p;
+}
 
 export async function generateSearch(query: string) {
   return searchStock(query);
 }
 
 export async function generateReportSummary(symbol: string) {
-  const { clusters } = await generateIssues(symbol);
-  return aiSummarizeIssues(symbol, clusters);
+  const { report } = await getOrGenerateSnapshot(symbol);
+  return report;
 }
 
 export async function generateSentiment(symbol: string) {
-  const { sources } = await generateIssues(symbol);
-  return aiAnalyzeSentiment(symbol, sources);
+  const { sentiment } = await getOrGenerateSnapshot(symbol);
+  return sentiment;
 }
 
 export async function generateIssues(symbol: string): Promise<{ clusters: IssueCluster[]; sources: SourceItem[] }> {

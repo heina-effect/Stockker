@@ -249,6 +249,37 @@ Output JSON:
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 2.5 SECTOR SUMMARY
+// ═════════════════════════════════════════════════════════════════════════════
+export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{ summary: string; trendStrength: number }> {
+  if (!ai || clusters.length === 0) {
+    return { summary: "해당 섹터에 대한 충분한 최신 데이터가 없습니다.", trendStrength: 50 };
+  }
+
+  try {
+    const prompt = `You are a Korean stock analyst. Create a summary for the "${sector.name}" sector.
+
+Key issues found across representative stocks:
+${JSON.stringify(clusters.map(c => ({ title: c.title, summary: c.summary })), null, 2)}
+
+Output JSON:
+{
+  "summary": "<2-3 sentences, Korean, grounded in issues above, explaining the sector trend>",
+  "trendStrength": <number 0-100, 100 is extremely strong positive momentum, 50 is neutral, 0 is crash>
+}`;
+
+    const parsed = await geminiJSON<{ summary: string; trendStrength: number }>(GEMINI_FLASH, prompt);
+    return {
+      summary: parsed.summary || "해당 섹터에 대한 최신 동향을 파악 중입니다.",
+      trendStrength: parsed.trendStrength ?? 50
+    };
+  } catch (e: any) {
+    console.error(`[Orchestrator] Sector summary failed for ${sector.name}:`, e);
+    return { summary: "해당 섹터에 대한 분석 중 오류가 발생했습니다.", trendStrength: 50 };
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 3. HOME INTELLIGENCE — 2-stage routing
 //    Stage 1: Flash-Lite → raw aggregation / candidate generation
 //    Stage 2: Flash      → final user-facing copy
@@ -289,6 +320,12 @@ Limit: 4 symbols, 3 themes, 3 headlines, 3 sectors.`;
     const s2Prompt = `You are a Korean stock market analyst creating home dashboard content.
 ${candidates ? `Use these pre-identified candidates: ${JSON.stringify(candidates)}` : ""}
 
+CRITICAL RECOMMENDATION GUARDRAILS:
+1. No investment advice: Use neutral, observational language. Never use "매수 추천", "강력 매수", "반드시 사야할" (must buy/sell).
+2. Source-backed: All reasons must be based on observed data or news.
+3. Classification: Categorize AI picks into 'event_driven', 'momentum', 'undervalued'.
+4. Disclaimer: Must include strict legal disclaimer that users hold responsibility.
+
 Generate final home intelligence JSON with user-facing copy (all Korean):
 {
   "issues": [
@@ -304,9 +341,10 @@ Generate final home intelligence JSON with user-facing copy (all Korean):
     {
       "id": "pick-1", "type": "stock", "targetId": "<symbol>", "name": "<Korean name>",
       "recommendationType": "close_watch",
-      "reasons": [{ "summary": "<Korean>", "sourceType": "news" }],
-      "riskSummary": "<Korean>",
-      "disclaimer": "정보 제공 목적이며 투자 판단과 책임은 이용자 본인에게 있습니다."
+      "candidateCategory": "event_driven | momentum | undervalued",
+      "reasons": [{ "summary": "<Korean, observational facts>", "sourceType": "news" }],
+      "riskSummary": "<Korean, highlight potential downside>",
+      "disclaimer": "본 정보는 투자 참고용이며, 투자 판단과 책임은 전적으로 이용자에게 있습니다. 원금 손실이 발생할 수 있습니다."
     }
   ]
 }
