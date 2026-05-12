@@ -55,7 +55,13 @@ Phase 28은 Phase 27 문서가 완료로 표시했지만 런타임에서 여전�
 
 ## 검증
 
+- `npm install` PASS
+- `npm run lint` PASS (기존 unused/deps warning 25건은 warning으로 유지)
 - `npm run typecheck` PASS
+- `npm run build` PASS (sandbox network 제한으로 Google Fonts fetch 실패 후, network escalation으로 재실행 PASS)
+- `npm run validate` PASS
+- `npm run test:contracts` PASS (`--passWithNoTests`, 현재 matching contract files 없음)
+- `npm run test:workflows` PASS (`--passWithNoTests`, 현재 matching workflow/snapshot files 없음)
 - Focused Vitest PASS:
   - theme contract
   - theme control
@@ -67,8 +73,7 @@ Phase 28은 Phase 27 문서가 완료로 표시했지만 런타임에서 여전�
   - source pagination
   - intraday hidden
   - detail-entry guard
-
-최종 검증으로 `npm install`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run validate`, `npm run test:contracts`, `npm run test:workflows`, focused Vitest suite, and `npm run dev`를 실행한다.
+- `npm run dev` 실행 후 수동 확인 대상: full-surface theme, reload persistence, canonical sector links, full-card stock click, `근거 N건`, scannable sector card, intraday hidden
 
 ## 변경 파일 요약
 
