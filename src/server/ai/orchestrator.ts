@@ -251,7 +251,7 @@ Output JSON:
 // ═════════════════════════════════════════════════════════════════════════════
 // 2.5 SECTOR SUMMARY
 // ═════════════════════════════════════════════════════════════════════════════
-export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{ summary: string; trendStrength: number }> {
+export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{ summary: string; trendStrength: number; leaders?: string[]; laggards?: string[]; watchCandidates?: any[] }> {
   if (!ai || clusters.length === 0) {
     return { summary: "해당 섹터에 대한 충분한 최신 데이터가 없습니다.", trendStrength: 50 };
   }
@@ -265,13 +265,21 @@ ${JSON.stringify(clusters.map(c => ({ title: c.title, summary: c.summary })), nu
 Output JSON:
 {
   "summary": "<2-3 sentences, Korean, grounded in issues above, explaining the sector trend>",
-  "trendStrength": <number 0-100, 100 is extremely strong positive momentum, 50 is neutral, 0 is crash>
+  "trendStrength": <number 0-100, 100 is extremely strong positive momentum, 50 is neutral, 0 is crash>,
+  "leaders": ["<종목명 1>", "<종목명 2>"],
+  "laggards": ["<종목명 1>"],
+  "watchCandidates": [
+    { "name": "<종목명>", "reason": "<관찰 이유, Korean, grounded>" }
+  ]
 }`;
 
-    const parsed = await geminiJSON<{ summary: string; trendStrength: number }>(GEMINI_FLASH, prompt);
+    const parsed = await geminiJSON<any>(GEMINI_FLASH, prompt);
     return {
       summary: parsed.summary || "해당 섹터에 대한 최신 동향을 파악 중입니다.",
-      trendStrength: parsed.trendStrength ?? 50
+      trendStrength: parsed.trendStrength ?? 50,
+      leaders: parsed.leaders || [],
+      laggards: parsed.laggards || [],
+      watchCandidates: parsed.watchCandidates || []
     };
   } catch (e: any) {
     console.error(`[Orchestrator] Sector summary failed for ${sector.name}:`, e);

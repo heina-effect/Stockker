@@ -35,6 +35,9 @@ CREATE TABLE IF NOT EXISTS sector_research_snapshots (
   ai_summary          TEXT NOT NULL,
   representative_symbols TEXT[] DEFAULT '{}',
   related_issues      JSONB DEFAULT '[]', -- array of objects { title, source, etc }
+  leaders             TEXT[] DEFAULT '{}',
+  laggards            TEXT[] DEFAULT '{}',
+  watch_candidates    JSONB DEFAULT '[]',
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -78,10 +78,16 @@ export interface BuyPricePlan {
   _meta?: any;
 }
 
+export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "ai_inferred";
+
 export interface RelatedStock {
   symbol: string;
   name: string;
   reason: string;
+  relationType: RelationType;
+  relationReason: string;
+  basisSourceCount?: number;
+  quoteMode: "live-sync" | "cached" | "unavailable";
   price?: number;
   changeRate?: number;
   freshness?: FreshnessState;

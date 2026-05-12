@@ -13,12 +13,14 @@ export async function GET() {
     const [
       { count: totalSources }, 
       { count: totalEmbeddings }, 
-      { count: totalSnapshots },
+      { count: totalStockSnapshots },
+      { count: totalSectorSnapshots },
       { data: embeddingsData }
     ] = await Promise.all([
       db.from("news_sources").select("*", { count: "exact", head: true }),
       db.from("source_embeddings").select("*", { count: "exact", head: true }),
       db.from("stock_research_snapshots").select("*", { count: "exact", head: true }),
+      db.from("sector_research_snapshots").select("*", { count: "exact", head: true }),
       // Fetch recent embeddings to get provider and quality stats
       db.from("source_embeddings").select("provider, quality_label").gte("collected_at", cutoff24h)
     ]);
@@ -46,7 +48,8 @@ export async function GET() {
         totalRawSources: totalSources,
         totalCuratedEmbeddings: totalEmbeddings,
         curationRatio: `${curationRatio}%`,
-        totalStockSnapshots: totalSnapshots,
+        totalStockSnapshots: totalStockSnapshots,
+        totalSectorSnapshots: totalSectorSnapshots,
         recent24h: {
           totalCurated: embeddingsData?.length || 0,
           providerBreakdown: providerCount,

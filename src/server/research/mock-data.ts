@@ -155,7 +155,7 @@ export const mockBuyPlan = (symbol: string, targetPrice: number, currentPrice?: 
 };
 
 export const mockRelatedStocks = (symbol: string): RelatedStock[] => [
-  { symbol: "000660", name: "SK하이닉스", reason: "AI 메모리 경쟁 동종 섹터", price: 152000, changeRate: 1.5, freshness: "recent" },
-  { symbol: "042700", name: "한미반도체", reason: "TC 본더 등 핵심 장비 밸류체인", price: 82000, changeRate: -0.5, freshness: "recent" },
-  { symbol: "039030", name: "이오테크닉스", reason: "후공정 레이저 장비 공급", price: 125000, changeRate: 3.2, freshness: "recent" }
+  { symbol: "000660", name: "SK하이닉스", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 152000, changeRate: 1.5, freshness: "recent" },
+  { symbol: "042700", name: "한미반도체", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 82000, changeRate: -0.5, freshness: "recent" },
+  { symbol: "039030", name: "이오테크닉스", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 125000, changeRate: 3.2, freshness: "recent" }
 ];

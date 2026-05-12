@@ -1,12 +1,27 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Activity, Target } from "lucide-react";
+import { Activity } from "lucide-react";
 import Link from "next/link";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
 
+function StocksSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 animate-pulse">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl">
+          <div className="flex justify-between mb-2">
+            <div className="w-24 h-4 bg-slate-100 dark:bg-zinc-800 rounded" />
+            <div className="w-12 h-4 bg-slate-100 dark:bg-zinc-800 rounded" />
+          </div>
+          <div className="w-full h-3 bg-slate-50 dark:bg-zinc-800/60 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TrendStocksCard() {
-  const { data, isLoading } = useHomeIntelligence();
+  const { data, isLoading, error } = useHomeIntelligence();
   const trending: any[] = data?.stocks || [];
 
   return (
@@ -15,23 +30,34 @@ export function TrendStocksCard() {
         <Activity className="w-5 h-5 text-rose-500" />
         지금 주목받는 종목
       </h3>
-      <div className="flex flex-col gap-3">
-        {trending.map(stock => (
-          <div key={stock.symbol} className="flex items-center justify-between bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 transition-colors">
-            <div className="flex flex-col">
-              <Link href={`/stocks/${stock.symbol}`} className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline">
-                {stock.name}
-              </Link>
-              <span className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{stock.reason}</span>
+      <div className="flex flex-col gap-3 flex-1">
+        {isLoading ? (
+          <StocksSkeleton />
+        ) : error ? (
+          <div className="text-sm text-slate-400 italic">데이터를 불러오지 못했습니다.</div>
+        ) : trending.length === 0 ? (
+          <div className="text-sm text-slate-400 italic">현재 주목받는 종목이 없습니다.</div>
+        ) : (
+          trending.map(stock => (
+            <div key={stock.symbol} className="flex flex-col bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 transition-colors">
+              <div className="flex items-center justify-between mb-1">
+                <Link href={`/stocks/${stock.symbol}`} className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline">
+                  {stock.name}
+                </Link>
+                <span className={`text-xs font-bold ${stock.changeRate > 0 ? "text-red-500" : stock.changeRate < 0 ? "text-blue-500" : "text-slate-500"}`}>
+                  {stock.changeRate > 0 ? "+" : ""}{stock.changeRate}%
+                </span>
+              </div>
+              <span className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-1">{stock.reason}</span>
+              {stock.sourceCount && (
+                <span className="text-[10px] text-slate-400 mt-1">관련 출처 {stock.sourceCount}건 기반</span>
+              )}
             </div>
-            <div className="text-right flex flex-col items-end min-w-[60px]">
-              <span className={`text-xs font-bold ${stock.changeRate > 0 ? "text-red-500" : stock.changeRate < 0 ? "text-blue-500" : "text-slate-500"}`}>
-                {stock.changeRate > 0 ? "+" : ""}{stock.changeRate}%
-              </span>
-            </div>
-          </div>
-        ))}
-        {trending.length === 0 && <div className="text-sm text-slate-400">불러오는 중...</div>}
+          ))
+        )}
+      </div>
+      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10px] text-slate-400 text-center">
+        * 제공되는 정보는 투자 참고용이며 원금 손실 위험이 있습니다.
       </div>
     </div>
   );

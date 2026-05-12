@@ -38,7 +38,7 @@ export default function HomePage() {
       
       <footer className="py-8 mt-12 text-center text-xs text-slate-400 dark:text-zinc-500">
         <p>&copy; 2026 Stockker Project - AI Research Edition</p>
-        <p className="mt-2 text-[10px] text-slate-300 dark:text-zinc-600">본 서비스의 정보는 AI 모킹 스텁 데이터이며 투자 권유를 구하지 않습니다.</p>
+        <p className="mt-2 text-[10px] text-slate-300 dark:text-zinc-600">본 서비스는 투자 참고용 AI 리서치 정보를 제공하며, 투자 판단 및 책임은 전적으로 이용자 본인에게 있습니다.</p>
       </footer>
     </div>
   );

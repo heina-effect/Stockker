@@ -1,52 +1,114 @@
-# Stockker (Phase 23: Intelligence Hardening & Snapshot Reuse)
+# Stockker — AI 기반 한국 주식 리서치 플랫폼 (Beta)
 
-Stockker는 단순한 검색 엔진을 넘어, **재사용 가능한 리서치 에셋 기반의 지능형 플랫폼**으로 진화했습니다. 이제 AI 리서치 결과는 일회성이 아닌 영속적인 자산(Snapshots)으로 관리되며, 다중 소스에서 정제된 최상급 뉴스만을 활용하여 심층 분석 워크플로우를 제공합니다.
+Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 매매 터미널이 아니라, 다중 뉴스/공시 소스를 AI로 정제하여 신뢰할 수 있는 리서치 인사이트를 제공합니다.
 
-## 🌟 주요 특징 (Features)
+---
 
-*   **Snapshot Reuse & DB-First Policy (Phase 23)**: 과도한 AI 생성을 억제하고 응답 속도를 높이기 위해, 최근 1시간 내에 저장된 정제 소스(Curated Sources)가 DB에 충분할 경우 외부 API 호출 없이 기존 데이터를 재사용하는 DB-First 정책을 시행합니다.
-*   **Saved Research Workflows (Phase 23)**: 관심 종목(`watchlist`) 상태를 단순 리스트를 넘어 실제 리서치 흐름으로 전환했습니다. `/workflows/watchlist` 페이지에서 저장한 모든 종목의 최신 AI 요약을 한눈에 브라우징할 수 있습니다.
-*   **Multi-Source Quality Calibration (Phase 23)**: 공시(DART) 및 전문 매체에 가중치를 부여하는 Provider Trust 시스템과 스팸 필터링 알고리즘을 강화하여, 정보의 신뢰도를 대폭 향상시켰습니다.
-*   **Advanced Ops Visibility (Phase 23)**: `/api/ops/metrics` 엔드포인트를 고도화하여 매체별 비중(Provider Breakdown) 및 품질 등급 분포(Quality Labeling)를 실시간으로 모니터링합니다.
-*   **Multi-Source News Pipeline (Phase 22)**: KIS 뉴스, Open DART 공시 외에도 GNews, NewsAPI를 추가하여 4개의 채널에서 정보를 병렬 수집합니다.
-*   **Curated Research Delivery (Phase 22)**: 다중 소스에서 가져온 Raw 뉴스는 즉시 노출되지 않고, Supabase에 적재된 후 Gemini 임베딩을 통해 품질 스코어링을 거친 **검증된(Curated) 데이터**로 변환되어 앱 전체(홈, 핵심 이슈, 감성 점수 등)에 재사용됩니다.
-*   **Research Asset Productization (Phase 21)**: AI 리서치 결과를 `stock_research_snapshots` 및 `sector_research_snapshots` 테이블에 영속화합니다. 1시간 TTL 캐시 전략으로 AI 호출 비용을 절감하고 데이터 일관성을 확보합니다.
-*   **Sector Research Expansion (Phase 21)**: `/sectors/[sectorId]` 상세 페이지를 통해 섹터별 모멘텀 강도, 관련 주요 이슈, 대표 종목 분석 워크플로우를 제공합니다.
-*   **Recommendation Guardrails (Phase 21)**: AI Picks 및 리서치 전반에 걸쳐 중립적 언어 강제, 투자 책임 고지(Disclaimer), 사실 기반 근거 명시 등 금융 정보 서비스로서의 안전망을 강화했습니다.
+## 주요 특징
 
-## 🛠️ 기술 스택 (Tech Stack)
+- **AI 리서치 요약**: 종목/섹터별 최신 이슈를 Gemini 2.5 Flash로 분석하고 출처 근거를 명시
+- **Stale-while-revalidate 스냅샷**: DB에 저장된 리서치 에셋을 재사용하여 빠른 응답 + API 쿼터 절약
+- **4-Source 뉴스 파이프라인**: KIS 뉴스, Open DART 공시, GNews, NewsAPI 병렬 수집 + pgvector 임베딩 큐레이션
+- **평가 레이어 (Eval)**: AI 생성물의 환각·최신성·출처 충분성·면책 조항을 자동 검증
+- **추천 가드레일**: 지시적 매매 언어 차단, 출처 수 명시, disclaimer 필수 노출
+- **저장 워크플로우**: 관심 종목 / 최근 본 종목 / 북마크 리포트 — 로컬 저장, 명시적 저장 전용
+- **섹터 심층 분석**: 주도주 / 소외주 / 관찰 후보 포함한 섹터 리서치
 
-*   **Framework**: Next.js 15 (App Router)
-*   **Database**: Supabase (PostgreSQL + pgvector)
-*   **AI Runtime**: Gemini 1.5 Flash + Flash-Lite (2-stage routing)
-*   **AI Embedding**: Gemini text-embedding-004 (768dim)
-*   **Data Sources**: KIS API, Open DART, GNews, NewsAPI
-*   **Monitoring**: Advanced Ops Metrics API (Provider/Quality breakdowns)
-*   **Styling**: Tailwind CSS v4, shadcn/ui
+---
 
-## 🚀 개발 및 실행 (Getting Started)
+## 기술 스택
 
-최신 노드 환경에서 의존성을 설치하고 컴파일/실행합니다.
+| 항목 | 내용 |
+|---|---|
+| Framework | Next.js 16.1.6 (App Router) |
+| Database | Supabase (PostgreSQL + pgvector) |
+| AI 런타임 | Gemini 2.5 Flash + Flash-Lite (2-stage routing) |
+| AI 임베딩 | Gemini text-embedding-004 (768dim) |
+| 데이터 소스 | KIS API, Open DART, GNews, NewsAPI |
+| 스타일링 | Tailwind CSS v4 |
+
+---
+
+## 빠른 시작
 
 ```bash
 # 1. 의존성 설치
 npm install
 
-# 2. 로컬 개발 서버 실행
+# 2. 환경 변수 설정 (docs/setup.md 참고)
+cp .env.local.example .env.local
+
+# 3. 개발 서버 실행
 npm run dev
+# → http://localhost:3000
 
-# 3. Supabase 마이그레이션 적용 (선택)
-npx supabase db push
-
-# 4. 브라우저에서 접속
-# http://localhost:3000
+# 4. 전체 검증 (배포 전)
+npm run validate:full
 ```
 
-## 📝 프로젝트 페이즈 마일스톤
-- Phase 1~12: 대시보드 엔진 구축, KIS/DART API 실연동, 로컬 영속성 레이어 완성
-- Phase 13~15: 전종목 확장(Corp-Code 매핑), 섹터 분류체계 도입, 홈 인텔리전스 레이어 구축
-- Phase 16~18: AI Orchestration 고도화 (2-stage routing), Observability 배지 도입, 소스 기반 검증 강화
-- Phase 19~20: pgvector 기반 벡터 스토어 연동, 소스 임베딩 큐레이션, Metadata-First 렌더링 최적화
-- Phase 21: Intelligence Productization — 리서치 스냅샷(Snapshots) 영속화, 섹터 상세 리서치 워크플로우 확장
-- Phase 22: Multi-Source News Expansion — 다중 뉴스 소스 연동 및 정제된 데이터 기반 리서치 딜리버리 워크플로우 완성
-- **Phase 23 (현재): Intelligence Hardening & Snapshot Reuse — 스냅샷 재사용성 극대화, 저장된 리서치 워크플로우 통합 및 품질 캘리브레이션 완성**
+자세한 환경 변수 설정은 [docs/setup.md](docs/setup.md)를 참고하세요.
+
+---
+
+## 중요 정책 (Non-Negotiables)
+
+- 인트라데이(당일 분봉) 데이터는 의도적으로 숨겨져 있음
+- 홈 화면은 단일 `/api/home/intelligence` fetch로 동작 (카드별 개별 fetch 금지)
+- 사용자 데이터는 명시적 저장 액션에만 로컬 스토리지에 기록
+- AI 추천은 항상 출처 수, 위험 고지, disclaimer를 동반
+
+---
+
+## 개발 스크립트
+
+```bash
+npm run validate          # lint + typecheck
+npm run validate:full     # 전체 테스트 + 빌드
+npm run test:evals        # AI 평가 테스트
+npm run build             # 프로덕션 빌드
+```
+
+---
+
+## 문서
+
+**시스템 및 아키텍처**
+- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 26 — 비블로킹 섹터 페이지, 테마 시스템)
+- [setup.md](docs/setup.md) — 로컬 환경 설정
+
+**페이즈 리포트**
+- [phase-26-report.md](docs/phase-26-report.md) — 최신 (연관 종목 명확화, 테마 토글, 섹터 비블로킹)
+- [phase-26-audit.md](docs/phase-26-audit.md) — Phase 26 감사 보고서
+
+**정책 및 운영**
+- [beta-release-checklist.md](docs/beta-release-checklist.md) — 베타 릴리즈 체크리스트
+- [known-issues.md](docs/known-issues.md) — 알려진 이슈
+- [release-freeze-rules.md](docs/release-freeze-rules.md) — 릴리즈 동결 규칙
+- [ops-playbook.md](docs/ops-playbook.md) — 운영/장애 대응 가이드
+- [ops-observability.md](docs/ops-observability.md) — 모니터링 및 관찰성
+- [recommendation-guardrails.md](docs/recommendation-guardrails.md) — 추천 안전 가드레일
+- [evaluation-policy.md](docs/evaluation-policy.md) — AI 출력물 평가 정책
+
+**워크플로우 및 기능**
+- [research-workflows.md](docs/research-workflows.md) — 저장 및 리서치 워크플로우
+
+---
+
+## 페이즈 이력
+
+| 페이즈 | 핵심 내용 |
+|---|---|
+| 1–12 | 대시보드 엔진, KIS/DART 실연동, 로컬 영속성 레이어 |
+| 13–15 | 전종목 확장, 섹터 분류체계, 홈 인텔리전스 레이어 |
+| 16–18 | AI 오케스트레이션 고도화 (2-stage routing), Observability |
+| 19–20 | pgvector 연동, 소스 임베딩 큐레이션, Metadata-First 렌더링 |
+| 21 | 리서치 스냅샷 영속화, 섹터 리서치 워크플로우 |
+| 22 | 4-소스 뉴스 파이프라인 확장 |
+| 23 | 스냅샷 재사용 극대화, 관심 종목 워크플로우 |
+| 24 | Trust/Evaluation Layer, Stale-while-revalidate, Daily Workflows |
+| 25 | Beta Hardening — 버그 수정, UX 일관성, 릴리즈 동결 준비 |
+| **26 (현재)** | **Post-Beta UX 수정 — 연관 종목 명확화, 테마 토글 완성, 섹터 페이지 비블로킹** |
+
+---
+
+> 본 서비스는 투자 참고용 AI 리서치 정보를 제공하며, 투자 판단 및 책임은 전적으로 이용자 본인에게 있습니다.

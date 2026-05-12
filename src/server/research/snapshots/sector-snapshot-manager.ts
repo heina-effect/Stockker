@@ -11,6 +11,9 @@ export interface SectorResearchSnapshot {
   ai_summary: string;
   representative_symbols: string[];
   related_issues: any[];
+  leaders?: string[];
+  laggards?: string[];
+  watch_candidates?: any[];
   created_at: string;
   updated_at: string;
 }
@@ -59,7 +62,7 @@ export async function generateSectorSnapshot(sectorId: string): Promise<SectorRe
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 10);
 
-  const { summary, trendStrength } = await aiSummarizeSector(sector, sortedClusters);
+  const { summary, trendStrength, leaders, laggards, watchCandidates } = await aiSummarizeSector(sector, sortedClusters);
 
   const snapshot = {
     sector_id: sector.sectorId,
@@ -69,6 +72,9 @@ export async function generateSectorSnapshot(sectorId: string): Promise<SectorRe
     ai_summary: summary,
     representative_symbols: sector.representativeSymbols,
     related_issues: sortedClusters.slice(0, 5),
+    leaders: leaders || [],
+    laggards: laggards || [],
+    watch_candidates: watchCandidates || [],
     updated_at: new Date().toISOString()
   };
 

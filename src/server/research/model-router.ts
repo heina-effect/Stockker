@@ -58,6 +58,50 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
           _meta: { source: "db_snapshot" }
         }
       };
+    } else if (age < SNAPSHOT_TTL_MS + 24 * 60 * 60 * 1000) {
+      // Stale while revalidate: return stale immediately, regen in background
+      if (!snapshotPromiseCache.has(symbol)) {
+        const p = (async () => {
+          try {
+            const { clusters, sources } = await generateIssues(symbol);
+            const [report, sentiment] = await Promise.all([
+              aiSummarizeIssues(symbol, clusters),
+              aiAnalyzeSentiment(symbol, sources)
+            ]);
+            await saveStockSnapshot(symbol, name, report, sentiment);
+            return { report, sentiment };
+          } catch(e) {
+            console.error("Background snapshot regen error:", e);
+            throw e;
+          } finally {
+            snapshotPromiseCache.delete(symbol);
+          }
+        })();
+        snapshotPromiseCache.set(symbol, p);
+      }
+
+      return {
+        report: {
+          symbol, name, currentPrice: 0, change: 0, changeRate: 0,
+          aiHeadline: snapshot.ai_headline,
+          aiSummary: snapshot.ai_summary,
+          priceFreshness: "stale", reportFreshness: "stale",
+          lastUpdated: snapshot.updated_at,
+          _meta: { source: "db_snapshot_stale" }
+        },
+        sentiment: {
+          score: snapshot.sentiment_score,
+          label: snapshot.sentiment_label as any,
+          trend: snapshot.sentiment_trend as any,
+          positiveFactors: snapshot.positive_factors,
+          negativeFactors: snapshot.negative_factors,
+          basisSources: snapshot.basis_source_ids.map(id => ({ id } as any)),
+          freshness: "stale",
+          generatedAt: snapshot.updated_at,
+          _isFallback: snapshot.is_fallback,
+          _meta: { source: "db_snapshot_stale" }
+        }
+      };
     }
   }
 
