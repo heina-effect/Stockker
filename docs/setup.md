@@ -1,4 +1,4 @@
-# Stockker 로컬 개발 설정 가이드 (Phase 25 — Beta)
+# Stockker 로컬 개발 설정 가이드 (Phase 28)
 
 ## 1. 기술 스택
 
@@ -135,6 +135,22 @@ npm run test:search        # 검색 테스트
 npm run build
 ```
 
+Phase 28 UI/라우팅 회귀를 좁게 확인할 때:
+
+```bash
+npx vitest run \
+  src/app/theme-contract.test.ts \
+  src/components/home/dashboard-header.test.tsx \
+  src/data/sectors/taxonomy.test.ts \
+  src/server/ai/home-intelligence-normalizer.test.ts \
+  src/components/home/trend-stocks-card.test.tsx \
+  src/components/home/trend-sectors-card.test.tsx \
+  src/components/home/search-hero-card.test.tsx \
+  src/components/report/source-list-card.test.tsx \
+  src/components/report/intraday-hidden.test.ts \
+  src/server/research/detail-entry-guard.test.ts
+```
+
 ---
 
 ## 6. VS Code 개발 환경 권장 설정
@@ -175,5 +191,16 @@ TypeScript 경로 별칭 (`@/...`)은 `tsconfig.json`의 `paths` 설정으로 �
 
 - 인트라데이(당일 분봉) 차트는 의도적으로 비활성화됨 (release-freeze)
 - 로컬 스토리지 기반 사용자 저장 (서버-sync 없음)
-- Gemini API 쿼터 초과 시 자동 fallback (mock 데이터)
+- Gemini API 쿼터 초과 시 fallback 동작 (개발은 mock, production 홈 인텔리전스는 빈 배열 + meta)
 - 스냅샷 TTL: 종목 1시간, 섹터 1시간 (만료 후 stale-while-revalidate)
+
+## 9. Phase 28 수동 확인
+
+개발 서버에서 다음을 확인한다.
+
+1. 헤더의 light / dark / system 버튼이 앱 전체 배경, 카드, 텍스트, border에 적용된다.
+2. 새로고침 후 선택한 테마가 유지된다.
+3. 홈 섹터 카드는 canonical `/sectors/sec-*` 링크만 만든다.
+4. 홈 트렌딩 종목 카드는 제목뿐 아니라 카드 전체가 클릭된다.
+5. 트렌딩 종목 우측 metric은 `근거 N건`이며 AI 생성 등락률 percent가 아니다.
+6. 인트라데이 버튼은 `NEXT_PUBLIC_ENABLE_INTRADAY_CHART=1` 없이는 노출되지 않는다.

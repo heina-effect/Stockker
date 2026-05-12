@@ -1,4 +1,4 @@
-# Stockker Architecture (Phase 27 — 현실 수정, 테마 수리, 섹터 라우팅 정합성)
+# Stockker Architecture (Phase 28 — 전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 정합성)
 
 ## 1. 개요
 
@@ -86,6 +86,8 @@ SSR (server component):
 - `/api/home/intelligence` → `getHomeIntelligence()` (home-cache.ts)
 - Upstash Redis 또는 메모리 캐시 (15분 TTL)
 - 만료 시 `aiGenerateHomeIntelligence(recentSources)` 2-stage 재생성
+- 생성 결과는 `normalizeHomeIntelligence()`를 통과해 `trendingSectors`와 legacy `sectors`가 모두 canonical `SECTOR_UNIVERSE` ID만 포함하도록 보정
+- production fallback은 mock 시장 claims를 반환하지 않고 빈 배열과 fallback meta를 반환
 
 ---
 
@@ -117,12 +119,17 @@ page.tsx (Server Component)
   └─ HomeIntelligenceProvider (Client, single fetch)
        ├─ TrendIssuesCard   (issues)
        ├─ TrendStocksCard   (stocks)
-       ├─ TrendSectorsCard  (sectors)
+       ├─ TrendSectorsCard  (trendingSectors / sectors)
        └─ AIPicksCard       (aiPicks)
   └─ WatchlistAsideCard (별도 로컬 저장소 읽기)
 ```
 
 **중요**: 각 카드는 `useHomeIntelligence()` 훅으로 `HomeIntelligenceProvider`의 context를 공유합니다. 카드 내부에서 별도 fetch 금지.
+
+**홈 카드 규칙**:
+- 트렌딩 종목 카드는 카드 전체가 `/stocks/[symbol]` 링크다.
+- 트렌딩 종목 우측 metric은 AI 생성 percent가 아니라 `sourceCount` 기반 `근거 N건`이다.
+- 트렌딩 섹터 카드는 `sectorId` canonical slug만 route에 사용한다.
 
 ### 종목 상세 (`/stocks/[symbol]`)
 
@@ -180,24 +187,28 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 ---
 
-## 8. 테마 시스템 (Phase 27 수정)
+## 8. 테마 시스템 (Phase 28 수정)
 
 - **라이브러리**: `next-themes` v0.4.6
 - **전략**: `attribute="class"` (Tailwind `dark:` 클래스 기반)
 - **기본값**: `defaultTheme="system"` (OS 설정 따름)
-- **모드**: light / dark / system (3-way 순환 토글)
+- **모드**: light / dark / system (헤더의 명시적 segmented appearance control)
 - **지속성**: next-themes가 `localStorage`에 자동 저장
 - **적용 위치**: `layout.tsx`의 `ThemeProvider` — 모든 페이지에 자동 적용
-- **핵심 설정**: `globals.css`에 `@custom-variant dark (&:where(.dark, .dark *));` 추가 필수
+- **전역 표면**: `body`와 page root가 `bg-background text-foreground` 토큰을 소비
+- **핵심 설정**: `globals.css`에 light/dark token set과 `@custom-variant dark (&:where(.dark, .dark *));` 추가 필수
   - Tailwind v4는 dark: 유틸리티를 기본적으로 미디어 쿼리에 바인딩
-  - 이 한 줄이 `.dark` 클래스 기반으로 전환해 next-themes와 연동 가능하게 함
+  - `.dark` class와 token contract가 함께 있어야 전체 앱 표면이 일관되게 바뀜
+- 자세한 규칙은 `docs/theme-behavior.md` 참조
 
-## 8.5. 섹터 라우팅 정합성 (Phase 27 수정)
+## 8.5. 섹터 라우팅 정합성 (Phase 28 수정)
 
 - **진실의 원천**: `src/data/sectors/taxonomy.ts`의 `SECTOR_UNIVERSE` (7개 섹터)
 - **유효 ID 목록**: `sec-semiconductor`, `sec-battery`, `sec-biotech`, `sec-platform`, `sec-finance`, `sec-entertainment`, `sec-auto`
-- **홈 AI 출력 필터링**: `home-cache.ts`에서 AI 생성 섹터를 SECTOR_UNIVERSE 키로 필터링 — 유효하지 않은 ID는 UI에 표시되지 않음
-- **프롬프트 제약**: orchestrator의 Stage 2 프롬프트에 유효 ID 목록 명시
+- **Canonical helpers**: `SectorId`, `isSectorId`, `resolveSectorId`, `getSectorById`
+- **홈 AI 출력 정규화**: `home-intelligence-normalizer.ts`가 `sectorId/id/name/alias`를 canonical ID로 매핑하고, 유효하지 않은 섹터를 제거
+- **홈 schema**: `trendingSectors[] = { sectorId, name, whyNow, representativeSymbols, sourceCount, trendStrength, basisSourceIds? }`
+- **라우팅 규칙**: UI는 display name으로 slug를 만들지 않고 canonical `sectorId`만 `/sectors/[sectorId]`에 사용
 
 ## 8.6. 소스 날짜 의미론 (Phase 27 수정)
 

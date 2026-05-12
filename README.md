@@ -13,6 +13,8 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **추천 가드레일**: 지시적 매매 언어 차단, 출처 수 명시, disclaimer 필수 노출
 - **저장 워크플로우**: 관심 종목 / 최근 본 종목 / 북마크 리포트 — 로컬 저장, 명시적 저장 전용
 - **섹터 심층 분석**: 주도주 / 소외주 / 관찰 후보 포함한 섹터 리서치
+- **정규 섹터 라우팅**: 홈 섹터 카드는 `SECTOR_UNIVERSE`의 canonical ID만 사용
+- **전역 테마 시스템**: light / dark / system 모드가 앱 표면 전체에 토큰 기반으로 적용
 
 ---
 
@@ -61,6 +63,7 @@ npm run validate:full
 - 홈 화면은 단일 `/api/home/intelligence` fetch로 동작 (카드별 개별 fetch 금지)
 - 사용자 데이터는 명시적 저장 액션에만 로컬 스토리지에 기록
 - AI 추천은 항상 출처 수, 위험 고지, disclaimer를 동반
+- production fallback은 mock 종목/섹터 claims를 노출하지 않음
 
 ---
 
@@ -78,11 +81,14 @@ npm run build             # 프로덕션 빌드
 ## 문서
 
 **시스템 및 아키텍처**
-- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 26 — 비블로킹 섹터 페이지, 테마 시스템)
+- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 28 — 전역 테마, 정규 섹터 라우팅)
 - [setup.md](docs/setup.md) — 로컬 환경 설정
+- [theme-behavior.md](docs/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-27-report.md](docs/phase-27-report.md) — 최신 (섹터 404 제거, 테마 수리, 날짜 의미론, 섹터 UX)
+- [phase-28-report.md](docs/phase-28-report.md) — 최신 (전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 UX)
+- [phase-28-audit.md](docs/phase-28-audit.md) — Phase 28 감사 보고서
+- [phase-27-report.md](docs/phase-27-report.md) — Phase 27 (섹터 404 제거, 테마 수리, 날짜 의미론, 섹터 UX)
 - [phase-27-audit.md](docs/phase-27-audit.md) — Phase 27 감사 보고서
 - [phase-26-report.md](docs/phase-26-report.md) — Phase 26 (연관 종목 명확화, 테마 완성, 섹터 비블로킹)
 - [phase-26-audit.md](docs/phase-26-audit.md) — Phase 26 감사 보고서
@@ -115,7 +121,8 @@ npm run build             # 프로덕션 빌드
 | 24 | Trust/Evaluation Layer, Stale-while-revalidate, Daily Workflows |
 | 25 | Beta Hardening — 버그 수정, UX 일관성, 릴리즈 동결 준비 |
 | 26 | Post-Beta UX 수정 — 연관 종목 명확화, 테마 토글 완성, 섹터 페이지 비블로킹 |
-| **27 (현재)** | **현실 수정 — 섹터 404 제거, 테마 실제 적용, 날짜 의미론, 섹터 UX 단순화** |
+| 27 | 현실 수정 — 섹터 404 제거, 테마 실제 적용, 날짜 의미론, 섹터 UX 단순화 |
+| **28 (현재)** | **런타임/문서 재정합 — 전역 테마 토큰, canonical sector normalization, full-card home links** |
 
 ---
 
