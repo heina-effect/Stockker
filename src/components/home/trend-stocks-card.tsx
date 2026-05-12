@@ -39,20 +39,27 @@ export function TrendStocksCard() {
           <div className="text-sm text-slate-400 italic">현재 주목받는 종목이 없습니다.</div>
         ) : (
           trending.map(stock => (
-            <div key={stock.symbol} className="flex flex-col bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 transition-colors">
+            <Link
+              key={stock.symbol}
+              href={`/stocks/${stock.symbol}`}
+              aria-label={`${stock.name} 리포트 보기`}
+              className="flex flex-col bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               <div className="flex items-center justify-between mb-1">
-                <Link href={`/stocks/${stock.symbol}`} className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline">
+                <span className="font-bold text-sm text-slate-800 dark:text-zinc-200">
                   {stock.name}
-                </Link>
-                <span className={`text-xs font-bold ${stock.changeRate > 0 ? "text-red-500" : stock.changeRate < 0 ? "text-blue-500" : "text-slate-500"}`}>
-                  {stock.changeRate > 0 ? "+" : ""}{stock.changeRate}%
                 </span>
+                {stock.sourceCount ? (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300">
+                    근거 {stock.sourceCount}건
+                  </span>
+                ) : null}
               </div>
               <span className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed mb-1">{stock.reason}</span>
               {stock.sourceCount && (
                 <span className="text-[10px] text-slate-400 mt-1">관련 출처 {stock.sourceCount}건 기반</span>
               )}
-            </div>
+            </Link>
           ))
         )}
       </div>

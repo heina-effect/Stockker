@@ -3,7 +3,7 @@ import { WatchlistResearchBoard } from "@/components/workflows/watchlist-researc
 
 export default function WatchlistResearchPage() {
   return (
-    <div className="min-h-screen bg-[#F2F4F6] dark:bg-zinc-950">
+    <div className="min-h-screen bg-background text-foreground">
       <DashboardHeader />
       
       <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-5xl">

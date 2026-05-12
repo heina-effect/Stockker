@@ -73,3 +73,31 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     iconKey: "car"
   }
 };
+
+export type SectorId = keyof typeof SECTOR_UNIVERSE;
+
+function normalizeSectorLookup(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, "").replace(/[·ㆍ.]/g, "");
+}
+
+export function isSectorId(value: string | undefined | null): value is SectorId {
+  return Boolean(value && Object.prototype.hasOwnProperty.call(SECTOR_UNIVERSE, value));
+}
+
+export function getSectorById(value: string | undefined | null): SectorTheme | null {
+  if (!isSectorId(value)) return null;
+  return SECTOR_UNIVERSE[value];
+}
+
+export function resolveSectorId(value: string | undefined | null): SectorId | null {
+  if (!value) return null;
+  if (isSectorId(value)) return value;
+
+  const normalized = normalizeSectorLookup(value);
+  for (const [sectorId, sector] of Object.entries(SECTOR_UNIVERSE)) {
+    const candidates = [sector.name, sector.sectorId, ...sector.aliases].map(normalizeSectorLookup);
+    if (candidates.includes(normalized)) return sectorId as SectorId;
+  }
+
+  return null;
+}

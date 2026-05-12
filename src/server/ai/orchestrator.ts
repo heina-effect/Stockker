@@ -262,21 +262,29 @@ export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{
   }
 
   try {
-    const prompt = `You are a Korean stock analyst. Create a summary for the "${sector.name}" sector.
+    const prompt = `You are a Korean stock analyst. Create a source-grounded summary for the "${sector.name}" sector.
 
 Key issues found across representative stocks:
 ${JSON.stringify(clusters.map(c => ({ title: c.title, summary: c.summary })), null, 2)}
 
+Canonical member symbols and names:
+${JSON.stringify((sector.memberSymbols || []).map((symbol: string) => ({ symbol, name: getServerStockName(symbol) })))}
+
 Output JSON:
 {
-  "summary": "<2-3 sentences, Korean, grounded in issues above, explaining the sector trend>",
+  "summary": "<2-3 sentences, Korean, grounded in issues above, explaining why this sector matters now and what to watch next>",
   "trendStrength": <number 0-100, 100 is extremely strong positive momentum, 50 is neutral, 0 is crash>,
-  "leaders": ["<종목명 1>", "<종목명 2>"],
-  "laggards": ["<종목명 1>"],
+  "leaders": ["<member stock name or symbol only from canonical members above>"],
+  "laggards": ["<member stock name or symbol only from canonical members above>"],
   "watchCandidates": [
     { "name": "<종목명>", "reason": "<관찰 이유, Korean, grounded>" }
   ]
-}`;
+}
+
+Rules:
+- Base every claim only on the provided issues.
+- If evidence is weak, say what is unclear instead of inventing a trend.
+- leaders, laggards, and watchCandidates must be chosen only from the canonical member list above.`;
 
     const parsed = await geminiJSON<any>(GEMINI_FLASH, prompt);
     return {
@@ -316,16 +324,24 @@ export async function aiGenerateHomeIntelligence(recentSources?: any[]) {
     const s1Prompt = `Korean stock market intelligence extraction. Today's date: ${new Date().toLocaleDateString("ko-KR")}.
 
 ${sourceContext}Generate raw candidate data for a Korean stock market home dashboard.
-Be realistic and specific to current market conditions.
+Use only source-grounded signals when recent curated sources are provided.
 
 Output JSON:
 {
   "trendingSymbols": [{"symbol": "005930", "name": "삼성전자", "keywords": ["HBM", "AI"]}],
-  "trendingThemes": ["반도체", "2차전지", "방산"],
   "keyIssueHeadlines": ["headline 1", "headline 2", "headline 3"],
-  "sectorMomentum": [{"sectorId": "sec-semiconductor", "name": "반도체", "strength": 90}]
+  "trendingSectors": [
+    {
+      "sectorId": "<one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>",
+      "name": "<canonical Korean sector name>",
+      "whyNow": "<why this sector matters now, source-grounded>",
+      "representativeSymbols": ["<canonical member symbol>"],
+      "sourceCount": <integer>,
+      "trendStrength": <number 0-100>
+    }
+  ]
 }
-Limit: 4 symbols, 3 themes, 3 headlines, 3 sectors.`;
+Limit: 4 symbols, 3 headlines, 4 sectors.`;
 
     candidates = await geminiJSON<any>(GEMINI_FLASH_LITE, s1Prompt);
   } catch (e) {
@@ -350,10 +366,18 @@ Generate final home intelligence JSON with user-facing copy (all Korean):
     { "id": "1", "title": "<Korean headline>", "description": "<1-2 sentences explaining WHY it matters based on sources>", "trendStrength": <70-99>, "timestamp": "${new Date().toISOString()}" }
   ],
   "stocks": [
-    { "symbol": "<6-digit KRX>", "name": "<Korean name>", "reason": "<why trending, 1 sentence source-backed>", "trendStrength": <70-99>, "changeRate": <number>, "price": <number> }
+    { "symbol": "<6-digit KRX>", "name": "<Korean name>", "reason": "<why trending, 1 sentence source-backed>", "trendStrength": <70-99>, "sourceCount": <integer count of provided sources supporting this stock>, "price": <number or 0> }
   ],
-  "sectors": [
-    { "id": "<MUST be one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>", "name": "<Korean>", "description": "<why trending, source-backed>", "trendStrength": <70-99>, "representativeSymbols": ["<sym1>", "<sym2>"] }
+  "trendingSectors": [
+    {
+      "sectorId": "<MUST be one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>",
+      "name": "<canonical Korean sector name>",
+      "whyNow": "<why trending now, source-backed, not generic>",
+      "trendStrength": <70-99>,
+      "sourceCount": <integer count of provided sources supporting this sector>,
+      "representativeSymbols": ["<canonical member sym1>", "<canonical member sym2>"],
+      "basisSourceIds": ["<source id if available>"]
+    }
   ],
   "aiPicks": [
     {
@@ -366,7 +390,13 @@ Generate final home intelligence JSON with user-facing copy (all Korean):
     }
   ]
 }
-Limit: 3 issues, 4 stocks, 3 sectors, 2 picks. Raw JSON only.`;
+Limit: 3 issues, 4 stocks, 4 sectors, 2 picks. Raw JSON only.
+
+Sector rules:
+- Use canonical sector IDs only from the allowed list.
+- Never invent route slugs from display names.
+- If a trend maps to no allowed sector, omit it.
+- Prefer richer sector coverage when sources support it.`;
 
     const parsed = await geminiJSON<any>(GEMINI_FLASH, s2Prompt);
     const latencyMs = Date.now() - startTime;
