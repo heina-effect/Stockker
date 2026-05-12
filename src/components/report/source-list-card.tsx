@@ -5,29 +5,60 @@ import type { SourceItem } from "@/types/research";
 import { Link2, Clock, CheckCircle2, Newspaper, FileText, ChevronDown, ChevronUp } from "lucide-react";
 
 const QUALITY_BADGE: Record<string, { label: string; cls: string }> = {
-  high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100" },
-  medium: { label: "근거 보통", cls: "text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-100" },
-  low:    { label: "근거 부족", cls: "text-slate-500 bg-slate-100 dark:bg-zinc-800 border-slate-200" },
+  high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30" },
+  medium: { label: "근거 보통", cls: "text-amber-600 bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/30" },
+  low:    { label: "근거 부족", cls: "text-slate-500 bg-slate-100 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700" },
 };
 
 const PAGE_SIZE = 5;
 
+/**
+ * 소스의 실제 발행/공시 날짜를 반환한다.
+ * generatedAt = 원본 날짜 (뉴스 발행일 또는 DART 공시 접수일 rcept_dt)
+ * collectedAt = Stockker 수집 시각 (항상 현재에 가까움, 표시에 부적합)
+ */
+function getSourceDate(src: SourceItem): Date | null {
+  const raw = src.generatedAt || src.collectedAt;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * 소스 타입에 따른 날짜 레이블 반환
+ * 공시: "공시일", 뉴스: "발행일"
+ */
+function getDateLabel(src: SourceItem): string {
+  return src.sourceType === "disclosure" ? "공시일" : "발행일";
+}
+
+function formatSourceDate(date: Date): string {
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) {
+    return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  if (diffDays < 7) {
+    return date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+  }
+  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
 export function SourceListCard({ symbol }: { symbol: string }) {
   const [sources, setSources] = useState<SourceItem[]>([]);
-  const [generatedAt, setGeneratedAt] = useState<string>("");
+  const [sourceCount, setSourceCount] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Initial load from /issues endpoint (provides real-time curated sources)
   useEffect(() => {
     fetch(`/api/stocks/${symbol}/issues`)
       .then(r => r.json())
       .then(d => {
         if (d.ok && d.sources) {
           setSources(d.sources.slice(0, PAGE_SIZE));
+          setSourceCount(d.sources.length);
           setHasMore(d.sources.length > PAGE_SIZE);
-          setGeneratedAt(new Date().toISOString());
         }
       })
       .catch(() => {});
@@ -58,20 +89,36 @@ export function SourceListCard({ symbol }: { symbol: string }) {
 
   if (sources.length === 0) return null;
 
+  const disclosureCount = sources.filter(s => s.sourceType === "disclosure").length;
+  const newsCount = sources.filter(s => s.sourceType === "news").length;
+
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-100 dark:border-zinc-800">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-          AI 분석 출처 데이터
-          <CheckCircle2 className="w-4 h-4 text-green-500" />
+          AI 분석 근거 소스
+          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
         </h3>
-        {generatedAt && (
-          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            수집: {new Date(generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        )}
+        <span className="text-[10px] text-slate-400 dark:text-zinc-500">
+          {sourceCount > 0 ? `총 ${sourceCount}건` : ""}
+        </span>
       </div>
+
+      {/* 소스 유형 요약 */}
+      {(disclosureCount > 0 || newsCount > 0) && (
+        <div className="flex gap-2 mb-4">
+          {newsCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded-full">
+              <Newspaper className="w-2.5 h-2.5" />뉴스 {newsCount}건
+            </span>
+          )}
+          {disclosureCount > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
+              <FileText className="w-2.5 h-2.5" />공시 {disclosureCount}건
+            </span>
+          )}
+        </div>
+      )}
 
       <ul className="flex flex-col gap-3">
         {sources.map(src => {
@@ -79,6 +126,8 @@ export function SourceListCard({ symbol }: { symbol: string }) {
           const badge = qLabel ? QUALITY_BADGE[qLabel] : null;
           const strategyTags: string[] = (src as any)._strategyTags ?? [];
           const confirmCount: number = (src as any)._crossConfirmCount ?? 0;
+          const sourceDate = getSourceDate(src);
+          const dateLabel = getDateLabel(src);
 
           return (
             <li key={src.id} className="flex flex-col gap-1 p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
@@ -86,11 +135,11 @@ export function SourceListCard({ symbol }: { symbol: string }) {
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <div className="flex items-center gap-1.5">
                   {src.sourceType === "disclosure" ? (
-                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-600 border border-teal-100 uppercase">
+                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 border border-teal-100 dark:border-teal-900/40 uppercase">
                       <FileText className="w-2.5 h-2.5" />공시
                     </span>
                   ) : (
-                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 border border-indigo-100 uppercase">
+                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 uppercase">
                       <Newspaper className="w-2.5 h-2.5" />뉴스
                     </span>
                   )}
@@ -98,22 +147,19 @@ export function SourceListCard({ symbol }: { symbol: string }) {
                     <span className={`text-[9px] px-1.5 py-0.5 rounded border ${badge.cls}`}>{badge.label}</span>
                   )}
                   {confirmCount > 1 && (
-                    <span className="text-[9px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1 rounded">
+                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1 rounded">
                       {confirmCount}건 확인
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] text-slate-400">
-                  {src.generatedAt 
-                    ? new Date(src.generatedAt).toLocaleString("ko-KR", { 
-                        month: "2-digit", 
-                        day: "2-digit", 
-                        hour: "2-digit", 
-                        minute: "2-digit",
-                        hour12: false 
-                      })
-                    : new Date(src.collectedAt).toLocaleDateString("ko-KR")}
-                </span>
+                {/* 실제 공시일/발행일 표시 (수집 시각 아님) */}
+                {sourceDate && (
+                  <span className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500">
+                    <Clock className="w-2.5 h-2.5" />
+                    <span className="text-slate-300 dark:text-zinc-600">{dateLabel}</span>
+                    {formatSourceDate(sourceDate)}
+                  </span>
+                )}
               </div>
 
               {/* Title */}
@@ -128,12 +174,12 @@ export function SourceListCard({ symbol }: { symbol: string }) {
 
               {/* Footer row */}
               <div className="flex items-center justify-between mt-1">
-                <span className="text-[10px] text-slate-500">{src.provider}</span>
+                <span className="text-[10px] text-slate-500 dark:text-zinc-500">{src.provider}</span>
                 <div className="flex items-center gap-1.5">
                   {strategyTags.slice(0, 2).map(tag => (
-                    <span key={tag} className="text-[8px] text-violet-500 bg-violet-50 dark:bg-violet-900/20 px-1 rounded">{tag}</span>
+                    <span key={tag} className="text-[8px] text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-1 rounded">{tag}</span>
                   ))}
-                  {src.url && <Link2 className="w-3 h-3 text-slate-300" />}
+                  {src.url && <Link2 className="w-3 h-3 text-slate-300 dark:text-zinc-600" />}
                 </div>
               </div>
             </li>
@@ -141,12 +187,11 @@ export function SourceListCard({ symbol }: { symbol: string }) {
         })}
       </ul>
 
-      {/* Pagination: 더 보기 */}
       {hasMore && (
         <button
           onClick={loadMore}
           disabled={loadingMore}
-          className="w-full mt-4 flex items-center justify-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 transition-colors disabled:opacity-50"
+          className="w-full mt-4 flex items-center justify-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors disabled:opacity-50"
         >
           {loadingMore ? (
             <span className="animate-pulse">불러오는 중...</span>
@@ -161,13 +206,13 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       {!hasMore && sources.length > PAGE_SIZE && (
         <button
           onClick={() => { setSources(s => s.slice(0, PAGE_SIZE)); setPage(1); setHasMore(true); }}
-          className="w-full mt-4 flex items-center justify-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors"
+          className="w-full mt-4 flex items-center justify-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
         >
           <ChevronUp className="w-3.5 h-3.5" />접기
         </button>
       )}
 
-      <p className="mt-4 text-[10px] text-slate-400 leading-relaxed">
+      <p className="mt-4 text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">
         실제 뉴스 및 Open DART 공시 데이터를 기반으로 AI 선별 후 분석합니다. 환각(Hallucination) 현상이 일부 있을 수 있습니다.
       </p>
     </div>

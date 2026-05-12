@@ -3,6 +3,9 @@
  * Implements: TTL cache + in-flight dedupe + stale-while-revalidate
  */
 import { aiGenerateHomeIntelligence } from "./orchestrator";
+import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+
+const VALID_SECTOR_IDS = new Set(Object.keys(SECTOR_UNIVERSE));
 
 const TTL_MS = 15 * 60 * 1000;          // 15 minutes fresh
 const STALE_WINDOW_MS = 5 * 60 * 1000;  // serve stale for up to 5 extra minutes while refreshing
@@ -49,6 +52,17 @@ async function refreshCache(): Promise<any> {
     const fresh = await aiGenerateHomeIntelligence(recentSources);
     // Only cache if there is meaningful content (not just a meta error shell)
     if (fresh && (fresh.issues || fresh.stocks || fresh.sectors)) {
+      // AI가 생성한 섹터 ID를 SECTOR_UNIVERSE 유효 키로 필터링 — 404 방지
+      if (fresh.sectors && Array.isArray(fresh.sectors)) {
+        fresh.sectors = fresh.sectors.filter((s: any) => s?.id && VALID_SECTOR_IDS.has(s.id));
+      }
+      // aiPicks 중 type="sector"인 항목도 유효 섹터 ID만 허용
+      if (fresh.aiPicks && Array.isArray(fresh.aiPicks)) {
+        fresh.aiPicks = fresh.aiPicks.filter((p: any) => {
+          if (p?.type === "sector") return p?.targetId && VALID_SECTOR_IDS.has(p.targetId);
+          return true; // stock 타입은 그대로 통과
+        });
+      }
       cachedIntelligence = fresh;
       lastFetched = Date.now();
       return { ...fresh, _cacheState: "miss" };

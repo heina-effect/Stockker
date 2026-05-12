@@ -13,6 +13,11 @@ import { GoogleGenAI } from "@google/genai";
 import type { IssueCluster, SourceItem, SentimentScore, StockReportSummary } from "@/types/research";
 import { getServerStockName } from "@/lib/stocks/search-master";
 import { mockReportSummary, mockSentiment } from "../research/mock-data";
+import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+
+const VALID_SECTOR_IDS_FOR_PROMPT = Object.entries(SECTOR_UNIVERSE)
+  .map(([id, s]) => `"${id}" (${s.name})`)
+  .join(", ");
 
 // ─── Gemini Client ────────────────────────────────────────────────────────────
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
@@ -348,7 +353,7 @@ Generate final home intelligence JSON with user-facing copy (all Korean):
     { "symbol": "<6-digit KRX>", "name": "<Korean name>", "reason": "<why trending, 1 sentence source-backed>", "trendStrength": <70-99>, "changeRate": <number>, "price": <number> }
   ],
   "sectors": [
-    { "id": "<sec-id>", "name": "<Korean>", "description": "<why trending, source-backed>", "trendStrength": <70-99>, "representativeSymbols": ["<sym1>", "<sym2>"] }
+    { "id": "<MUST be one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>", "name": "<Korean>", "description": "<why trending, source-backed>", "trendStrength": <70-99>, "representativeSymbols": ["<sym1>", "<sym2>"] }
   ],
   "aiPicks": [
     {

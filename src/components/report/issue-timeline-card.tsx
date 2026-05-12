@@ -4,6 +4,16 @@ import { useEffect, useState } from "react";
 import type { IssueCluster } from "@/types/research";
 import { Clock, Newspaper, FileText } from "lucide-react";
 
+function formatClusterDate(ts: string): string {
+  const date = new Date(ts);
+  if (isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (diffDays < 7) return date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
 export function IssueTimelineCard({ symbol }: { symbol: string }) {
   const [clusters, setClusters] = useState<IssueCluster[] | null>(null);
 
@@ -70,7 +80,7 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs text-slate-400 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {new Date(cluster.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                {formatClusterDate(cluster.timestamp)}
               </span>
               <span className="text-[10px] text-slate-400">
                 관련 출처 {cluster.sourceCount}건

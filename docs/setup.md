@@ -76,14 +76,36 @@ npm run dev:reset   # .next 캐시 삭제 + 포트 강제 해제 후 재시작
 
 ## 4. Supabase 마이그레이션 적용
 
-DB 마이그레이션이 필요한 경우 (신규 설치 또는 스키마 변경 후):
+신규 설치 또는 스키마 변경 후 아래 순서로 실행합니다.
+
+### 4-1. 개인 액세스 토큰(PAT) 발급
+
+[supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) → **New Token** 생성
+
+### 4-2. 프로젝트 연결 및 마이그레이션 적용
 
 ```bash
-# Supabase CLI 설치 후
-npx supabase db push
+# 프로젝트 연결 (최초 1회)
+SUPABASE_ACCESS_TOKEN=sbp_xxxx npx supabase link --project-ref <your-project-ref>
 
-# 또는 수동 마이그레이션
-node scripts/migrate-supabase.mjs
+# 미적용 마이그레이션 전체 push
+SUPABASE_ACCESS_TOKEN=sbp_xxxx npx supabase db push
+
+# 현재 적용 이력 확인
+SUPABASE_ACCESS_TOKEN=sbp_xxxx npx supabase migration list
+```
+
+> `<your-project-ref>` 는 Supabase 프로젝트 URL의 서브도메인입니다.  
+> 예: `https://abcdefgh.supabase.co` → `--project-ref abcdefgh`
+
+### 4-3. 마이그레이션 이력 복구 (기존 DB에 수동 적용한 경우)
+
+이미 수동으로 적용된 마이그레이션은 `repair` 로 이력만 등록합니다.
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_xxxx npx supabase migration repair --status applied 001
+SUPABASE_ACCESS_TOKEN=sbp_xxxx npx supabase migration repair --status applied 002
+# 이후 db push 하면 미적용 마이그레이션만 실행됨
 ```
 
 마이그레이션 파일은 `supabase/migrations/` 폴더에 있습니다.

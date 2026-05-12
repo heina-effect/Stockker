@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Tailwind v4: next-themes가 추가하는 .dark 클래스에 dark: 유틸리티가 반응하도록 설정 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

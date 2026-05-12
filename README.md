@@ -38,15 +38,20 @@ npm install
 # 2. 환경 변수 설정 (docs/setup.md 참고)
 cp .env.local.example .env.local
 
-# 3. 개발 서버 실행
+# 3. Supabase DB 마이그레이션 적용 (신규 설치 시 필수)
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+
+# 4. 개발 서버 실행
 npm run dev
 # → http://localhost:3000
 
-# 4. 전체 검증 (배포 전)
+# 5. 전체 검증 (배포 전)
 npm run validate:full
 ```
 
-자세한 환경 변수 설정은 [docs/setup.md](docs/setup.md)를 참고하세요.
+> `supabase link`는 [Supabase 개인 액세스 토큰(PAT)](https://supabase.com/dashboard/account/tokens)이 필요합니다.  
+> 자세한 환경 변수 및 마이그레이션 설정은 [docs/setup.md](docs/setup.md)를 참고하세요.
 
 ---
 
@@ -77,7 +82,9 @@ npm run build             # 프로덕션 빌드
 - [setup.md](docs/setup.md) — 로컬 환경 설정
 
 **페이즈 리포트**
-- [phase-26-report.md](docs/phase-26-report.md) — 최신 (연관 종목 명확화, 테마 토글, 섹터 비블로킹)
+- [phase-27-report.md](docs/phase-27-report.md) — 최신 (섹터 404 제거, 테마 수리, 날짜 의미론, 섹터 UX)
+- [phase-27-audit.md](docs/phase-27-audit.md) — Phase 27 감사 보고서
+- [phase-26-report.md](docs/phase-26-report.md) — Phase 26 (연관 종목 명확화, 테마 완성, 섹터 비블로킹)
 - [phase-26-audit.md](docs/phase-26-audit.md) — Phase 26 감사 보고서
 
 **정책 및 운영**
@@ -107,7 +114,8 @@ npm run build             # 프로덕션 빌드
 | 23 | 스냅샷 재사용 극대화, 관심 종목 워크플로우 |
 | 24 | Trust/Evaluation Layer, Stale-while-revalidate, Daily Workflows |
 | 25 | Beta Hardening — 버그 수정, UX 일관성, 릴리즈 동결 준비 |
-| **26 (현재)** | **Post-Beta UX 수정 — 연관 종목 명확화, 테마 토글 완성, 섹터 페이지 비블로킹** |
+| 26 | Post-Beta UX 수정 — 연관 종목 명확화, 테마 토글 완성, 섹터 페이지 비블로킹 |
+| **27 (현재)** | **현실 수정 — 섹터 404 제거, 테마 실제 적용, 날짜 의미론, 섹터 UX 단순화** |
 
 ---
 

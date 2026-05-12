@@ -1,6 +1,13 @@
 import { SourceItem } from "@/types/research";
 import { getServerStockName } from "@/lib/stocks/search-master";
 
+function stableId(prefix: string, symbol: string, title: string): string {
+  const key = `${symbol}::${title}`;
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) h = (((h << 5) + h) ^ key.charCodeAt(i)) >>> 0;
+  return `${prefix}-${symbol}-${h.toString(36)}`;
+}
+
 export interface NewsApiProviderConfig {
   symbol: string;
   limit?: number;
@@ -49,7 +56,7 @@ export async function fetchNewsApi(config: NewsApiProviderConfig): Promise<Sourc
       .map((article: any, idx: number) => {
         const providerName = article.source?.name || "NewsAPI";
         return {
-          id: `newsapi-${config.symbol}-${Date.now()}-${idx}`,
+          id: stableId("newsapi", config.symbol, article.title),
           sourceType: "news",
           title: article.title,
           snippet: article.description,

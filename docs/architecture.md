@@ -1,4 +1,4 @@
-# Stockker Architecture (Phase 26 — Post-Beta UX Corrections)
+# Stockker Architecture (Phase 27 — 현실 수정, 테마 수리, 섹터 라우팅 정합성)
 
 ## 1. 개요
 
@@ -180,14 +180,31 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 ---
 
-## 8. 테마 시스템 (Phase 26)
+## 8. 테마 시스템 (Phase 27 수정)
 
 - **라이브러리**: `next-themes` v0.4.6
-- **전략**: `attribute="class"` (Tailwind `dark:` 클래스)
+- **전략**: `attribute="class"` (Tailwind `dark:` 클래스 기반)
 - **기본값**: `defaultTheme="system"` (OS 설정 따름)
 - **모드**: light / dark / system (3-way 순환 토글)
 - **지속성**: next-themes가 `localStorage`에 자동 저장
 - **적용 위치**: `layout.tsx`의 `ThemeProvider` — 모든 페이지에 자동 적용
+- **핵심 설정**: `globals.css`에 `@custom-variant dark (&:where(.dark, .dark *));` 추가 필수
+  - Tailwind v4는 dark: 유틸리티를 기본적으로 미디어 쿼리에 바인딩
+  - 이 한 줄이 `.dark` 클래스 기반으로 전환해 next-themes와 연동 가능하게 함
+
+## 8.5. 섹터 라우팅 정합성 (Phase 27 수정)
+
+- **진실의 원천**: `src/data/sectors/taxonomy.ts`의 `SECTOR_UNIVERSE` (7개 섹터)
+- **유효 ID 목록**: `sec-semiconductor`, `sec-battery`, `sec-biotech`, `sec-platform`, `sec-finance`, `sec-entertainment`, `sec-auto`
+- **홈 AI 출력 필터링**: `home-cache.ts`에서 AI 생성 섹터를 SECTOR_UNIVERSE 키로 필터링 — 유효하지 않은 ID는 UI에 표시되지 않음
+- **프롬프트 제약**: orchestrator의 Stage 2 프롬프트에 유효 ID 목록 명시
+
+## 8.6. 소스 날짜 의미론 (Phase 27 수정)
+
+| 필드 | 의미 | UI 표시 |
+|------|------|---------|
+| `generatedAt` | 원본 날짜 (공시 접수일 rcept_dt / 뉴스 발행일) | ✅ "공시일" / "발행일" 레이블로 표시 |
+| `collectedAt` | Stockker API 수집 시각 (항상 현재에 가까움) | ❌ UI 표시 안 함 |
 
 ---
 

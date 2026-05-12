@@ -158,7 +158,9 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
     if (recentSources && recentSources.length >= 3) {
       console.log(`[AI Router] Using ${recentSources.length} DB-cached curated sources for ${symbol}`);
       const clusters = rankAndCluster(recentSources);
-      return { clusters, sources: recentSources };
+      // EmbeddedSource has publishedAt; SourceItem expects generatedAt — bridge the gap here
+      const sources = recentSources.map(s => ({ ...s, generatedAt: s.publishedAt })) as any[];
+      return { clusters, sources };
     }
 
     // ── Step 1: Fetch raw sources ────────────────────────────────────────────

@@ -3,6 +3,9 @@ import { Sparkles, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
+import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+
+const VALID_SECTOR_IDS = new Set(Object.keys(SECTOR_UNIVERSE));
 
 const CATEGORY_LABEL: Record<string, string> = {
   event_driven: "이벤트 주도",
@@ -49,7 +52,11 @@ export function AIPicksCard() {
         ) : picks.length === 0 ? (
           <div className="text-sm text-slate-400 italic">현재 포착된 후보가 없습니다.</div>
         ) : (
-          picks.map(pick => (
+          picks.map(pick => {
+            // 섹터 타입인데 유효하지 않은 섹터 ID면 렌더링 제외 (404 방지)
+            if (pick.type === "sector" && !VALID_SECTOR_IDS.has(pick.targetId)) return null;
+            const href = pick.type === "sector" ? `/sectors/${pick.targetId}` : `/stocks/${pick.targetId}`;
+            return (
             <div key={pick.id} className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-indigo-50 dark:border-indigo-900/20 shadow-sm">
               <div className="flex flex-wrap items-center gap-1.5 mb-2">
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 uppercase">
@@ -61,7 +68,7 @@ export function AIPicksCard() {
                   </span>
                 )}
                 <Link
-                  href={pick.type === "sector" ? `/sectors/${pick.targetId}` : `/stocks/${pick.targetId}`}
+                  href={href}
                   className="font-bold text-sm text-slate-800 dark:text-zinc-200 hover:underline ml-0.5"
                 >
                   {pick.name}
@@ -86,7 +93,8 @@ export function AIPicksCard() {
                 {pick.disclaimer}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

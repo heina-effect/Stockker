@@ -1,6 +1,14 @@
 import { SourceItem } from "@/types/research";
 import { getServerStockName } from "@/lib/stocks/search-master";
 
+// djb2 hash → base36 string, deterministic per (symbol, title)
+function stableId(prefix: string, symbol: string, title: string): string {
+  const key = `${symbol}::${title}`;
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) h = (((h << 5) + h) ^ key.charCodeAt(i)) >>> 0;
+  return `${prefix}-${symbol}-${h.toString(36)}`;
+}
+
 export interface GNewsProviderConfig {
   symbol: string;
   limit?: number;
@@ -44,7 +52,7 @@ export async function fetchGNews(config: GNewsProviderConfig): Promise<SourceIte
     return data.articles.map((article: any, idx: number) => {
       const providerName = article.source?.name || "GNews";
       return {
-        id: `gnews-${config.symbol}-${Date.now()}-${idx}`,
+        id: stableId("gnews", config.symbol, article.title),
         sourceType: "news",
         title: article.title,
         snippet: article.description,
