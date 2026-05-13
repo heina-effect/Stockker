@@ -255,6 +255,102 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "name": "우리금융지주",
     "market": "KOSPI",
     "sector": "금융"
+  },
+  "012450": {
+    "symbol": "012450",
+    "name": "한화에어로스페이스",
+    "market": "KOSPI",
+    "sector": "방산"
+  },
+  "073120": {
+    "symbol": "073120",
+    "name": "LIG넥스원",
+    "market": "KOSPI",
+    "sector": "방산"
+  },
+  "272210": {
+    "symbol": "272210",
+    "name": "한화시스템",
+    "market": "KOSPI",
+    "sector": "방산"
+  },
+  "064350": {
+    "symbol": "064350",
+    "name": "현대로템",
+    "market": "KOSPI",
+    "sector": "방산"
+  },
+  "267260": {
+    "symbol": "267260",
+    "name": "HD현대일렉트릭",
+    "market": "KOSPI",
+    "sector": "전력"
+  },
+  "010120": {
+    "symbol": "010120",
+    "name": "LS ELECTRIC",
+    "market": "KOSPI",
+    "sector": "전력"
+  },
+  "000880": {
+    "symbol": "000880",
+    "name": "LS",
+    "market": "KOSPI",
+    "sector": "전력"
+  },
+  "000100": {
+    "symbol": "000100",
+    "name": "유한양행",
+    "market": "KOSPI",
+    "sector": "제약"
+  },
+  "128940": {
+    "symbol": "128940",
+    "name": "한미약품",
+    "market": "KOSPI",
+    "sector": "제약"
+  },
+  "419080": {
+    "symbol": "419080",
+    "name": "펩트론",
+    "market": "KOSDAQ",
+    "sector": "바이오"
+  },
+  "277810": {
+    "symbol": "277810",
+    "name": "레인보우로보틱스",
+    "market": "KOSPI",
+    "sector": "로봇"
+  },
+  "454910": {
+    "symbol": "454910",
+    "name": "두산로보틱스",
+    "market": "KOSDAQ",
+    "sector": "로봇"
+  },
+  "054060": {
+    "symbol": "054060",
+    "name": "뉴로메카",
+    "market": "KOSDAQ",
+    "sector": "로봇"
+  },
+  "009150": {
+    "symbol": "009150",
+    "name": "삼성전기",
+    "market": "KOSPI",
+    "sector": "소재"
+  },
+  "033640": {
+    "symbol": "033640",
+    "name": "SKC",
+    "market": "KOSPI",
+    "sector": "소재"
+  },
+  "222420": {
+    "symbol": "222420",
+    "name": "이오테크닉스",
+    "market": "KOSDAQ",
+    "sector": "장비"
   }
 };
 

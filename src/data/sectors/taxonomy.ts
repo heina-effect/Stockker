@@ -71,6 +71,51 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     memberSymbols: ["005380", "000270"],
     representativeSymbols: ["005380", "000270"],
     iconKey: "car"
+  },
+  "sec-defense": {
+    sectorId: "sec-defense",
+    name: "우주항공·방산",
+    aliases: ["K-방산", "전투기", "미사일", "위성", "A&D"],
+    description: "글로벌 지정학적 리스크와 국방 현대화 수요에 따른 대규모 수출 모멘텀 섹터",
+    memberSymbols: ["012450", "073120", "272210", "064350"],
+    representativeSymbols: ["012450", "073120"],
+    iconKey: "shield"
+  },
+  "sec-ai-infra": {
+    sectorId: "sec-ai-infra",
+    name: "AI 인프라·전력",
+    aliases: ["변압기", "전력설비", "구리", "데이터센터", "SMR"],
+    description: "AI 연산 수요 폭증으로 인한 데이터센터 증설 및 노후 전력망 교체 수혜 섹터",
+    memberSymbols: ["267260", "010120", "000880", "042700"],
+    representativeSymbols: ["267260", "010120"],
+    iconKey: "zap"
+  },
+  "sec-obesity-bio": {
+    sectorId: "sec-obesity-bio",
+    name: "차세대 바이오·비만",
+    aliases: ["비만치료제", "GLP-1", "플랫폼바이오", "ADC"],
+    description: "글로벌 메가 트렌드인 비만 치료제 및 약물 전달 플랫폼 기술 중심의 고성장 바이오",
+    memberSymbols: ["196170", "000100", "128940", "419080"],
+    representativeSymbols: ["196170", "000100"],
+    iconKey: "dna"
+  },
+  "sec-robotics": {
+    sectorId: "sec-robotics",
+    name: "로봇·자동화",
+    aliases: ["협동로봇", "휴머노이드", "스마트팩토리", "AGV"],
+    description: "인구 구조 변화와 AI 결합을 통한 산업 및 서비스 로봇 시장 확대 섹터",
+    memberSymbols: ["277810", "454910", "054060"],
+    representativeSymbols: ["277810", "454910"],
+    iconKey: "bot"
+  },
+  "sec-advanced-materials": {
+    sectorId: "sec-advanced-materials",
+    name: "첨단 소재·기판",
+    aliases: ["유리기판", "TGV", "반도체소재", "나노"],
+    description: "차세대 반도체 패키징 솔루션인 유리기판 및 고부가가치 첨단 소재 관련주",
+    memberSymbols: ["009150", "033640", "222420"],
+    representativeSymbols: ["009150", "033640"],
+    iconKey: "layers"
   }
 };
 
