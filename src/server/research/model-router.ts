@@ -8,12 +8,26 @@ import { rankAndCluster } from "./pipeline/rank";
 import { generateRelatedStocks as genRelatedStocks } from "./pipeline/related-stocks";
 import { curateSourcesWithEmbedding } from "@/server/ai/embedding-curator";
 import { getDomesticStockQuote } from "@/server/kis/rest-client";
+import { getCanonicalSectorForSymbol } from "@/lib/stocks/sector-utils";
+import {
+  applyReportEvidence,
+  filterClustersForSymbol,
+  filterSourcesForSymbol,
+  hasUsableSnapshotEvidence,
+} from "./entity-guard";
 
 /**
  * 리서치 AI 라우터
  */
 
-import { searchStock, getServerStockName } from "@/lib/stocks/search-master";
+import {
+  searchStock,
+  getServerStockName,
+  getSearchMaster,
+  rankSearchItems,
+  type StockMasterItem,
+} from "@/lib/stocks/search-master";
+import { getDBSectorUniverse, getDBStockUniverse } from "@/lib/stocks/db-registry";
 import { aiSummarizeIssues, aiAnalyzeSentiment } from "@/server/ai/orchestrator";
 import { getStockSnapshot, saveStockSnapshot } from "./snapshots/snapshot-manager";
 import type { StockReportSummary, SentimentScore } from "@/types/research";
@@ -27,7 +41,7 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
   // 1. Check DB Snapshot
   const snapshot = await getStockSnapshot(symbol);
   const now = Date.now();
-  if (snapshot) {
+  if (snapshot && hasUsableSnapshotEvidence(snapshot)) {
     const age = now - new Date(snapshot.updated_at).getTime();
     if (age < SNAPSHOT_TTL_MS) {
       // Fresh DB Hit
@@ -36,9 +50,9 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
           symbol, name, currentPrice: 0, change: 0, changeRate: 0,
           aiHeadline: snapshot.ai_headline,
           aiSummary: snapshot.ai_summary,
-          priceFreshness: "stale", reportFreshness: "live",
+          priceFreshness: "stale", reportFreshness: "recent",
           lastUpdated: snapshot.updated_at,
-          _meta: { source: "db_snapshot" }
+          _meta: { source: "db_snapshot", evidenceSourceCount: snapshot.basis_source_ids.length }
         },
         sentiment: {
           score: snapshot.sentiment_score,
@@ -47,10 +61,10 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
           positiveFactors: snapshot.positive_factors,
           negativeFactors: snapshot.negative_factors,
           basisSources: snapshot.basis_source_ids.map(id => ({ id } as any)),
-          freshness: "live",
+          freshness: "recent",
           generatedAt: snapshot.updated_at,
           _isFallback: snapshot.is_fallback,
-          _meta: { source: "db_snapshot" }
+          _meta: { source: "db_snapshot", evidenceSourceCount: snapshot.basis_source_ids.length }
         }
       };
     } else if (age < SNAPSHOT_TTL_MS + 24 * 60 * 60 * 1000) {
@@ -59,12 +73,17 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
         const p = (async () => {
           try {
             const { clusters, sources } = await generateIssues(symbol);
+            const guardedClusters = filterClustersForSymbol(clusters, sources, symbol);
+            const guardedSources = filterSourcesForSymbol(sources, symbol);
             const [report, sentiment] = await Promise.all([
-              aiSummarizeIssues(symbol, clusters),
-              aiAnalyzeSentiment(symbol, sources)
+              aiSummarizeIssues(symbol, guardedClusters),
+              aiAnalyzeSentiment(symbol, guardedSources)
             ]);
-            await saveStockSnapshot(symbol, name, report, sentiment);
-            return { report, sentiment };
+            const guardedReport = applyReportEvidence(report, guardedSources.length);
+            if (guardedSources.length >= 2) {
+              await saveStockSnapshot(symbol, name, guardedReport, sentiment);
+            }
+            return { report: guardedReport, sentiment };
           } catch(e) {
             console.error("Background snapshot regen error:", e);
             throw e;
@@ -98,6 +117,8 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
         }
       };
     }
+  } else if (snapshot) {
+    console.warn(`[AI Router] Ignoring weak snapshot for ${symbol}: insufficient basis or fallback`);
   }
 
   // 2. Generate if miss or stale
@@ -108,15 +129,20 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
   const p = (async () => {
     try {
       const { clusters, sources } = await generateIssues(symbol);
+      const guardedClusters = filterClustersForSymbol(clusters, sources, symbol);
+      const guardedSources = filterSourcesForSymbol(sources, symbol);
       const [report, sentiment] = await Promise.all([
-        aiSummarizeIssues(symbol, clusters),
-        aiAnalyzeSentiment(symbol, sources)
+        aiSummarizeIssues(symbol, guardedClusters),
+        aiAnalyzeSentiment(symbol, guardedSources)
       ]);
+      const guardedReport = applyReportEvidence(report, guardedSources.length);
 
       // Fire and forget save
-      saveStockSnapshot(symbol, name, report, sentiment).catch(e => console.error("Save snapshot error:", e));
+      if (guardedSources.length >= 2) {
+        saveStockSnapshot(symbol, name, guardedReport, sentiment).catch(e => console.error("Save snapshot error:", e));
+      }
 
-      return { report, sentiment };
+      return { report: guardedReport, sentiment };
     } finally {
       snapshotPromiseCache.delete(symbol);
     }
@@ -127,6 +153,34 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
 }
 
 export async function generateSearch(query: string) {
+  try {
+    const [stocks, sectors] = await Promise.all([
+      getDBStockUniverse(),
+      getDBSectorUniverse(),
+    ]);
+
+    const stockItems: StockMasterItem[] = Object.values(stocks).map((stock) => ({
+      symbol: stock.symbol,
+      name: stock.name,
+      type: stock.market === "INDEX" ? "index" : stock.market === "ETF" ? "etf" : "stock",
+      market: stock.market,
+      aliases: [],
+    }));
+
+    const sectorItems: StockMasterItem[] = Object.values(sectors).map((sector) => ({
+      symbol: sector.sectorId,
+      name: sector.name,
+      type: "sector",
+      market: "SECTOR",
+      aliases: sector.aliases ?? [],
+    }));
+
+    const results = rankSearchItems(query, [...stockItems, ...sectorItems]);
+    if (results.length > 0) return results;
+  } catch (error) {
+    console.warn("[AI Router] DB-first search failed, falling back to local master:", error);
+  }
+
   return searchStock(query);
 }
 
@@ -142,6 +196,8 @@ export async function generateSentiment(symbol: string) {
 
 export async function generateIssues(symbol: string): Promise<{ clusters: IssueCluster[]; sources: SourceItem[] }> {
   const name = getServerStockName(symbol);
+  const sector = getCanonicalSectorForSymbol(symbol);
+  const companyAliases = getSearchMaster().find(item => item.symbol === symbol)?.aliases || [];
   try {
     const { getVectorStore } = await import("@/server/ai/vector-store");
     const vectorStore = getVectorStore();
@@ -156,10 +212,13 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
       // DB 소스도 회사명 관련성 필터 적용 — Phase 29 이전에 캐시된 오염 소스 차단
       const dbNews = dbAsSourceItems.filter((s: any) => s.sourceType !== "disclosure");
       const dbDisclosures = dbAsSourceItems.filter((s: any) => s.sourceType === "disclosure");
-      const filtered = normalizeSources(dbNews, dbDisclosures, { companyName: name });
+      const filtered = filterSourcesForSymbol(
+        normalizeSources(dbNews, dbDisclosures, { companyName: name, companyAliases, sectorMemberSymbols: sector?.memberSymbols }),
+        symbol
+      );
       if (filtered.length >= 3) {
         console.log(`[AI Router] Using ${filtered.length}/${recentSources.length} DB-cached sources (after relevance filter) for ${symbol}`);
-        const clusters = rankAndCluster(filtered);
+        const clusters = filterClustersForSymbol(rankAndCluster(filtered), filtered, symbol);
         return { clusters, sources: filtered };
       }
       console.log(`[AI Router] DB sources filtered to ${filtered.length} (< 3) for ${symbol}, refetching`);
@@ -174,7 +233,10 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
     }
 
     // ── Step 2: Normalize (dedup, recency filter, relevance filter) ──────────
-    const normalized = normalizeSources(rawNews, disclosures, { companyName: name });
+    const normalized = filterSourcesForSymbol(
+      normalizeSources(rawNews, disclosures, { companyName: name, companyAliases, sectorMemberSymbols: sector?.memberSymbols }),
+      symbol
+    );
 
     if (normalized.length === 0) {
       console.warn(`[AI Router] All sources filtered out for ${symbol} (${name}), returning empty.`);
@@ -197,7 +259,7 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
     }
 
     // ── Step 4: Rank and cluster ─────────────────────────────────────────────
-    const clusters = rankAndCluster(sources);
+    const clusters = filterClustersForSymbol(rankAndCluster(sources), sources, symbol);
 
     return { clusters, sources };
   } catch (e) {

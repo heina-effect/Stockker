@@ -7,6 +7,10 @@ vi.mock("@/server/ai/vector-store", () => ({
   }),
 }));
 
+vi.mock("@/server/kis/rest-client", () => ({
+  getDomesticStockQuote: async () => ({ kisIndustryCode: undefined, kisIndustryName: undefined }),
+}));
+
 vi.mock("@/data/sectors/taxonomy", () => ({
   SECTOR_UNIVERSE: {
     "sec-semiconductor": {
@@ -19,11 +23,17 @@ vi.mock("@/data/sectors/taxonomy", () => ({
       iconKey: "cpu",
     },
   },
+  resolveSectorId: (value?: string) => (value === "반도체" || value === "sec-semiconductor" ? "sec-semiconductor" : null),
 }));
 
 vi.mock("@/lib/stocks/search-master", () => ({
   getServerStockName: (sym: string) =>
     ({ "005930": "삼성전자", "000660": "SK하이닉스", "042700": "한미반도체" }[sym] || sym),
+  getSearchMaster: () => [
+    { symbol: "005930", name: "삼성전자", type: "stock", market: "KOSPI", aliases: [] },
+    { symbol: "000660", name: "SK하이닉스", type: "stock", market: "KOSPI", aliases: [] },
+    { symbol: "042700", name: "한미반도체", type: "stock", market: "KOSPI", aliases: [] },
+  ],
 }));
 
 import { generateRelatedStocks } from "./related-stocks";
@@ -44,7 +54,7 @@ describe("generateRelatedStocks", () => {
     const results = await generateRelatedStocks("005930");
     for (const r of results) {
       expect(r.relationType).toBeDefined();
-      expect(["sector_peer", "issue_mention", "supply_chain", "ai_inferred"]).toContain(r.relationType);
+      expect(["sector_peer", "issue_mention", "supply_chain", "disclosure_linked", "peer", "ai_inferred"]).toContain(r.relationType);
       expect(typeof r.relationReason).toBe("string");
       expect(r.relationReason.length).toBeGreaterThan(0);
     }

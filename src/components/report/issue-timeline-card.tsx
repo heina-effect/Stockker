@@ -3,38 +3,50 @@
 import { useEffect, useState } from "react";
 import type { IssueCluster } from "@/types/research";
 import { Clock, Newspaper, FileText } from "lucide-react";
+import { formatResearchDate } from "@/lib/date-format";
 
 function formatClusterDate(ts: string): string {
   const date = new Date(ts);
   if (isNaN(date.getTime())) return "";
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  if (diffDays < 7) return date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatResearchDate(date);
 }
 
 export function IssueTimelineCard({ symbol }: { symbol: string }) {
   const [clusters, setClusters] = useState<IssueCluster[] | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    setClusters(null);
+    setError(false);
     fetch(`/api/stocks/${symbol}/issues`)
       .then(r => r.json())
       .then(d => {
         if (d.ok) setClusters(d.clusters);
-        else setClusters([]);
+        else {
+          setError(true);
+          setClusters([]);
+        }
       })
-      .catch(() => setClusters([]));
+      .catch(() => {
+        setError(true);
+        setClusters([]);
+      });
   }, [symbol]);
 
-  // Loading state
-  if (clusters === null) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border flex flex-col h-full max-h-[400px]">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-bold text-slate-900 dark:text-zinc-50">최근 핵심 이슈</h3>
+  return (
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-full max-h-[400px]">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
+          최근 핵심 이슈
+        </h3>
+        {clusters === null ? (
           <span className="text-xs text-slate-400 animate-pulse">불러오는 중...</span>
-        </div>
+        ) : clusters.length > 0 ? (
+          <span className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full font-medium">AI 선별</span>
+        ) : null}
+      </div>
+
+      {clusters === null ? (
         <div className="flex flex-col gap-4">
           {[1, 2, 3].map(i => (
             <div key={i} className="pl-4 border-l-2 border-slate-100 dark:border-zinc-800 pb-2">
@@ -44,31 +56,20 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-
-  // Empty state
-  if (clusters.length === 0) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border flex flex-col items-center justify-center h-[200px]">
-        <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
-        <p className="text-sm text-slate-400">수집된 이슈가 없습니다</p>
-        <p className="text-xs text-slate-300 mt-1">잠시 후 다시 확인해 주세요</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border flex flex-col h-full max-h-[400px]">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-          최근 핵심 이슈
-        </h3>
-        <span className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full font-medium">AI 선별</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-5">
+      ) : error ? (
+        <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+          <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
+          <p className="text-sm text-slate-400">이슈 데이터를 불러오지 못했습니다.</p>
+          <p className="text-xs text-slate-300 mt-1">잠시 후 다시 확인해 주세요.</p>
+        </div>
+      ) : clusters.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+          <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
+          <p className="text-sm text-slate-400">종목과 직접 연결된 최신 이슈가 없습니다.</p>
+          <p className="text-xs text-slate-300 mt-1">약한 근거와 타 섹터 이슈는 표시하지 않습니다.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-5">
         {clusters.map((cluster) => (
           <div key={cluster.id} className="relative pl-4 border-l-2 border-slate-100 dark:border-zinc-800 pb-2 last:pb-0">
             {/* Timeline dot */}
@@ -112,7 +113,8 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             )}
           </div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

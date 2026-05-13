@@ -15,7 +15,7 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "symbol": "105560",
     "name": "KB금융",
     "market": "KOSPI",
-    "sector": "금융"
+    "sector": "증권"
   },
   "114800": {
     "symbol": "114800",
@@ -164,7 +164,7 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "symbol": "055550",
     "name": "신한지주",
     "market": "KOSPI",
-    "sector": "금융"
+    "sector": "은행"
   },
   "086790": {
     "symbol": "086790",
@@ -236,7 +236,7 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "symbol": "039490",
     "name": "키움증권",
     "market": "KOSPI",
-    "sector": "금융"
+    "sector": "증권"
   },
   "071050": {
     "symbol": "071050",
@@ -254,7 +254,7 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "symbol": "316140",
     "name": "우리금융지주",
     "market": "KOSPI",
-    "sector": "금융"
+    "sector": "은행"
   },
   "012450": {
     "symbol": "012450",
@@ -294,6 +294,12 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
   },
   "000880": {
     "symbol": "000880",
+    "name": "한화",
+    "market": "KOSPI",
+    "sector": "방산"
+  },
+  "006260": {
+    "symbol": "006260",
     "name": "LS",
     "market": "KOSPI",
     "sector": "전력"
@@ -310,9 +316,15 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSPI",
     "sector": "제약"
   },
-  "419080": {
-    "symbol": "419080",
+  "087010": {
+    "symbol": "087010",
     "name": "펩트론",
+    "market": "KOSDAQ",
+    "sector": "바이오"
+  },
+  "397030": {
+    "symbol": "397030",
+    "name": "에이프릴바이오",
     "market": "KOSDAQ",
     "sector": "바이오"
   },
@@ -328,8 +340,8 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSDAQ",
     "sector": "로봇"
   },
-  "054060": {
-    "symbol": "054060",
+  "348340": {
+    "symbol": "348340",
     "name": "뉴로메카",
     "market": "KOSDAQ",
     "sector": "로봇"
@@ -340,17 +352,317 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSPI",
     "sector": "소재"
   },
-  "033640": {
-    "symbol": "033640",
+  "011790": {
+    "symbol": "011790",
     "name": "SKC",
     "market": "KOSPI",
     "sector": "소재"
   },
   "222420": {
     "symbol": "222420",
-    "name": "이오테크닉스",
+    "name": "쎄노텍",
     "market": "KOSDAQ",
-    "sector": "장비"
+    "sector": "소재"
+  },
+  "005940": {
+    "symbol": "005940",
+    "name": "NH투자증권",
+    "market": "KOSPI",
+    "sector": "증권"
+  },
+  "016360": {
+    "symbol": "016360",
+    "name": "삼성증권",
+    "market": "KOSPI",
+    "sector": "증권"
+  },
+  "000810": {
+    "symbol": "000810",
+    "name": "삼성화재",
+    "market": "KOSPI",
+    "sector": "보험"
+  },
+  "005830": {
+    "symbol": "005830",
+    "name": "DB손해보험",
+    "market": "KOSPI",
+    "sector": "보험"
+  },
+  "000060": {
+    "symbol": "000060",
+    "name": "메리츠화재",
+    "market": "KOSPI",
+    "sector": "보험"
+  },
+  "001450": {
+    "symbol": "001450",
+    "name": "현대해상",
+    "market": "KOSPI",
+    "sector": "보험"
+  },
+  "010140": {
+    "symbol": "010140",
+    "name": "삼성중공업",
+    "market": "KOSPI",
+    "sector": "조선"
+  },
+  "009540": {
+    "symbol": "009540",
+    "name": "HD한국조선해양",
+    "market": "KOSPI",
+    "sector": "조선"
+  },
+  "042660": {
+    "symbol": "042660",
+    "name": "한화오션",
+    "market": "KOSPI",
+    "sector": "조선"
+  },
+  "010620": {
+    "symbol": "010620",
+    "name": "HD현대미포",
+    "market": "KOSPI",
+    "sector": "조선"
+  },
+  "267250": {
+    "symbol": "267250",
+    "name": "HD현대",
+    "market": "KOSPI",
+    "sector": "중공업"
+  },
+  "011170": {
+    "symbol": "011170",
+    "name": "롯데케미칼",
+    "market": "KOSPI",
+    "sector": "에너지·화학"
+  },
+  "000720": {
+    "symbol": "000720",
+    "name": "현대건설",
+    "market": "KOSPI",
+    "sector": "건설"
+  },
+  "006360": {
+    "symbol": "006360",
+    "name": "GS건설",
+    "market": "KOSPI",
+    "sector": "건설"
+  },
+  "047040": {
+    "symbol": "047040",
+    "name": "대우건설",
+    "market": "KOSPI",
+    "sector": "건설"
+  },
+  "011200": {
+    "symbol": "011200",
+    "name": "HMM",
+    "market": "KOSPI",
+    "sector": "해운"
+  },
+  "028670": {
+    "symbol": "028670",
+    "name": "팬오션",
+    "market": "KOSPI",
+    "sector": "해운"
+  },
+  "034020": {
+    "symbol": "034020",
+    "name": "두산에너빌리티",
+    "market": "KOSPI",
+    "sector": "원전"
+  },
+  "052690": {
+    "symbol": "052690",
+    "name": "한전기술",
+    "market": "KOSPI",
+    "sector": "원전"
+  },
+  "051600": {
+    "symbol": "051600",
+    "name": "한전KPS",
+    "market": "KOSPI",
+    "sector": "원전"
+  },
+  "011280": {
+    "symbol": "011280",
+    "name": "태림포장",
+    "market": "KOSPI",
+    "sector": "원전"
+  },
+  "010950": {
+    "symbol": "010950",
+    "name": "S-Oil",
+    "market": "KOSPI",
+    "sector": "에너지·화학"
+  },
+  "009830": {
+    "symbol": "009830",
+    "name": "한화솔루션",
+    "market": "KOSPI",
+    "sector": "에너지·화학"
+  },
+  "069960": {
+    "symbol": "069960",
+    "name": "현대백화점",
+    "market": "KOSPI",
+    "sector": "유통"
+  },
+  "004170": {
+    "symbol": "004170",
+    "name": "신세계",
+    "market": "KOSPI",
+    "sector": "유통"
+  },
+  "023530": {
+    "symbol": "023530",
+    "name": "롯데쇼핑",
+    "market": "KOSPI",
+    "sector": "유통"
+  },
+  "008770": {
+    "symbol": "008770",
+    "name": "호텔신라",
+    "market": "KOSPI",
+    "sector": "여행·카지노"
+  },
+  "035760": {
+    "symbol": "035760",
+    "name": "CJ ENM",
+    "market": "KOSDAQ",
+    "sector": "콘텐츠"
+  },
+  "253450": {
+    "symbol": "253450",
+    "name": "스튜디오드래곤",
+    "market": "KOSDAQ",
+    "sector": "콘텐츠"
+  },
+  "079160": {
+    "symbol": "079160",
+    "name": "CJ CGV",
+    "market": "KOSPI",
+    "sector": "콘텐츠"
+  },
+  "204990": {
+    "symbol": "204990",
+    "name": "코썬바이오",
+    "market": "KOSDAQ",
+    "sector": "콘텐츠"
+  },
+  "003230": {
+    "symbol": "003230",
+    "name": "삼양식품",
+    "market": "KOSPI",
+    "sector": "식음료"
+  },
+  "004370": {
+    "symbol": "004370",
+    "name": "농심",
+    "market": "KOSPI",
+    "sector": "식음료"
+  },
+  "097950": {
+    "symbol": "097950",
+    "name": "CJ제일제당",
+    "market": "KOSPI",
+    "sector": "식음료"
+  },
+  "271560": {
+    "symbol": "271560",
+    "name": "오리온",
+    "market": "KOSPI",
+    "sector": "식음료"
+  },
+  "192820": {
+    "symbol": "192820",
+    "name": "코스맥스",
+    "market": "KOSPI",
+    "sector": "뷰티"
+  },
+  "214150": {
+    "symbol": "214150",
+    "name": "클래시스",
+    "market": "KOSDAQ",
+    "sector": "뷰티"
+  },
+  "290670": {
+    "symbol": "290670",
+    "name": "대보마그네틱",
+    "market": "KOSDAQ",
+    "sector": "뷰티"
+  },
+  "002790": {
+    "symbol": "002790",
+    "name": "아모레퍼시픽홀딩스",
+    "market": "KOSPI",
+    "sector": "뷰티"
+  },
+  "064550": {
+    "symbol": "064550",
+    "name": "바이오니아",
+    "market": "KOSDAQ",
+    "sector": "게임"
+  },
+  "293490": {
+    "symbol": "293490",
+    "name": "카카오게임즈",
+    "market": "KOSDAQ",
+    "sector": "게임"
+  },
+  "017670": {
+    "symbol": "017670",
+    "name": "SK텔레콤",
+    "market": "KOSPI",
+    "sector": "통신"
+  },
+  "030200": {
+    "symbol": "030200",
+    "name": "KT",
+    "market": "KOSPI",
+    "sector": "통신"
+  },
+  "032640": {
+    "symbol": "032640",
+    "name": "LG유플러스",
+    "market": "KOSPI",
+    "sector": "통신"
+  },
+  "004020": {
+    "symbol": "004020",
+    "name": "현대제철",
+    "market": "KOSPI",
+    "sector": "철강"
+  },
+  "010130": {
+    "symbol": "010130",
+    "name": "고려아연",
+    "market": "KOSPI",
+    "sector": "철강"
+  },
+  "003490": {
+    "symbol": "003490",
+    "name": "대한항공",
+    "market": "KOSPI",
+    "sector": "여행·카지노"
+  },
+  "039130": {
+    "symbol": "039130",
+    "name": "하나투어",
+    "market": "KOSPI",
+    "sector": "여행·카지노"
+  },
+  "035250": {
+    "symbol": "035250",
+    "name": "강원랜드",
+    "market": "KOSPI",
+    "sector": "여행·카지노"
+  },
+  "114090": {
+    "symbol": "114090",
+    "name": "GKL",
+    "market": "KOSPI",
+    "sector": "여행·카지노"
   }
 };
 

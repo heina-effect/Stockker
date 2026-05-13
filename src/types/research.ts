@@ -78,7 +78,7 @@ export interface BuyPricePlan {
   _meta?: any;
 }
 
-export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "ai_inferred";
+export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "disclosure_linked" | "peer" | "ai_inferred";
 
 export interface RelatedStock {
   symbol: string;

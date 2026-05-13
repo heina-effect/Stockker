@@ -23,6 +23,7 @@ describe("SourceListCard pagination", () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/issues")) {
         return {
+          ok: true,
           json: async () => ({
             ok: true,
             sources: [1, 2, 3, 4, 5, 6].map(n => source(String(n))),
@@ -31,6 +32,7 @@ describe("SourceListCard pagination", () => {
       }
 
       return {
+        ok: true,
         json: async () => ({
           ok: true,
           sources: [source("6")],

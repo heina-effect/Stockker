@@ -130,6 +130,9 @@ npm run test:evals         # AI 출력물 평가 (Eval) 테스트
 npm run test:vectors       # 벡터 임베딩 테스트
 npm run test:report        # 종목 리포트/감성 테스트
 npm run test:search        # 검색 테스트
+npm run validate:master    # static metadata/taxonomy/DART master 검증
+npm run validate:db-master # 원격 stock_master/sector_master 검증
+npm run sync:stock-master  # DART corp-master를 stock_master에 upsert
 
 # 빌드
 npm run build
@@ -149,6 +152,18 @@ npx vitest run \
   src/components/report/source-list-card.test.tsx \
   src/components/report/intraday-hidden.test.ts \
   src/server/research/detail-entry-guard.test.ts
+```
+
+Phase 31 상세 신뢰도 회귀를 좁게 확인할 때:
+
+```bash
+npx vitest run \
+  src/server/research/entity-guard.test.ts \
+  src/lib/stocks/sector-utils.test.ts \
+  src/server/kis/sector-map.test.ts \
+  src/server/research/pipeline/related-stocks.test.ts \
+  src/components/report/source-list-card.test.tsx \
+  src/components/report/intraday-hidden.test.ts
 ```
 
 ---
@@ -204,3 +219,11 @@ TypeScript 경로 별칭 (`@/...`)은 `tsconfig.json`의 `paths` 설정으로 �
 4. 홈 트렌딩 종목 카드는 제목뿐 아니라 카드 전체가 클릭된다.
 5. 트렌딩 종목 우측 metric은 `근거 N건`이며 AI 생성 등락률 percent가 아니다.
 6. 인트라데이 버튼은 `NEXT_PUBLIC_ENABLE_INTRADAY_CHART=1` 없이는 노출되지 않는다.
+
+## 10. Phase 31 수동 확인
+
+1. LIG디펜스앤에어로스페이스 상세에서 반도체/HBM 이슈가 직접 근거 없이 섞이지 않는다.
+2. 리포트 뱃지는 “방금 생성 실시간”이 아니라 근거 상태를 표시한다.
+3. 최근 핵심 이슈, 소스, 투자의견, 연관 종목 카드 제목이 loading/empty/error에서도 유지된다.
+4. 상세 헤더에 canonical 섹터명과 KIS 업종명이 표시된다.
+5. 연관 종목에 relation type과 reason이 표시된다.

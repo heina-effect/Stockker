@@ -28,14 +28,16 @@ function isAcceptableTitle(title: string, companyName: string): boolean {
  * - 2-3자 회사명은 2자 prefix 허용 (기존 유지)
  * - Disclosure(공시)는 회사명 완전 포함 필수 — 공시 제목이 짧아 오탐 多
  */
-function isRelevantToCompany(item: SourceItem, companyName: string): boolean {
+function isRelevantToCompany(item: SourceItem, companyName: string, companyAliases: string[] = []): boolean {
   const titleLower = item.title.toLowerCase();
   const snippetLower = (item.snippet || "").toLowerCase();
   const nameLower = companyName.toLowerCase();
+  const aliasLowers = companyAliases.map(alias => alias.toLowerCase()).filter(alias => alias.length >= 2);
 
   // 회사명 전체가 제목에 있으면 무조건 통과
   // 스니펫은 접선 언급(섹터 브리핑에서 회사명 한 줄 등)으로 인한 오탐이 많아 제외
   if (titleLower.includes(nameLower)) return true;
+  if (aliasLowers.some(alias => titleLower.includes(alias))) return true;
 
   // 공시는 전체 회사명이 제목에 있어야만 통과 (prefix 허용 안 함)
   if (item.sourceType === "disclosure") return false;
@@ -69,7 +71,7 @@ function isRelevantToCompany(item: SourceItem, companyName: string): boolean {
 export function normalizeSources(
   rawNews: SourceItem[],
   disclosures: SourceItem[],
-  options?: { companyName?: string; sectorMemberSymbols?: string[] }
+  options?: { companyName?: string; companyAliases?: string[]; sectorMemberSymbols?: string[] }
 ): SourceItem[] {
   const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const companyName = options?.companyName?.trim();
@@ -90,7 +92,7 @@ export function normalizeSources(
       if (ts < cutoff) return false;
       // 5) 회사명 관련성 필터
       if (companyName && companyName.length >= 1) {
-        if (!isRelevantToCompany(item, companyName)) return false;
+        if (!isRelevantToCompany(item, companyName, options?.companyAliases)) return false;
       }
       return true;
     })

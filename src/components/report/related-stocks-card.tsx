@@ -11,6 +11,8 @@ const RELATION_LABEL: Record<RelationType, string> = {
   sector_peer: "동종 섹터",
   issue_mention: "이슈 연관",
   supply_chain: "공급망",
+  disclosure_linked: "공시 연관",
+  peer: "유사 종목",
   ai_inferred: "AI 추론",
 };
 
@@ -18,6 +20,8 @@ const RELATION_COLORS: Record<RelationType, string> = {
   sector_peer: "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
   issue_mention: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   supply_chain: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  disclosure_linked: "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+  peer: "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300",
   ai_inferred: "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
@@ -25,6 +29,7 @@ function RelationIcon({ type }: { type: RelationType }) {
   if (type === "sector_peer") return <Layers className="w-3 h-3" />;
   if (type === "issue_mention") return <FileText className="w-3 h-3" />;
   if (type === "supply_chain") return <GitBranch className="w-3 h-3" />;
+  if (type === "disclosure_linked") return <FileText className="w-3 h-3" />;
   return <Sparkles className="w-3 h-3" />;
 }
 
@@ -75,11 +80,14 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
       <p className="text-[10px] text-slate-400 mb-4">섹터 동종·이슈 기반으로 선정. 투자 권유 아님.</p>
 
       {loading ? (
-        <RelatedStocksSkeleton />
+        <>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">불러오는 중...</p>
+          <RelatedStocksSkeleton />
+        </>
       ) : error ? (
-        <div className="text-sm text-slate-400 italic py-4">연관 종목 정보를 불러오지 못했습니다.</div>
+        <div className="text-sm text-slate-400 py-4">연관 종목 정보를 불러오지 못했습니다.</div>
       ) : stocks.length === 0 ? (
-        <div className="text-sm text-slate-400 italic py-4">현재 연관 종목 정보가 없습니다.</div>
+        <div className="text-sm text-slate-400 py-4">동일 섹터 또는 최신 이슈에서 확인된 연관 종목이 아직 없습니다.</div>
       ) : (
         <div className="flex flex-col gap-3">
           {stocks.map((stock) => {

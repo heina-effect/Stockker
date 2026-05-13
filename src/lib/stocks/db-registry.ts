@@ -47,20 +47,23 @@ async function loadSectorsFromDB(): Promise<Record<string, SectorTheme>> {
     return SECTOR_UNIVERSE;
   }
 
-  return Object.fromEntries(
-    data.map((row) => [
-      row.sector_id,
-      {
-        sectorId: row.sector_id,
-        name: row.name,
-        aliases: row.aliases ?? [],
-        description: row.description ?? "",
-        memberSymbols: row.member_symbols ?? [],
-        representativeSymbols: row.representative_symbols ?? [],
-        iconKey: row.icon_key ?? undefined,
-      } satisfies SectorTheme,
-    ])
-  );
+  const { SECTOR_UNIVERSE } = await import("@/data/sectors/taxonomy");
+  const merged: Record<string, SectorTheme> = { ...SECTOR_UNIVERSE };
+
+  for (const row of data) {
+    const staticSector = SECTOR_UNIVERSE[row.sector_id];
+    merged[row.sector_id] = {
+      sectorId: row.sector_id,
+      name: row.name,
+      aliases: Array.from(new Set([...(staticSector?.aliases ?? []), ...(row.aliases ?? [])])),
+      description: row.description ?? staticSector?.description ?? "",
+      memberSymbols: Array.from(new Set([...(staticSector?.memberSymbols ?? []), ...(row.member_symbols ?? [])])),
+      representativeSymbols: Array.from(new Set([...(staticSector?.representativeSymbols ?? []), ...(row.representative_symbols ?? [])])),
+      iconKey: row.icon_key ?? staticSector?.iconKey ?? undefined,
+    };
+  }
+
+  return merged;
 }
 
 async function loadStocksFromDB(): Promise<Record<string, StockMetadata>> {
@@ -84,17 +87,21 @@ async function loadStocksFromDB(): Promise<Record<string, StockMetadata>> {
     return STOCK_UNIVERSE;
   }
 
-  return Object.fromEntries(
-    data.map((row) => [
-      row.symbol,
-      {
-        symbol: row.symbol,
-        name: row.name,
-        market: row.market as StockMetadata["market"],
-        sector: row.sector_tag ?? undefined,
-      } satisfies StockMetadata,
-    ])
-  );
+  const { STOCK_UNIVERSE } = await import("@/lib/stocks/metadata");
+  return {
+    ...STOCK_UNIVERSE,
+    ...Object.fromEntries(
+      data.map((row) => [
+        row.symbol,
+        {
+          symbol: row.symbol,
+          name: row.name,
+          market: row.market as StockMetadata["market"],
+          sector: row.sector_tag ?? STOCK_UNIVERSE[row.symbol]?.sector,
+        } satisfies StockMetadata,
+      ])
+    ),
+  };
 }
 
 // ─── 캐시 접근 (stale-while-revalidate) ──────────────────────────

@@ -83,6 +83,7 @@ export function AnalystOpinionCard({ symbol }: { symbol: string }) {
 
       {loading ? (
         <div>
+          <p className="text-xs text-slate-400 dark:text-zinc-500 mb-2">불러오는 중...</p>
           {[1, 2, 3].map(i => <SkeletonRow key={i} />)}
         </div>
       ) : error ? (

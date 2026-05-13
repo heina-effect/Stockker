@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { SourceItem } from "@/types/research";
 import { Link2, Clock, CheckCircle2, Newspaper, FileText, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { formatResearchDate } from "@/lib/date-format";
 
 const QUALITY_BADGE: Record<string, { label: string; cls: string }> = {
   high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30" },
@@ -33,15 +34,7 @@ function getDateLabel(src: SourceItem): string {
 }
 
 function formatSourceDate(date: Date): string {
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) {
-    return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  }
-  if (diffDays < 7) {
-    return date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-  }
-  return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatResearchDate(date);
 }
 
 function sortByDate(items: SourceItem[]): SourceItem[] {
@@ -138,6 +131,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
 
       {loading ? (
         <div className="flex flex-col gap-3">
+          <p className="text-xs text-slate-400 dark:text-zinc-500">불러오는 중...</p>
           {[1, 2, 3].map(i => <SkeletonSource key={i} />)}
         </div>
       ) : error ? (

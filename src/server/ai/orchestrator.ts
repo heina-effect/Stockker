@@ -219,23 +219,28 @@ export async function aiSummarizeIssues(symbol: string, clusters: IssueCluster[]
   const hasRealClusters = clusters.length > 0 && !clusters.every(c =>
     c.id.includes("fallback") || c.title.includes("Mock") || c.representativeSource === "Mock News"
   );
+  const basisSourceIds = new Set(clusters.flatMap(c => c.basisSourceIds || []));
 
-  if (!ai || !hasRealClusters) {
-    const reason: FallbackReason = !ai ? "no_api_key" : "source_empty";
+  if (!ai || !hasRealClusters || basisSourceIds.size < 2) {
+    const reason: FallbackReason = !ai ? "no_api_key" : !hasRealClusters ? "source_empty" : "source_insufficient";
     return safeMockReport(symbol, reason, startTime, GEMINI_FLASH);
   }
 
   try {
     const prompt = `You are a Korean stock analyst. Create a concise stock summary for ${name} (${symbol}).
 
-Key issues found (source-grounded):
-${JSON.stringify(clusters.map(c => ({ title: c.title, summary: c.summary, source: c.representativeSource })), null, 2)}
+Key issues found (source-grounded, entity-filtered):
+${JSON.stringify(clusters.map(c => ({ title: c.title, summary: c.summary, source: c.representativeSource, basisSourceIds: c.basisSourceIds })), null, 2)}
 
 Output JSON:
 {
   "aiHeadline": "<one sentence, Korean, based ONLY on sources above, mention ${name} explicitly>",
   "aiSummary": "<2-3 sentences, Korean, grounded in sources above, do NOT fabricate sector-specific content not in sources>"
-}`;
+}
+
+Rules:
+- If evidence is weak, state that grounded evidence is limited instead of making a confident call.
+- Do NOT summarize another company or another sector unless the source explicitly connects it to ${name}.`;
 
     const parsed = await geminiJSON<{ aiHeadline: string; aiSummary: string }>(GEMINI_FLASH, prompt);
     const latencyMs = Date.now() - startTime;
@@ -245,7 +250,7 @@ Output JSON:
       currentPrice: 0, change: 0, changeRate: 0,
       aiHeadline: parsed.aiHeadline || `${name} 핵심 이슈 요약`,
       aiSummary: parsed.aiSummary || "최근 이슈를 종합 중입니다.",
-      priceFreshness: "stale", reportFreshness: "live",
+      priceFreshness: "stale", reportFreshness: "recent",
       lastUpdated: new Date().toISOString(),
       _meta: createMeta({ provider: "gemini", model: GEMINI_FLASH, mode: "real", latencyMs }) as any,
     };

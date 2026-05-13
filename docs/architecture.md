@@ -1,4 +1,4 @@
-# Stockker Architecture (Phase 28 — 전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 정합성)
+# Stockker Architecture (Phase 31 — 신뢰도 잠금, DB-first 검색 master)
 
 ## 1. 개요
 
@@ -89,6 +89,14 @@ SSR (server component):
 - 생성 결과는 `normalizeHomeIntelligence()`를 통과해 `trendingSectors`와 legacy `sectors`가 모두 canonical `SECTOR_UNIVERSE` ID만 포함하도록 보정
 - production fallback은 mock 시장 claims를 반환하지 않고 빈 배열과 fallback meta를 반환
 
+### 검색 Master
+
+- `/api/stocks/search`는 `generateSearch()`를 통해 DB `stock_master`와 `sector_master`를 먼저 조회한다.
+- 검색 랭킹은 symbol/name exact match, alias match, prefix match, substring match 순으로 계산한다. 같은 점수에서는 종목을 섹터/ETF보다 우선한다.
+- `stock_master`는 DART `corp-master.json`을 `npm run sync:stock-master`로 동기화한다. 기존에 수동 보정한 `sector_tag`는 upsert 시 보존한다.
+- DB 조회 실패 또는 결과 없음일 때만 로컬 fallback(`src/data/dart/corp-master.json` + `STOCK_UNIVERSE` + `SECTOR_UNIVERSE`)을 사용한다.
+- 원격 DB consistency는 `npm run validate:db-master`로 확인한다. 이 검증은 active stock, active sector, sector member/representative symbol의 깨짐을 점검한다.
+
 ---
 
 ## 5. 사용자 저장 레이어 (Local-First)
@@ -160,7 +168,7 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 ---
 
-## 7. 연관 종목 모델 (Phase 26)
+## 7. 연관 종목 모델 (Phase 31)
 
 `/api/stocks/[symbol]/related` → `pipeline/related-stocks.generateRelatedStocks(symbol)`
 
@@ -168,14 +176,16 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 | 단계 | 신호 | 출처 |
 |------|------|------|
-| 1. 섹터 동종 | `SECTOR_UNIVERSE[sectorId].memberSymbols` | 정적 데이터 |
-| 2. 이슈 공동 언급 | `IssueCluster.relatedSymbols` (DB 캐시) | Supabase pgvector |
+| 1. 섹터 동종 | `SECTOR_UNIVERSE[sectorId].memberSymbols` | 정적/DB 섹터 |
+| 2. 메타데이터 peer | `stock_master` / `STOCK_UNIVERSE.sector` | canonical sector 보조 |
+| 3. 이슈 공동 언급 | `IssueCluster.relatedSymbols` | DB 캐시 / 소스 제목 추출 |
+| 4. 공시 연결 | 공동 언급 source가 Open DART인 경우 | 공시 기반 |
 
 ### RelatedStock 필드
 
 | 필드 | 설명 |
 |------|------|
-| `relationType` | `sector_peer` / `issue_mention` / `supply_chain` / `ai_inferred` |
+| `relationType` | `sector_peer` / `issue_mention` / `supply_chain` / `disclosure_linked` / `peer` / `ai_inferred` |
 | `relationReason` | 인간이 읽을 수 있는 선정 이유 |
 | `basisSourceCount` | 이슈 연관 시 관련 소스 수 |
 | `quoteMode` | 항상 `live-sync` (클라이언트 SSE 스트림 사용) |
@@ -184,6 +194,14 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 - 개별 종목별 라이브 가격 fetch 없음
 - KIS API 팬아웃 없음
 - 레이트리밋 쿨다운 영향 없음
+
+## 7.5. 종목 오염 차단 (Phase 31)
+
+- `normalizeSources()`는 회사명과 alias를 함께 보며, `LIG넥스원` 같은 legacy/실사용 명칭을 허용한다.
+- `entity-guard.ts`가 AI 생성 직전에 source와 cluster를 다시 검증한다.
+- fallback snapshot 또는 `basis_source_ids` 2건 미만 snapshot은 재사용하지 않는다.
+- 리포트 상태는 실시간 여부가 아니라 근거 수에 따라 `근거 충분 / 근거 보통 / 근거 부족 / 최신 데이터 없음`으로 낮춘다.
+- 타 섹터 키워드만 있고 대상 종목 언급이 없는 cluster는 상세 이슈/요약 입력에서 제외한다.
 
 ---
 
@@ -203,8 +221,8 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 ## 8.5. 섹터 라우팅 정합성 (Phase 28 수정)
 
-- **진실의 원천**: `src/data/sectors/taxonomy.ts`의 `SECTOR_UNIVERSE` (7개 섹터)
-- **유효 ID 목록**: `sec-semiconductor`, `sec-battery`, `sec-biotech`, `sec-platform`, `sec-finance`, `sec-entertainment`, `sec-auto`
+- **진실의 원천**: `src/data/sectors/taxonomy.ts`의 `SECTOR_UNIVERSE` (12개 섹터)
+- **유효 ID 목록**: `sec-semiconductor`, `sec-battery`, `sec-biotech`, `sec-platform`, `sec-finance`, `sec-entertainment`, `sec-auto`, `sec-defense`, `sec-ai-infra`, `sec-obesity-bio`, `sec-robotics`, `sec-advanced-materials`
 - **Canonical helpers**: `SectorId`, `isSectorId`, `resolveSectorId`, `getSectorById`
 - **홈 AI 출력 정규화**: `home-intelligence-normalizer.ts`가 `sectorId/id/name/alias`를 canonical ID로 매핑하고, 유효하지 않은 섹터를 제거
 - **홈 schema**: `trendingSectors[] = { sectorId, name, whyNow, representativeSymbols, sourceCount, trendStrength, basisSourceIds? }`

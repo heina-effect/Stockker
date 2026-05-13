@@ -6,8 +6,71 @@ import { FreshnessLabel } from "./freshness-label";
 import { formatNumber, formatChange } from "@/lib/utils";
 import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { getStockName } from "@/lib/stocks/metadata";
+import { getCanonicalSectorForSymbol } from "@/lib/stocks/sector-utils";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
-import { Bookmark, BookmarkCheck } from "lucide-react";
+import {
+  Anchor,
+  Anvil,
+  Atom,
+  BatteryCharging,
+  Bookmark,
+  BookmarkCheck,
+  Bot,
+  Car,
+  Clapperboard,
+  Cpu,
+  Dna,
+  FlaskConical,
+  Fuel,
+  Gamepad2,
+  HardHat,
+  Landmark,
+  Layers,
+  LayoutGrid,
+  LineChart,
+  Mountain,
+  Music,
+  Plane,
+  Shield,
+  ShieldCheck,
+  Ship,
+  ShoppingBag,
+  Signal,
+  Sparkles,
+  Utensils,
+  Zap,
+} from "lucide-react";
+
+const SECTOR_ICON_MAP = {
+  cpu: Cpu,
+  battery: BatteryCharging,
+  flask: FlaskConical,
+  layout: LayoutGrid,
+  landmark: Landmark,
+  music: Music,
+  car: Car,
+  shield: Shield,
+  zap: Zap,
+  dna: Dna,
+  bot: Bot,
+  layers: Layers,
+  "line-chart": LineChart,
+  "shield-check": ShieldCheck,
+  ship: Ship,
+  anvil: Anvil,
+  "hard-hat": HardHat,
+  anchor: Anchor,
+  atom: Atom,
+  fuel: Fuel,
+  "shopping-bag": ShoppingBag,
+  clapperboard: Clapperboard,
+  utensils: Utensils,
+  sparkles: Sparkles,
+  "gamepad-2": Gamepad2,
+  signal: Signal,
+  mountain: Mountain,
+  plane: Plane,
+};
 
 export function StockReportHeader({ symbol }: { symbol: string }) {
   const [data, setData] = useState<StockReportSummary | null>(null);
@@ -16,6 +79,7 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
 
   // metadata-first: 종목명/티커는 즉시 표시 (search master에서 동기 조회)
   const immediateStockName = getStockName(symbol) || symbol;
+  const canonicalSector = getCanonicalSectorForSymbol(symbol);
 
   useEffect(() => {
     // Hydration for bookmark state
@@ -53,6 +117,9 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
   // 실시간 시세 처리
   const liveState = marketStore[symbol];
   const liveQuote = liveState?.quote;
+  const SectorIcon = canonicalSector?.iconKey
+    ? SECTOR_ICON_MAP[canonicalSector.iconKey as keyof typeof SECTOR_ICON_MAP] || Layers
+    : Layers;
   const currentPrice = liveQuote?.price || data?.currentPrice || 0;
   const change = liveQuote?.change || data?.change || 0;
   const changeRate = liveQuote?.changeRate || data?.changeRate || 0;
@@ -87,6 +154,20 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
             {isBookmarked ? <BookmarkCheck className="w-6 h-6 text-indigo-500" /> : <Bookmark className="w-6 h-6" />}
           </button>
         </div>
+
+        {canonicalSector && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
+              <SectorIcon className="h-3.5 w-3.5 text-indigo-500" />
+              {canonicalSector.name}
+            </span>
+            {liveQuote?.kisIndustryName && (
+              <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-slate-500 dark:bg-zinc-950 dark:text-zinc-400">
+                KIS 업종 {liveQuote.kisIndustryName}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ── 현재가: 로딩 중이면 skeleton ── */}
         <div className="flex items-end gap-3 mb-6">

@@ -15,6 +15,8 @@ let searchMasterCache: StockMasterItem[] | null = null;
 
 const CUSTOM_ALIASES: Record<string, string[]> = {
   "329180": ["현대중공업", "HD현대중공업"],
+  "079550": ["LIG넥스원", "엘아이지넥스원"],
+  "000880": ["한화", "한화그룹"],
   // Add other legacy names or aliases here
 };
 
@@ -91,36 +93,50 @@ export function getServerStockName(symbol: string): string {
   return found?.name || symbol;
 }
 
-export function searchStock(query: string) {
+export function rankSearchItems(query: string, master: StockMasterItem[]) {
   const normQuery = query.toLowerCase().replace(/\s+/g, "");
   if (!normQuery) return [];
-
-  const master = getSearchMaster();
   
   return master
     .map(item => {
       let matchScore = 0;
+      const normName = item.name.toLowerCase().replace(/\s+/g, "");
+      const normAliases = item.aliases.map(a => a.toLowerCase().replace(/\s+/g, ""));
       
       // Exact match
-      if (item.symbol === normQuery || item.name === query) {
-        matchScore = 100;
+      if (item.symbol === normQuery || normName === normQuery) {
+        matchScore = 120;
       } 
       // Alias match
-      else if (item.aliases.some(a => a === query || a.replace(/\s+/g,"") === normQuery)) {
-        matchScore = 95;
+      else if (normAliases.some(a => a === normQuery)) {
+        matchScore = 110;
+      }
+      // Prefix match — exact-looking company names should beat broad substring matches
+      else if (normName.startsWith(normQuery)) {
+        matchScore = 80;
       }
       // Substring match
-      else if (item.name.toLowerCase().includes(normQuery) || item.symbol.includes(normQuery)) {
+      else if (normName.includes(normQuery) || item.symbol.includes(normQuery)) {
         matchScore = 50;
       }
       // Alias substring match
-      else if (item.aliases.some(a => a.toLowerCase().includes(normQuery))) {
+      else if (normAliases.some(a => a.includes(normQuery))) {
         matchScore = 40;
       }
 
       return { ...item, matchScore };
     })
     .filter(item => item.matchScore > 0)
-    .sort((a, b) => b.matchScore - a.matchScore)
+    .sort((a, b) => {
+      if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+      const typePriority = (item: StockMasterItem) => item.type === "stock" ? 0 : item.type === "sector" ? 1 : 2;
+      const typeDiff = typePriority(a) - typePriority(b);
+      if (typeDiff !== 0) return typeDiff;
+      return a.name.length - b.name.length;
+    })
     .slice(0, 6);
+}
+
+export function searchStock(query: string) {
+  return rankSearchItems(query, getSearchMaster());
 }

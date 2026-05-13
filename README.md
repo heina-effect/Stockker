@@ -10,6 +10,7 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **Stale-while-revalidate 스냅샷**: DB에 저장된 리서치 에셋을 재사용하여 빠른 응답 + API 쿼터 절약
 - **4-Source 뉴스 파이프라인**: KIS 뉴스, Open DART 공시, GNews, NewsAPI 병렬 수집 + pgvector 임베딩 큐레이션
 - **KIS 업종코드 기반 연관 종목**: idxcode.mst 파싱으로 전 종목 섹터 자동 추론 — taxonomy 미등록 종목도 KIS `bstp_cls_code`로 섹터 peer 탐색
+- **DB-first 검색 Master**: 검색은 `stock_master + sector_master`를 우선 사용하고, DART corp-master 기반 로컬 인덱스는 장애 fallback으로만 사용
 - **데이터 오염 무관용**: mock fallback 완전 제거, 소스 관련성 필터는 제목(title) 전용, 빈 결과는 빈 UI로 표시
 - **평가 레이어 (Eval)**: AI 생성물의 환각·최신성·출처 충분성·면책 조항을 자동 검증
 - **추천 가드레일**: 지시적 매매 언어 차단, 출처 수 명시, disclaimer 필수 노출
@@ -74,6 +75,9 @@ npm run validate:full
 ```bash
 npm run validate          # lint + typecheck
 npm run validate:full     # 전체 테스트 + 빌드
+npm run validate:master   # static metadata/taxonomy/DART master 검증
+npm run validate:db-master # 원격 stock_master/sector_master 검증
+npm run sync:stock-master # DART corp-master를 stock_master에 동기화
 npm run test:evals        # AI 평가 테스트
 npm run build             # 프로덕션 빌드
 ```
@@ -88,7 +92,9 @@ npm run build             # 프로덕션 빌드
 - [theme-behavior.md](docs/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-30-report.md](docs/phase-30-report.md) — 최신 (API 최적화, 오염 차단, KIS 업종 기반 연관 종목)
+- [phase-31-report.md](docs/phase-31-report.md) — 최신 (종목 오염 차단, 카드 상태 일관화, 섹터 표시, 연관 종목 강화)
+- [phase-31-audit.md](docs/phase-31-audit.md) — Phase 31 감사 보고서
+- [phase-30-report.md](docs/phase-30-report.md) — API 최적화, 오염 차단, KIS 업종 기반 연관 종목
 - [phase-30-audit.md](docs/phase-30-audit.md) — Phase 30 감사 보고서
 - [phase-28-report.md](docs/phase-28-report.md) — Phase 28 (전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 UX)
 - [phase-28-audit.md](docs/phase-28-audit.md) — Phase 28 감사 보고서
@@ -126,7 +132,8 @@ npm run build             # 프로덕션 빌드
 | 27 | 현실 수정 — 섹터 404 제거, 테마 실제 적용, 날짜 의미론, 섹터 UX 단순화 |
 | 28 | 런타임/문서 재정합 — 전역 테마 토큰, canonical sector normalization, full-card home links |
 | 29 | 투자의견 카드, 소스 로딩 UX, 소스 날짜 정렬, 종목 prefix 오염 차단 |
-| **30 (현재)** | **API 호출 최적화, mock 완전 제거, 오염 차단 강화, KIS 업종코드 기반 연관 종목 자동 매핑** |
+| 30 | API 호출 최적화, mock 완전 제거, 오염 차단 강화, KIS 업종코드 기반 연관 종목 자동 매핑 |
+| **31 (현재)** | **종목 오염 차단, 상태 뱃지 정정, 카드 상태 일관화, 상세 섹터 표시, 연관 종목 강화** |
 
 ---
 
