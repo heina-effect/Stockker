@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase/client";
-import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
 import { aiSummarizeSector } from "@/server/ai/orchestrator";
 import { generateIssues } from "@/server/research/model-router";
+import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
 
 export interface SectorResearchSnapshot {
   sector_id: string;
@@ -42,7 +42,8 @@ export async function getSectorSnapshot(sectorId: string): Promise<SectorResearc
 }
 
 export async function generateSectorSnapshot(sectorId: string): Promise<SectorResearchSnapshot | null> {
-  const sector = SECTOR_UNIVERSE[sectorId];
+  const universe = await getDBSectorUniverse();
+  const sector = universe[sectorId];
   if (!sector) return null;
 
   // Gather clusters from representative symbols

@@ -13,11 +13,14 @@ import { GoogleGenAI } from "@google/genai";
 import type { IssueCluster, SourceItem, SentimentScore, StockReportSummary } from "@/types/research";
 import { getServerStockName } from "@/lib/stocks/search-master";
 import { mockReportSummary, mockSentiment } from "../research/mock-data";
-import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
 
-const VALID_SECTOR_IDS_FOR_PROMPT = Object.entries(SECTOR_UNIVERSE)
-  .map(([id, s]) => `"${id}" (${s.name})`)
-  .join(", ");
+async function getValidSectorIdsForPrompt(): Promise<string> {
+  const universe = await getDBSectorUniverse();
+  return Object.entries(universe)
+    .map(([id, s]) => `"${id}" (${s.name})`)
+    .join(", ");
+}
 
 // ─── Gemini Client ────────────────────────────────────────────────────────────
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
@@ -307,6 +310,7 @@ Rules:
 // ═════════════════════════════════════════════════════════════════════════════
 export async function aiGenerateHomeIntelligence(recentSources?: any[]) {
   const startTime = Date.now();
+  const validSectorIdsForPrompt = await getValidSectorIdsForPrompt();
 
   if (!ai) {
     return {
@@ -317,7 +321,7 @@ export async function aiGenerateHomeIntelligence(recentSources?: any[]) {
   // Stage 1: Flash-Lite — lightweight candidate extraction
   let candidates: any = null;
   try {
-    const sourceContext = recentSources && recentSources.length > 0 
+    const sourceContext = recentSources && recentSources.length > 0
       ? `Recent curated sources:\n${recentSources.map(s => `- [${s.provider}] ${s.title} (${s.symbol})`).join('\n')}\n\n`
       : "";
 
@@ -332,7 +336,7 @@ Output JSON:
   "keyIssueHeadlines": ["headline 1", "headline 2", "headline 3"],
   "trendingSectors": [
     {
-      "sectorId": "<one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>",
+      "sectorId": "<one of: ${validSectorIdsForPrompt}>",
       "name": "<canonical Korean sector name>",
       "whyNow": "<why this sector matters now, source-grounded>",
       "representativeSymbols": ["<canonical member symbol>"],
@@ -370,7 +374,7 @@ Generate final home intelligence JSON with user-facing copy (all Korean):
   ],
   "trendingSectors": [
     {
-      "sectorId": "<MUST be one of: ${VALID_SECTOR_IDS_FOR_PROMPT}>",
+      "sectorId": "<MUST be one of: ${validSectorIdsForPrompt}>",
       "name": "<canonical Korean sector name>",
       "whyNow": "<why trending now, source-backed, not generic>",
       "trendStrength": <70-99>,

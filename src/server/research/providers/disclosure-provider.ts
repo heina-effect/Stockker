@@ -1,6 +1,6 @@
-import { STOCK_UNIVERSE } from "@/lib/stocks/metadata";
 import corpMaster from "@/data/dart/corp-master.json";
 import { SourceItem } from "@/types/research";
+import { getDBStockUniverse } from "@/lib/stocks/db-registry";
 
 const DART_API_KEY = process.env.DART_API_KEY;
 
@@ -9,7 +9,8 @@ const DART_API_KEY = process.env.DART_API_KEY;
  * 일일 허용건수 40,000건.
  */
 export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
-    const stock = Object.values(STOCK_UNIVERSE).find(s => s.symbol === symbol);
+    const universe = await getDBStockUniverse();
+    const stock = universe[symbol];
     const stockName = stock?.name || symbol;
     const corpCodeObj = (corpMaster as Record<string, any>)[symbol];
     const corpCode = corpCodeObj?.corp_code;

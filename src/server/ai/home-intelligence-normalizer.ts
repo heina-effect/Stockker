@@ -1,8 +1,8 @@
 import {
-  SECTOR_UNIVERSE,
   isSectorId,
   resolveSectorId,
   type SectorId,
+  type SectorTheme,
 } from "@/data/sectors/taxonomy";
 import type { EmbeddedSource } from "@/server/ai/vector-store";
 
@@ -36,11 +36,14 @@ function sourceCountsBySymbol(recentSources: EmbeddedSource[] = []): Map<string,
   return counts;
 }
 
-function sourceIdsBySector(recentSources: EmbeddedSource[] = []): Map<SectorId, string[]> {
+function sourceIdsBySector(
+  recentSources: EmbeddedSource[] = [],
+  sectorUniverse: Record<string, SectorTheme>
+): Map<SectorId, string[]> {
   const ids = new Map<SectorId, string[]>();
   for (const source of recentSources) {
     if (!source.symbol || source.isMock) continue;
-    for (const [sectorId, sector] of Object.entries(SECTOR_UNIVERSE)) {
+    for (const [sectorId, sector] of Object.entries(sectorUniverse)) {
       if (!sector.memberSymbols.includes(source.symbol)) continue;
       const current = ids.get(sectorId as SectorId) || [];
       current.push(source.id);
@@ -50,8 +53,13 @@ function sourceIdsBySector(recentSources: EmbeddedSource[] = []): Map<SectorId, 
   return ids;
 }
 
-function normalizeRepresentativeSymbols(raw: any, sectorId: SectorId): string[] {
-  const sector = SECTOR_UNIVERSE[sectorId];
+function normalizeRepresentativeSymbols(
+  raw: any,
+  sectorId: SectorId,
+  sectorUniverse: Record<string, SectorTheme>
+): string[] {
+  const sector = sectorUniverse[sectorId];
+  if (!sector) return [];
   const input = [
     ...asArray<string>(raw?.representativeSymbols),
     ...asArray<string>(raw?.leaders),
@@ -71,8 +79,12 @@ function resolveRawSectorId(raw: any): SectorId | null {
   );
 }
 
-function normalizeSectors(raw: any, recentSources: EmbeddedSource[] = []): NormalizedTrendingSector[] {
-  const sectorSourceIds = sourceIdsBySector(recentSources);
+function normalizeSectors(
+  raw: any,
+  recentSources: EmbeddedSource[] = [],
+  sectorUniverse: Record<string, SectorTheme>
+): NormalizedTrendingSector[] {
+  const sectorSourceIds = sourceIdsBySector(recentSources, sectorUniverse);
   const rawSectors = [
     ...asArray<any>(raw?.trendingSectors),
     ...asArray<any>(raw?.sectors),
@@ -84,9 +96,9 @@ function normalizeSectors(raw: any, recentSources: EmbeddedSource[] = []): Norma
 
   for (const item of rawSectors) {
     const sectorId = resolveRawSectorId(item);
-    if (!sectorId || seen.has(sectorId) || !isSectorId(sectorId)) continue;
+    if (!sectorId || seen.has(sectorId) || !Object.prototype.hasOwnProperty.call(sectorUniverse, sectorId)) continue;
 
-    const sector = SECTOR_UNIVERSE[sectorId];
+    const sector = sectorUniverse[sectorId];
     const basisSourceIds = Array.from(new Set([
       ...asArray<string>(item?.basisSourceIds),
       ...(sectorSourceIds.get(sectorId) || []),
@@ -100,7 +112,7 @@ function normalizeSectors(raw: any, recentSources: EmbeddedSource[] = []): Norma
       name: sector.name,
       whyNow,
       description: whyNow,
-      representativeSymbols: normalizeRepresentativeSymbols(item, sectorId),
+      representativeSymbols: normalizeRepresentativeSymbols(item, sectorId, sectorUniverse),
       sourceCount,
       trendStrength: finiteNumber(item?.trendStrength ?? item?.strength),
       basisSourceIds,
@@ -123,8 +135,12 @@ function normalizeStocks(raw: any, recentSources: EmbeddedSource[] = []) {
   });
 }
 
-export function normalizeHomeIntelligence(raw: any, recentSources: EmbeddedSource[] = []) {
-  const trendingSectors = normalizeSectors(raw, recentSources);
+export function normalizeHomeIntelligence(
+  raw: any,
+  recentSources: EmbeddedSource[] = [],
+  sectorUniverse: Record<string, SectorTheme>
+) {
+  const trendingSectors = normalizeSectors(raw, recentSources, sectorUniverse);
   const stocks = normalizeStocks(raw, recentSources);
 
   return {

@@ -1,9 +1,10 @@
-import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
 import { getServerStockName } from "@/lib/stocks/search-master";
+import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
 import type { RelatedStock } from "@/types/research";
 
-function findSectorForSymbol(symbol: string) {
-  for (const sector of Object.values(SECTOR_UNIVERSE)) {
+async function findSectorForSymbol(symbol: string) {
+  const universe = await getDBSectorUniverse();
+  for (const sector of Object.values(universe)) {
     if (sector.memberSymbols.includes(symbol)) return sector;
   }
   return null;
@@ -14,7 +15,7 @@ export async function generateRelatedStocks(symbol: string): Promise<RelatedStoc
   const seen = new Set<string>([symbol]);
 
   // 1. Sector peers — deterministic, no API calls
-  const sector = findSectorForSymbol(symbol);
+  const sector = await findSectorForSymbol(symbol);
   if (sector) {
     const peers = sector.memberSymbols.filter(s => !seen.has(s)).slice(0, 3);
     for (const peerSymbol of peers) {

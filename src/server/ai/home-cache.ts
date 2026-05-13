@@ -4,7 +4,7 @@
  */
 import { aiGenerateHomeIntelligence } from "./orchestrator";
 import { normalizeHomeIntelligence } from "./home-intelligence-normalizer";
-import { isSectorId } from "@/data/sectors/taxonomy";
+import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
 
 const TTL_MS = 15 * 60 * 1000;          // 15 minutes fresh
 const STALE_WINDOW_MS = 5 * 60 * 1000;  // serve stale for up to 5 extra minutes while refreshing
@@ -57,14 +57,15 @@ async function refreshCache(): Promise<any> {
   try {
     const vectorStore = (await import("@/server/ai/vector-store")).getVectorStore();
     const recentSources = await vectorStore.getGlobalRecentCuratedSources(30);
+    const sectorUniverse = await getDBSectorUniverse();
 
-    const fresh = normalizeHomeIntelligence(await aiGenerateHomeIntelligence(recentSources), recentSources);
+    const fresh = normalizeHomeIntelligence(await aiGenerateHomeIntelligence(recentSources), recentSources, sectorUniverse);
     // Only cache if there is meaningful content (not just a meta error shell)
     if (hasMeaningfulHomeContent(fresh)) {
       // aiPicks 중 type="sector"인 항목도 유효 섹터 ID만 허용
       if (fresh.aiPicks && Array.isArray(fresh.aiPicks)) {
         fresh.aiPicks = fresh.aiPicks.filter((p: any) => {
-          if (p?.type === "sector") return isSectorId(p?.targetId);
+          if (p?.type === "sector") return Object.prototype.hasOwnProperty.call(sectorUniverse, p?.targetId);
           return true; // stock 타입은 그대로 통과
         });
       }

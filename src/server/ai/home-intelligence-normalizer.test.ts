@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeHomeIntelligence } from "./home-intelligence-normalizer";
+import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
 import type { EmbeddedSource } from "./vector-store";
 
 const recentSources: EmbeddedSource[] = [
@@ -32,7 +33,7 @@ describe("normalizeHomeIntelligence", () => {
         { name: "반도체", whyNow: "HBM 이슈", representativeSymbols: ["005930"] },
         { sectorId: "sec-defense", name: "방산", whyNow: "invalid" },
       ],
-    }, recentSources);
+    }, recentSources, SECTOR_UNIVERSE);
 
     expect(normalized.trendingSectors).toHaveLength(1);
     expect(normalized.trendingSectors[0].sectorId).toBe("sec-semiconductor");
@@ -45,7 +46,7 @@ describe("normalizeHomeIntelligence", () => {
   it("adds grounded stock source counts when available", () => {
     const normalized = normalizeHomeIntelligence({
       stocks: [{ symbol: "005930", name: "삼성전자", reason: "HBM" }],
-    }, recentSources);
+    }, recentSources, SECTOR_UNIVERSE);
 
     expect(normalized.stocks[0].sourceCount).toBe(1);
   });
