@@ -1,12 +1,26 @@
 import { getServerStockName } from "@/lib/stocks/search-master";
 import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
+import { getDomesticStockQuote } from "@/server/kis/rest-client";
+import { resolveKisSectorId } from "@/server/kis/sector-map";
 import type { RelatedStock } from "@/types/research";
 
 async function findSectorForSymbol(symbol: string) {
   const universe = await getDBSectorUniverse();
+
+  // 1차: taxonomy/DB memberSymbols 직접 매핑
   for (const sector of Object.values(universe)) {
     if (sector.memberSymbols.includes(symbol)) return sector;
   }
+
+  // 2차: KIS quote의 bstp_cls_code로 업종 자동 추론
+  try {
+    const quote = await getDomesticStockQuote(symbol);
+    const sectorId = resolveKisSectorId(quote.kisIndustryCode, quote.kisIndustryName);
+    if (sectorId && universe[sectorId]) return universe[sectorId];
+  } catch {
+    // non-fatal
+  }
+
   return null;
 }
 

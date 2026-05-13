@@ -81,7 +81,7 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-200 dark:border-zinc-800 relative overflow-hidden">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent relative overflow-hidden">
       <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 dark:bg-indigo-900/10 rounded-bl-full -z-10" />
       
       <div className="flex items-center justify-between mb-4">

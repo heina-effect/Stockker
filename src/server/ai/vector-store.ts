@@ -55,6 +55,7 @@ export interface VectorStoreAdapter {
   findNearestSpamCentroid(vector: number[]): Promise<number>;
   getRecentCuratedSources(symbol: string, maxAgeMs?: number): Promise<EmbeddedSource[]>;
   getGlobalRecentCuratedSources(limit?: number): Promise<EmbeddedSource[]>;
+  getSourcesByIds(ids: string[]): Promise<EmbeddedSource[]>;
 }
 
 // ─── In-Memory Fallback ───────────────────────────────────────────────────────
@@ -113,6 +114,11 @@ class InMemoryVectorAdapter implements VectorStoreAdapter {
       s.qualityLabel !== "rejected" &&
       new Date(s.collectedAt).getTime() > cutoff
     ).sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0));
+  }
+
+  async getSourcesByIds(ids: string[]): Promise<EmbeddedSource[]> {
+    const idSet = new Set(ids);
+    return this.embedStore.filter(s => idSet.has(s.id));
   }
 
   async getGlobalRecentCuratedSources(limit = 20): Promise<EmbeddedSource[]> {
@@ -289,6 +295,23 @@ class SupabaseVectorAdapter implements VectorStoreAdapter {
       }
     }
     return uniqueSources;
+  }
+
+  async getSourcesByIds(ids: string[]): Promise<EmbeddedSource[]> {
+    if (ids.length === 0) return [];
+    const db = getSupabaseAdmin();
+    if (!db) return [];
+
+    const { data, error } = await db
+      .from("source_embeddings")
+      .select("*")
+      .in("id", ids);
+
+    if (error) {
+      console.warn("[VectorStore] getSourcesByIds error:", error.message);
+      return [];
+    }
+    return (data || []).map(mapRowToEmbeddedSource);
   }
 }
 

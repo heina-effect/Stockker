@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { SourceItem } from "@/types/research";
-import { Link2, Clock, CheckCircle2, Newspaper, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { Link2, Clock, CheckCircle2, Newspaper, FileText, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 
 const QUALITY_BADGE: Record<string, { label: string; cls: string }> = {
   high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30" },
@@ -44,24 +44,58 @@ function formatSourceDate(date: Date): string {
   return date.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
+function sortByDate(items: SourceItem[]): SourceItem[] {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.generatedAt || b.collectedAt || 0).getTime() -
+      new Date(a.generatedAt || a.collectedAt || 0).getTime()
+  );
+}
+
+function SkeletonSource() {
+  return (
+    <div className="animate-pulse flex flex-col gap-2 p-3 rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-3 bg-slate-200 dark:bg-zinc-700 rounded" />
+        <div className="w-12 h-3 bg-slate-100 dark:bg-zinc-800 rounded ml-auto" />
+      </div>
+      <div className="w-full h-3 bg-slate-200 dark:bg-zinc-700 rounded" />
+      <div className="w-3/4 h-3 bg-slate-100 dark:bg-zinc-800 rounded" />
+    </div>
+  );
+}
+
 export function SourceListCard({ symbol }: { symbol: string }) {
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [sourceCount, setSourceCount] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setError(false);
+
     fetch(`/api/stocks/${symbol}/issues`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(d => {
+        if (!mounted) return;
         if (d.ok && d.sources) {
-          setSources(d.sources.slice(0, PAGE_SIZE));
-          setSourceCount(d.sources.length);
-          setHasMore(d.sources.length > PAGE_SIZE);
+          const sorted = sortByDate(d.sources);
+          setSources(sorted.slice(0, PAGE_SIZE));
+          setSourceCount(sorted.length);
+          setHasMore(sorted.length > PAGE_SIZE);
+        } else {
+          setError(true);
         }
       })
-      .catch(() => {});
+      .catch(() => { if (mounted) setError(true); })
+      .finally(() => { if (mounted) setLoading(false); });
+
+    return () => { mounted = false; };
   }, [symbol]);
 
   const loadMore = async () => {
@@ -87,38 +121,51 @@ export function SourceListCard({ symbol }: { symbol: string }) {
     setLoadingMore(false);
   };
 
-  if (sources.length === 0) return null;
-
   const disclosureCount = sources.filter(s => s.sourceType === "disclosure").length;
   const newsCount = sources.filter(s => s.sourceType === "news").length;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-100 dark:border-zinc-800">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
       <div className="flex items-center justify-between mb-1">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           AI 분석 근거 소스
           <CheckCircle2 className="w-4 h-4 text-emerald-500" />
         </h3>
         <span className="text-[10px] text-slate-400 dark:text-zinc-500">
-          {sourceCount > 0 ? `총 ${sourceCount}건` : ""}
+          {!loading && sourceCount > 0 ? `총 ${sourceCount}건` : ""}
         </span>
       </div>
 
-      {/* 소스 유형 요약 */}
-      {(disclosureCount > 0 || newsCount > 0) && (
-        <div className="flex gap-2 mb-4">
-          {newsCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded-full">
-              <Newspaper className="w-2.5 h-2.5" />뉴스 {newsCount}건
-            </span>
-          )}
-          {disclosureCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
-              <FileText className="w-2.5 h-2.5" />공시 {disclosureCount}건
-            </span>
-          )}
+      {loading ? (
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map(i => <SkeletonSource key={i} />)}
         </div>
-      )}
+      ) : error ? (
+        <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-zinc-500 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          소스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+        </div>
+      ) : sources.length === 0 ? (
+        <div className="text-sm text-slate-400 dark:text-zinc-500 py-2">
+          분석 근거 소스가 없습니다.
+        </div>
+      ) : (
+        <>
+          {/* 소스 유형 요약 */}
+          {(disclosureCount > 0 || newsCount > 0) && (
+            <div className="flex gap-2 mb-4">
+              {newsCount > 0 && (
+                <span className="flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded-full">
+                  <Newspaper className="w-2.5 h-2.5" />뉴스 {newsCount}건
+                </span>
+              )}
+              {disclosureCount > 0 && (
+                <span className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
+                  <FileText className="w-2.5 h-2.5" />공시 {disclosureCount}건
+                </span>
+              )}
+            </div>
+          )}
 
       <ul className="flex flex-col gap-3">
         {sources.map(src => {
@@ -215,6 +262,8 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       <p className="mt-4 text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">
         실제 뉴스 및 Open DART 공시 데이터를 기반으로 AI 선별 후 분석합니다. 환각(Hallucination) 현상이 일부 있을 수 있습니다.
       </p>
+        </>
+      )}
     </div>
   );
 }

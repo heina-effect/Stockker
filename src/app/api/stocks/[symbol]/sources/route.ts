@@ -23,9 +23,15 @@ export async function GET(
     const dbSources = await vectorStore.getRecentCuratedSources(symbol, 60 * 60 * 1000); // 1h window
 
     if (dbSources.length > 0) {
-      const total = dbSources.length;
+      // 날짜 내림차순 정렬 (publishedAt 우선, 없으면 collectedAt)
+      const sorted = [...dbSources].sort(
+        (a, b) =>
+          new Date(b.publishedAt || b.collectedAt).getTime() -
+          new Date(a.publishedAt || a.collectedAt).getTime()
+      );
+      const total = sorted.length;
       const start = (page - 1) * limit;
-      const items = dbSources.slice(start, start + limit).map(s => ({
+      const items = sorted.slice(start, start + limit).map(s => ({
         id: s.id,
         sourceType: s.sourceType,
         title: s.title,

@@ -262,9 +262,9 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSPI",
     "sector": "방산"
   },
-  "073120": {
-    "symbol": "073120",
-    "name": "LIG넥스원",
+  "079550": {
+    "symbol": "079550",
+    "name": "LIG디펜스앤에어로스페이스",
     "market": "KOSPI",
     "sector": "방산"
   },

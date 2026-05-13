@@ -1,10 +1,11 @@
 /**
- * Home Intelligence Cache — Phase 18
- * Implements: TTL cache + in-flight dedupe + stale-while-revalidate
+ * Home Intelligence Cache — Phase 18 / Phase 29 업데이트
+ * Implements: TTL cache + in-flight dedupe + stale-while-revalidate + sector momentum signals
  */
 import { aiGenerateHomeIntelligence } from "./orchestrator";
 import { normalizeHomeIntelligence } from "./home-intelligence-normalizer";
 import { getDBSectorUniverse } from "@/lib/stocks/db-registry";
+import { computeSectorMomentumSignals, applyMomentumSignals } from "@/server/research/sector-momentum";
 
 const TTL_MS = 15 * 60 * 1000;          // 15 minutes fresh
 const STALE_WINDOW_MS = 5 * 60 * 1000;  // serve stale for up to 5 extra minutes while refreshing
@@ -59,7 +60,20 @@ async function refreshCache(): Promise<any> {
     const recentSources = await vectorStore.getGlobalRecentCuratedSources(30);
     const sectorUniverse = await getDBSectorUniverse();
 
-    const fresh = normalizeHomeIntelligence(await aiGenerateHomeIntelligence(recentSources), recentSources, sectorUniverse);
+    const aiRaw = await aiGenerateHomeIntelligence(recentSources);
+    const fresh = normalizeHomeIntelligence(aiRaw, recentSources, sectorUniverse);
+
+    // 섹터 모멘텀 신호로 trendingSectors 보정 (non-blocking, 실패 시 원본 유지)
+    try {
+      const momentumSignals = await computeSectorMomentumSignals(sectorUniverse);
+      if (momentumSignals.size > 0) {
+        fresh.trendingSectors = applyMomentumSignals(fresh.trendingSectors || [], momentumSignals);
+        fresh.sectors = fresh.trendingSectors;
+      }
+    } catch (e) {
+      console.warn("[HomeCache] Sector momentum signal failed (non-fatal):", e);
+    }
+
     // Only cache if there is meaningful content (not just a meta error shell)
     if (hasMeaningfulHomeContent(fresh)) {
       // aiPicks 중 type="sector"인 항목도 유효 섹터 ID만 허용

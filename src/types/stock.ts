@@ -9,6 +9,8 @@ export interface StockQuote {
   low: number;
   open: number;
   timestamp: string;
+  kisIndustryCode?: string; // bstp_cls_code (업종구분코드, e.g. "0013")
+  kisIndustryName?: string; // bstp_kor_isnm (업종명, e.g. "전기·전자")
 }
 
 export interface OrderbookLevel {

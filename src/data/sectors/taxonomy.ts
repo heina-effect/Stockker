@@ -77,8 +77,8 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     name: "우주항공·방산",
     aliases: ["K-방산", "전투기", "미사일", "위성", "A&D"],
     description: "글로벌 지정학적 리스크와 국방 현대화 수요에 따른 대규모 수출 모멘텀 섹터",
-    memberSymbols: ["012450", "073120", "272210", "064350"],
-    representativeSymbols: ["012450", "073120"],
+    memberSymbols: ["012450", "079550", "272210", "064350"],
+    representativeSymbols: ["012450", "079550"],
     iconKey: "shield"
   },
   "sec-ai-infra": {

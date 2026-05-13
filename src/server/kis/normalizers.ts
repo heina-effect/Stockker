@@ -9,9 +9,12 @@ export function normalizeKisDomesticQuote(output: Record<string, unknown>): Stoc
   const change = Number(output.prdy_vrss);
   const changeRate = Number(output.prdy_ctrt);
 
+  const kisIndustryCode = String(output.bstp_cls_code || "").trim() || undefined;
+  const kisIndustryName = String(output.bstp_kor_isnm || "").trim() || undefined;
+
   return {
     symbol: String(output.stck_shrn_iscd || ""),
-    name: "", // KIS quote don't always provide name, UI should handle or merge
+    name: "",
     price: currentPrice,
     change: change,
     changeRate: changeRate,
@@ -20,6 +23,8 @@ export function normalizeKisDomesticQuote(output: Record<string, unknown>): Stoc
     low: Number(output.stck_lwpr),
     open: Number(output.stck_oprc),
     timestamp: new Date().toISOString(),
+    kisIndustryCode,
+    kisIndustryName,
   };
 }
 

@@ -139,3 +139,19 @@ export interface SectorTheme {
   memberSymbols: string[];
   representativeSymbols: string[];
 }
+
+export interface AnalystOpinionItem {
+  firmName: string;
+  opinion: string;
+  targetPrice: number;
+  date: string;
+  prevOpinion?: string;
+  prevTargetPrice?: number;
+}
+
+export interface AnalystOpinionSummary {
+  items: AnalystOpinionItem[];
+  avgTargetPrice: number;
+  currentPrice?: number;
+  updatedAt: string;
+}

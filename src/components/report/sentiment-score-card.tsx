@@ -16,7 +16,7 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   if (!data) return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border h-[340px] flex flex-col">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[340px] flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
@@ -39,7 +39,7 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
   );
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>

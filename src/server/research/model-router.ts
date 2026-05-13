@@ -1,15 +1,10 @@
 import {
-  mockReportSummary,
-  mockSentiment,
-  mockIssues,
   mockBuyPlan,
 } from "./mock-data";
 import type { BuyPricePlan, IssueCluster, SourceItem } from "@/types/research";
-import { STOCK_UNIVERSE } from "@/lib/stocks/metadata";
 import { collectRawSources } from "./pipeline/collect";
 import { normalizeSources } from "./pipeline/normalize";
 import { rankAndCluster } from "./pipeline/rank";
-import { summarizeIssues } from "./pipeline/summarize";
 import { generateRelatedStocks as genRelatedStocks } from "./pipeline/related-stocks";
 import { curateSourcesWithEmbedding } from "@/server/ai/embedding-curator";
 import { getDomesticStockQuote } from "@/server/kis/rest-client";
@@ -153,30 +148,37 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
     
     // DB-first: check if we have enough fresh sources (e.g., from the last 1 hour)
     const recentSources = await vectorStore.getRecentCuratedSources(symbol, 60 * 60 * 1000);
-    
+
     // If we have a reasonable amount of fresh curated sources, skip external fetch
     if (recentSources && recentSources.length >= 3) {
-      console.log(`[AI Router] Using ${recentSources.length} DB-cached curated sources for ${symbol}`);
-      const clusters = rankAndCluster(recentSources);
       // EmbeddedSource has publishedAt; SourceItem expects generatedAt — bridge the gap here
-      const sources = recentSources.map(s => ({ ...s, generatedAt: s.publishedAt })) as any[];
-      return { clusters, sources };
+      const dbAsSourceItems = recentSources.map(s => ({ ...s, generatedAt: s.publishedAt ?? s.collectedAt })) as any[];
+      // DB 소스도 회사명 관련성 필터 적용 — Phase 29 이전에 캐시된 오염 소스 차단
+      const dbNews = dbAsSourceItems.filter((s: any) => s.sourceType !== "disclosure");
+      const dbDisclosures = dbAsSourceItems.filter((s: any) => s.sourceType === "disclosure");
+      const filtered = normalizeSources(dbNews, dbDisclosures, { companyName: name });
+      if (filtered.length >= 3) {
+        console.log(`[AI Router] Using ${filtered.length}/${recentSources.length} DB-cached sources (after relevance filter) for ${symbol}`);
+        const clusters = rankAndCluster(filtered);
+        return { clusters, sources: filtered };
+      }
+      console.log(`[AI Router] DB sources filtered to ${filtered.length} (< 3) for ${symbol}, refetching`);
     }
 
     // ── Step 1: Fetch raw sources ────────────────────────────────────────────
     const { rawNews, disclosures } = await collectRawSources(symbol);
 
     if ((!rawNews || rawNews.length === 0) && (!disclosures || disclosures.length === 0)) {
-      console.warn(`[AI Router] No real sources for ${symbol} (${name}), using mock issues.`);
-      return mockIssues(symbol) as any;
+      console.warn(`[AI Router] No real sources for ${symbol} (${name}), returning empty.`);
+      return { clusters: [], sources: [] };
     }
 
     // ── Step 2: Normalize (dedup, recency filter, relevance filter) ──────────
     const normalized = normalizeSources(rawNews, disclosures, { companyName: name });
 
     if (normalized.length === 0) {
-      console.warn(`[AI Router] All sources filtered out for ${symbol} (${name}), using mock issues.`);
-      return mockIssues(symbol) as any;
+      console.warn(`[AI Router] All sources filtered out for ${symbol} (${name}), returning empty.`);
+      return { clusters: [], sources: [] };
     }
 
     // ── Step 3: Embedding curation (spam filter, quality score, semantic dedup)
@@ -200,7 +202,7 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
     return { clusters, sources };
   } catch (e) {
     console.error(`[AI Router] generateIssues failed for ${symbol}:`, e);
-    return mockIssues(symbol) as any;
+    return { clusters: [], sources: [] };
   }
 }
 

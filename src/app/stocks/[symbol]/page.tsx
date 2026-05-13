@@ -6,6 +6,7 @@ import { BuyPricePlanCard } from "@/components/report/buy-price-plan-card";
 import { IssueTimelineCard } from "@/components/report/issue-timeline-card";
 import { RelatedStocksCard } from "@/components/report/related-stocks-card";
 import { SourceListCard } from "@/components/report/source-list-card";
+import { AnalystOpinionCard } from "@/components/report/analyst-opinion-card";
 
 interface ReportPageProps {
   params: Promise<{ symbol: string }>;
@@ -32,6 +33,7 @@ export default async function StockReportPage({ params }: ReportPageProps) {
           {/* Right Column: News & Context */}
           <div className="lg:col-span-5 flex flex-col gap-6">
             <IssueTimelineCard symbol={symbol} />
+            <AnalystOpinionCard symbol={symbol} />
             <RelatedStocksCard symbol={symbol} />
             <SourceListCard symbol={symbol} />
           </div>
