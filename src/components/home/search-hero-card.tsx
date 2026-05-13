@@ -79,7 +79,7 @@ export function SearchHeroCard() {
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-8 md:p-12 shadow-sm border flex flex-col items-center justify-center text-center min-h-[320px]">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-8 md:p-12 shadow-sm border border-transparent flex flex-col items-center justify-center text-center min-h-[320px]">
       <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 mb-4">
         궁금한 종목의 AI 분석을<br className="md:hidden" /> 확인해보세요.
       </h1>

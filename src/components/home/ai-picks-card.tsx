@@ -36,7 +36,7 @@ export function AIPicksCard() {
   const picks: any[] = data?.aiPicks || [];
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-900 rounded-[24px] p-6 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex flex-col h-full">
+    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-lg text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-500" />

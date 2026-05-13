@@ -39,7 +39,7 @@ export function TrendSectorsCard() {
   const validSectors = sectors.filter(sector => getSectorById(sector.sectorId || sector.id));
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm flex flex-col h-full">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
       <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
         <Layers className="w-5 h-5 text-teal-500" />
         지금 주목받는 섹터
