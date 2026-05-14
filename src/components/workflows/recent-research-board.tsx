@@ -25,8 +25,7 @@ export function RecentResearchBoard() {
         try {
           const res = await fetch(`/api/stocks/${symbol}/sentiment`);
           if (res.ok) {
-            const json = await res.json();
-            results[symbol] = json.sentiment ?? json;
+            results[symbol] = await res.json();
           }
         } catch (e) {
           console.error(e);
@@ -69,12 +68,12 @@ export function RecentResearchBoard() {
               </div>
               {item && (
                 <div className={`px-2 py-1 rounded text-xs font-bold flex items-center gap-1 ${
-                  item.trend === "up" ? "bg-red-50 text-red-600" :
-                  item.trend === "down" ? "bg-blue-50 text-blue-600" :
+                  item.trend === "bullish" ? "bg-red-50 text-red-600" :
+                  item.trend === "bearish" ? "bg-blue-50 text-blue-600" :
                   "bg-slate-50 text-slate-600"
                 }`}>
-                  {item.trend === "up" ? <TrendingUp className="w-3 h-3"/> :
-                   item.trend === "down" ? <TrendingDown className="w-3 h-3"/> :
+                  {item.trend === "bullish" ? <TrendingUp className="w-3 h-3"/> :
+                   item.trend === "bearish" ? <TrendingDown className="w-3 h-3"/> :
                    <Minus className="w-3 h-3"/>}
                   {item.score}점
                 </div>

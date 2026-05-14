@@ -23,29 +23,21 @@ export default async function StockReportPage({ params }: ReportPageProps) {
       <DashboardHeader />
       
       <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl">
-        <StockReportHeader symbol={symbol} />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 items-start">
-          <div className="lg:col-span-8">
-            <DailyCandlestickChartCard symbol={symbol} />
-          </div>
-
-          <div className="lg:col-span-4 flex flex-col gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Main Column: Report Detail */}
+          <div className="lg:col-span-8 flex flex-col gap-6">
+            <StockReportHeader symbol={symbol} />
             <SentimentScoreCard symbol={symbol} />
-            <AnalystOpinionCard symbol={symbol} />
-          </div>
-
-          <div className="lg:col-span-7">
+            <DailyCandlestickChartCard symbol={symbol} />
             <IssueTimelineCard symbol={symbol} />
           </div>
 
-          <div className="lg:col-span-5 flex flex-col gap-6">
+          {/* Side Column: Market Context & Personal Tool */}
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <AnalystOpinionCard symbol={symbol} />
+            <BuyPricePlanCard symbol={symbol} />
             <RelatedStocksCard symbol={symbol} />
             <SourceListCard symbol={symbol} />
-          </div>
-
-          <div className="lg:col-span-12">
-            <BuyPricePlanCard symbol={symbol} />
           </div>
         </div>
       </main>

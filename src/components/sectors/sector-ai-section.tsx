@@ -189,10 +189,9 @@ interface SectorAISectionProps {
   snapshot: SectorResearchSnapshot | null;
   sectorId: string;
   sector?: SectorTheme;
-  fallbackTrendStrength?: number;
 }
 
-export function SectorAISection({ snapshot: initialSnapshot, sectorId, sector, fallbackTrendStrength = 50 }: SectorAISectionProps) {
+export function SectorAISection({ snapshot: initialSnapshot, sectorId, sector }: SectorAISectionProps) {
   const [snapshot, setSnapshot] = useState<SectorResearchSnapshot | null>(initialSnapshot);
   const [loading, setLoading] = useState(!initialSnapshot);
   const [error, setError] = useState(false);
@@ -221,23 +220,9 @@ export function SectorAISection({ snapshot: initialSnapshot, sectorId, sector, f
 
   if (error || !snapshot) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-100 dark:border-zinc-800">
-        <div className="flex items-start justify-between mb-3 gap-3">
-          <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-indigo-500" />
-            지금 이 섹터가 주목받는 이유
-          </h3>
-          <div className="flex-shrink-0 text-right">
-            <div className="text-[10px] text-slate-400 dark:text-zinc-500 mb-1">모멘텀 강도</div>
-            <div className="w-28">
-              <TrendStrengthBar value={fallbackTrendStrength} />
-            </div>
-          </div>
-        </div>
-        <div className="p-4 bg-indigo-50/60 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-900/40 flex items-center gap-3 text-sm text-slate-500 dark:text-zinc-400">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 text-indigo-500" />
-          AI 섹터 분석을 불러오지 못했습니다. 모멘텀 지표는 기본값으로 유지합니다.
-        </div>
+      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-slate-100 dark:border-zinc-800 flex items-center gap-3 text-sm text-slate-400 dark:text-zinc-500">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        AI 섹터 분석을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
       </div>
     );
   }

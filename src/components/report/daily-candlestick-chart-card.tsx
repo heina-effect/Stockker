@@ -115,7 +115,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[400px] flex items-center justify-center animate-pulse">
+      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[280px] flex items-center justify-center animate-pulse">
         데이터 로드 중...
       </div>
     );
@@ -219,7 +219,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
   const timeLabel = chartMode === "daily" ? "일자" : "시각";
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[400px]">
+    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[280px]">
       <div className="flex items-center justify-between mb-2">
         <div className="flex flex-col">
            <div className="flex items-center gap-3">

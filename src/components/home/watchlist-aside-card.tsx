@@ -5,7 +5,6 @@ import Link from "next/link";
 import { formatNumber, formatChange } from "@/lib/utils";
 import { getStockName } from "@/lib/stocks/metadata";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
-import { USER_STORAGE_EVENT } from "@/lib/user-storage/events";
 import { useEffect, useState } from "react";
 
 export function WatchlistAsideCard() {
@@ -14,15 +13,8 @@ export function WatchlistAsideCard() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const sync = () => setWatchlist(LocalStorageAdapter.getAll().watchlist);
-    sync();
-    window.addEventListener(USER_STORAGE_EVENT, sync);
-    window.addEventListener("storage", sync);
+    setWatchlist(LocalStorageAdapter.getAll().watchlist);
     setMounted(true);
-    return () => {
-      window.removeEventListener(USER_STORAGE_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
   }, []);
 
   if (!mounted) {
@@ -60,8 +52,10 @@ export function WatchlistAsideCard() {
             );
           }
 
-          const isUp = (quote?.change ?? 0) > 0;
-          const isDown = (quote?.change ?? 0) < 0;
+          if (!quote) return null;
+
+          const isUp = quote.change > 0;
+          const isDown = quote.change < 0;
 
           return (
             <Link 
@@ -78,13 +72,13 @@ export function WatchlistAsideCard() {
 
               <div className="flex flex-col items-end">
                  <span className="font-bold text-slate-900 dark:text-zinc-100">
-                    {quote ? `${formatNumber(quote.price)}원` : "최신가 없음"}
+                    {formatNumber(quote.price)}원
                  </span>
-                 {quote ? <span className={`text-xs font-semibold ${
+                 <span className={`text-xs font-semibold ${
                     isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-slate-500"
                  }`}>
                     {isUp ? "+" : ""}{formatNumber(quote.change)} ({isUp ? "+" : ""}{formatChange(quote.changeRate)}%)
-                 </span> : <span className="text-xs text-slate-400">시세 대기</span>}
+                 </span>
               </div>
             </Link>
           );

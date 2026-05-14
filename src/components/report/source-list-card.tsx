@@ -19,7 +19,7 @@ const PAGE_SIZE = 5;
  * collectedAt = Stockker 수집 시각 (항상 현재에 가까움, 표시에 부적합)
  */
 function getSourceDate(src: SourceItem): Date | null {
-  const raw = src.generatedAt;
+  const raw = src.generatedAt || src.collectedAt;
   if (!raw) return null;
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
@@ -72,16 +72,15 @@ export function SourceListCard({ symbol }: { symbol: string }) {
     setLoading(true);
     setError(false);
 
-    fetch(`/api/stocks/${symbol}/sources?page=1&limit=${PAGE_SIZE}`)
+    fetch(`/api/stocks/${symbol}/issues`)
       .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(d => {
         if (!mounted) return;
         if (d.ok && d.sources) {
           const sorted = sortByDate(d.sources);
-          setSources(sorted);
-          setSourceCount(d.total ?? sorted.length);
-          setHasMore(d.hasMore ?? false);
-          setPage(1);
+          setSources(sorted.slice(0, PAGE_SIZE));
+          setSourceCount(sorted.length);
+          setHasMore(sorted.length > PAGE_SIZE);
         } else {
           setError(true);
         }
