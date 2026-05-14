@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import type { SentimentScore } from "@/types/research";
 import { CheckCircle2, TrendingDown, Clock, Link2 } from "lucide-react";
 
+function stripEnglishParenthetical(text: string): string {
+  return text.replace(/\s*\(([A-Za-z0-9][A-Za-z0-9\s.,;:'"!?%&/+·-]*)\)/g, "").trim();
+}
+
 export function SentimentScoreCard({ symbol }: { symbol: string }) {
   const [data, setData] = useState<SentimentScore | null>(null);
 
@@ -62,13 +66,13 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
         {/* Positive */}
         <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3 text-red-700 dark:text-red-400 font-bold text-sm">
-            <CheckCircle2 className="w-4 h-4" /> 주요 호재 (Positive)
+            <CheckCircle2 className="w-4 h-4" /> 주요 호재
           </div>
           <ul className="flex flex-col gap-2">
             {data.positiveFactors.map((factor, i) => (
               <li key={i} className="text-sm text-slate-700 dark:text-zinc-300 flex items-start gap-2">
                 <span className="text-red-400 mt-0.5">•</span>
-                <span>{factor}</span>
+                <span>{stripEnglishParenthetical(factor)}</span>
               </li>
             ))}
           </ul>
@@ -77,13 +81,13 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
         {/* Negative */}
         <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3 text-blue-700 dark:text-blue-400 font-bold text-sm">
-            <TrendingDown className="w-4 h-4" /> 주요 악재 (Negative)
+            <TrendingDown className="w-4 h-4" /> 주요 악재
           </div>
           <ul className="flex flex-col gap-2">
             {data.negativeFactors.map((factor, i) => (
               <li key={i} className="text-sm text-slate-700 dark:text-zinc-300 flex items-start gap-2">
                 <span className="text-blue-400 mt-0.5">•</span>
-                <span>{factor}</span>
+                <span>{stripEnglishParenthetical(factor)}</span>
               </li>
             ))}
             {data.negativeFactors.length === 0 && (

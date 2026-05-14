@@ -25,7 +25,7 @@ export interface UserStorageSchema {
 }
 
 const DEFAULT_STATE: UserStorageSchema = {
-  watchlist: ["005930", "000660"],
+  watchlist: [],
   recentSearches: [],
   recentViewed: [],
   buyPrices: {},

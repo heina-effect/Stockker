@@ -1,4 +1,4 @@
-# Stockker 로컬 개발 설정 가이드 (Phase 28)
+# Stockker 로컬 개발 설정 가이드 (Phase 34)
 
 ## 1. 기술 스택
 
@@ -51,6 +51,8 @@ UPSTASH_REDIS_REST_TOKEN="your_upstash_token"
 ```
 
 > **API 없이 실행할 경우**: Gemini/KIS/DART/GNews/NewsAPI 키가 없으면 각 기능은 자동으로 mock fallback 모드로 동작합니다. Supabase 없이도 일부 화면은 작동하지만 스냅샷 재사용 및 벡터 기능이 비활성화됩니다.
+
+> **투자의견 API 주의**: 국내주식 종목투자의견/증권사별 투자의견은 KIS 공식 샘플 기준 정보성 엔드포인트입니다. `KIS_MODE=mock`에서도 호출은 허용하지만, 응답과 UI에 `KIS mock · 실제 응답` meta를 노출해 Stockker mock 데이터와 구분합니다.
 
 ---
 
@@ -223,7 +225,9 @@ TypeScript 경로 별칭 (`@/...`)은 `tsconfig.json`의 `paths` 설정으로 �
 | `GET /api/stocks/[symbol]/sentiment` | 종목 감성 분석 |
 | `GET /api/stocks/[symbol]/issues` | 종목 이슈 타임라인 |
 | `GET /api/stocks/[symbol]/sources` | 종목 원본 소스 (페이지네이션) |
+| `GET /api/watchlist/summary?symbols=005930,000660` | 관심 종목 리서치 요약 (시세/요약/감성/이슈/투자의견) |
 | `GET /api/sectors/[sectorId]` | 섹터 상세 스냅샷 |
+| `GET /api/sectors/[sectorId]/market` | KIS 업종기간별시세 + 대표 종목 시세 기반 섹터 시장 신호 |
 | `GET /api/ops/metrics` | 내부 운영 메트릭 (개발 전용) |
 | `GET /api/health` | 헬스 체크 |
 
@@ -273,3 +277,13 @@ TypeScript 경로 별칭 (`@/...`)은 `tsconfig.json`의 `paths` 설정으로 �
 5. 홈 재진입 시 이전 인텔리전스가 먼저 보이고 백그라운드에서 “갱신 중” 상태가 표시된다.
 6. 종목 상세가 큰 화면에서 더 넓은 grid를 사용하고 모바일에서는 stack된다.
 7. 연관 종목 현재가가 없을 때도 relation type/reason과 `최신가 없음` 상태가 보인다.
+
+## 13. Phase 34 수동 확인
+
+1. 홈 검색 결과에서 종목의 `+` 버튼을 눌러 관심 종목에 추가한다.
+2. 우측 `나의 관심 종목` 카드가 즉시 갱신되고 새로고침 후에도 유지된다.
+3. 같은 종목을 다시 추가해도 중복 저장되지 않는다.
+4. `/workflows/watchlist`에서 현재가/등락률, 섹터, AI 요약, 최근 이슈, 감성, 공시/뉴스 수, 투자의견 상태가 보인다.
+5. snapshot 또는 KIS 보조 데이터가 없을 때도 카드가 사라지지 않고 `리포트 준비 중`, `최신가 없음`, `데이터 없음` 상태를 표시한다.
+6. 섹터 상세에서 `KIS 업종 흐름` 카드가 보이고, 업종코드가 없으면 대표 종목 시세 fallback 설명이 보인다.
+7. 홈 주목 종목/섹터 문구가 거래 권유가 아니라 근거 수, 이슈 밀도, 대표 종목 흐름 중심으로 설명된다.

@@ -1,4 +1,4 @@
-# Stockker Architecture (Phase 33 — Runtime Truth, Watchlist Workflow, Stale-first Home)
+# Stockker Architecture (Phase 34 — Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
 
 ## 1. 개요
 
@@ -121,6 +121,23 @@ SSR (server component):
 
 관심 종목은 local-first가 단일 source of truth다. 검색 결과의 `관심 종목 추가` 버튼은 `LocalStorageAdapter.addToWatchlist()`만 호출하며, 저장 후 `stockker:user-storage-updated` 이벤트로 홈 aside와 workflow가 즉시 갱신된다. DB sync는 Phase 33 범위에 없다.
 
+### 관심 종목 리서치 summary (Phase 34)
+
+```
+홈 검색 결과 + 버튼
+  → LocalStorageAdapter.addToWatchlist(symbol)
+  → stockker:user-storage-updated 이벤트
+  → WatchlistAsideCard / WatchlistResearchBoard 갱신
+  → GET /api/watchlist/summary?symbols=...
+      ├─ KIS 현재가 getDomesticStockQuote
+      ├─ DB-first report snapshot generateReportSummary
+      ├─ 감성 generateSentiment
+      ├─ 이슈/소스 generateIssues
+      └─ KIS 투자의견 getStockAnalystOpinions
+```
+
+`/api/watchlist/summary`는 관심 종목 보드 전용 aggregation이다. 새 뉴스 provider나 새 AI pipeline을 추가하지 않고 기존 상세 리서치 경로를 재사용한다. 실패한 보조 데이터는 null/empty 상태로 낮추며 카드 자체를 제거하지 않는다.
+
 ---
 
 ## 6. 프론트엔드 아키텍처
@@ -134,10 +151,12 @@ page.tsx (Server Component)
        ├─ TrendStocksCard   (stocks)
        ├─ TrendSectorsCard  (trendingSectors / sectors)
        └─ AIPicksCard       (aiPicks)
-  └─ WatchlistAsideCard (별도 로컬 저장소 읽기)
+  └─ WatchlistAsideCard (local-first watchlist + /api/watchlist/summary)
 ```
 
 **중요**: 각 카드는 `useHomeIntelligence()` 훅으로 `HomeIntelligenceProvider`의 context를 공유합니다. 카드 내부에서 별도 fetch 금지.
+
+`WatchlistAsideCard`는 홈 인텔리전스 카드가 아니라 개인 저장 워크플로우 카드다. 저장된 관심 종목이 있을 때만 `/api/watchlist/summary`를 호출하며, 홈 트렌딩 카드에 반복 AI 호출을 만들지 않는다.
 
 **홈 카드 규칙**:
 - 트렌딩 종목 카드는 카드 전체가 `/stocks/[symbol]` 링크다.
@@ -161,12 +180,26 @@ page.tsx (Server Component, 즉시 렌더링)
 - 일봉 차트는 KIS daily 응답의 마지막 거래일이 KST 오늘이면 live quote 기반 `오늘` 캔들을 추가하지 않는다. 같은 거래일 캔들이 두 번 렌더링되는 것을 금지한다.
 - Phase 33 레이아웃은 `max-w-7xl`의 responsive grid를 사용한다. 차트/감성/투자의견/핵심 이슈/연관 종목/소스/평단가 카드는 큰 화면에서 분산 배치되고 모바일에서는 자연스럽게 stack된다.
 
+### LiveMarketProvider 네트워크 범위
+
+`LiveMarketProvider`는 전역 layout에 남아 있지만 KIS bootstrap/SSE는 `/stocks/[symbol]` 종목 상세에서만 열린다. 섹터/홈/workflow 화면에서는 기본 종목 `005930`, KOSPI/KOSDAQ index, mock watchlist extras를 자동 부트스트랩하지 않는다.
+
+보장:
+- `/sectors/sec-finance` 진입 시 `/api/kis/bootstrap?symbol=005930`을 호출하지 않는다.
+- 섹터 화면에서 `/api/kis/stream?symbol=005930` SSE를 열지 않는다.
+- 종목 상세에서는 현재 route symbol 하나만 `/api/kis/bootstrap?symbol=[symbol]`로 초기화한다.
+- KOSPI/KOSDAQ index bootstrap은 전역 기본 호출에서 제외한다.
+
 ### 섹터 상세 (`/sectors/[sectorId]`)
 
 ```
 page.tsx (Server Component, 즉시 쉘 렌더링)
   └─ 섹터 이름/설명 (SECTOR_UNIVERSE, 동기)
   └─ 대표 종목 목록 (동기)
+  └─ SectorMarketSignalCard (Client)
+       ├─ /api/sectors/[sectorId]/market
+       ├─ 대표 종목 KIS 현재가
+       └─ KIS 업종기간별시세(getDomesticIndex) 기반 업종 흐름
   └─ SectorAISection (Client Component)
        ├─ snapshot 있으면: AI 요약/이슈/리더/관찰후보 즉시 표시
        └─ snapshot 없으면: "생성 중" → fetch /api/sectors/[sectorId] → 결과 표시
@@ -174,6 +207,21 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 
 **보장**: 캐시 미스에도 SSR이 절대 4–12초 블로킹하지 않음.
 AI 섹터 분석이 실패해도 섹터 설명, 주요 종목, 모멘텀 강도 UI는 유지한다.
+
+Phase 34부터 섹터 상세는 AI snapshot과 별개로 KIS 정보성 API를 보조 신호로 보여준다. 대표 종목 quote에서 `kisIndustryCode`를 얻을 수 있으면 업종기간별시세를 표시하고, 없으면 대표 종목 등락률 기반 fallback을 표시한다.
+
+## 6.5. KIS 정보성 API 사용 범위 (Phase 34)
+
+| 기능 | 코드 경로 | 용도 |
+|---|---|---|
+| 주식현재가 시세 | `getDomesticStockQuote()` | watchlist 현재가/등락률, 섹터 대표 종목 신호 |
+| 국내주식기간별시세 | `getDomesticStockDaily()` | 일봉 차트 |
+| 국내주식업종기간별시세 | `getDomesticIndex()` | 섹터 상세 `KIS 업종 흐름` |
+| 국내주식 종목투자의견 | `getStockAnalystOpinions()` | 상세/관심종목 투자의견 요약 |
+
+투자의견 API는 KIS 공식 샘플의 정보성 엔드포인트 기준이다. `KIS_MODE=mock`에서도 호출은 허용하지만 응답 meta와 UI 뱃지에 `KIS mock · 실제 응답`을 표시해 Stockker mock/fallback 데이터와 구분한다.
+
+아직 직접 래퍼가 없는 KIS 순위 API는 거래량순위, 체결강도 상위, 관심종목등록 상위다. 홈 주목 종목/섹터는 현재 구현 기준상 source count, 이슈 밀도, 대표 종목 시세 흐름을 중심으로 설명한다.
 
 ---
 

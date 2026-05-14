@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, ArrowRight, Loader2, Clock } from "lucide-react";
+import { Search, ArrowRight, Loader2, Clock, Plus, Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { StockSearchItem } from "@/types/research";
@@ -14,12 +14,21 @@ export function SearchHeroCard() {
   const [isSearching, setIsSearching] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState<RecentSearchItem[]>([]);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    setRecentSearches(LocalStorageAdapter.getAll().recentSearches);
+    const state = LocalStorageAdapter.getAll();
+    setRecentSearches(state.recentSearches);
+    setWatchlist(state.watchlist);
   }, []);
+
+  const addWatchlist = (item: StockSearchItem) => {
+    if (item.type === "sector" || item.market === "SECTOR" || item.symbol.startsWith("sec-")) return;
+    LocalStorageAdapter.addToWatchlist(item.symbol);
+    setWatchlist(LocalStorageAdapter.getAll().watchlist);
+  };
 
   const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -124,28 +133,59 @@ export function SearchHeroCard() {
               <ul className="py-2">
                 {results.map((item, idx) => (
                   <li key={item.symbol}>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       className={`w-full text-left px-6 py-3 transition-colors flex items-center justify-between group ${
                         idx === focusedIndex 
                           ? "bg-slate-100 dark:bg-zinc-800 border-l-4 border-indigo-500 pl-5" 
                           : "hover:bg-slate-50 dark:hover:bg-zinc-800 border-l-4 border-transparent"
                       }`}
                       onClick={() => handleSelect(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSelect(item);
+                      }}
                       onMouseEnter={() => setFocusedIndex(idx)}
                     >
-                      <div>
+                      <div className="min-w-0">
                         <span className="font-semibold text-slate-900 dark:text-zinc-100 mr-2">{item.name}</span>
                         <span className="text-sm text-slate-500">{item.symbol}</span>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded transition-opacity ${
-                        item.type === "sector" 
-                          ? "bg-purple-50 dark:bg-purple-900/20 text-purple-600 border border-purple-100" 
-                          : "bg-slate-100 dark:bg-zinc-800 text-slate-500 border border-transparent"
-                      }`}>
-                        {item.market === "SECTOR" || item.type === "sector" ? "SECTOR" : (item.market || item.type)}
-                      </span>
-                    </button>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded transition-opacity ${
+                          item.type === "sector"
+                            ? "bg-purple-50 dark:bg-purple-900/20 text-purple-600 border border-purple-100"
+                            : "bg-slate-100 dark:bg-zinc-800 text-slate-500 border border-transparent"
+                        }`}>
+                          {item.market === "SECTOR" || item.type === "sector" ? "SECTOR" : (item.market || item.type)}
+                        </span>
+                        {item.type !== "sector" && item.market !== "SECTOR" && !item.symbol.startsWith("sec-") && (
+                          <button
+                            type="button"
+                            aria-label={`${item.name} 관심 종목 추가`}
+                            title={watchlist.includes(item.symbol) ? "이미 관심 종목" : "관심 종목 추가"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addWatchlist(item);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                addWatchlist(item);
+                              }
+                            }}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                              watchlist.includes(item.symbol)
+                                ? "border-emerald-100 bg-emerald-50 text-emerald-600 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300"
+                                : "border-slate-200 bg-white text-slate-400 hover:border-indigo-200 hover:text-indigo-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-800"
+                            }`}
+                          >
+                            {watchlist.includes(item.symbol) ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>

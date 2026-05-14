@@ -12,6 +12,9 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **KIS 업종코드 기반 연관 종목**: idxcode.mst 파싱으로 전 종목 섹터 자동 추론 — taxonomy 미등록 종목도 KIS `bstp_cls_code`로 섹터 peer 탐색
 - **DB-first 검색 Master**: 검색은 `stock_master + sector_master`를 우선 사용하고, DART corp-master 기반 로컬 인덱스는 장애 fallback으로만 사용
 - **Local-first 관심 종목 워크플로우**: 검색 결과에서 관심 종목을 저장하고 `/workflows/watchlist`에서 리서치 상태를 모아봄
+- **관심 종목 리서치 허브**: 저장 종목의 현재가, 등락률, 섹터, AI 요약, 이슈, 감성, 투자의견을 한 화면에 표시
+- **KIS 정보성 API 보강**: 현재가, 기간별시세, 업종기간별시세, 종목/증권사별 투자의견을 watchlist/상세/섹터에 활용
+- **증권사 투자의견 카드**: 평균/최고 목표가, 현재가 대비, 3개 단위 pagination, 의견 뱃지, KIS mock/real 출처 구분
 - **Stale-first 홈 UX**: 이전 홈 인텔리전스를 먼저 보여주고 백그라운드에서 갱신
 - **데이터 오염 무관용**: mock fallback 완전 제거, 소스 관련성 필터는 제목(title) 전용, 빈 결과는 빈 UI로 표시
 - **평가 레이어 (Eval)**: AI 생성물의 환각·최신성·출처 충분성·면책 조항을 자동 검증
@@ -90,12 +93,14 @@ npm run build             # 프로덕션 빌드
 ## 문서
 
 **시스템 및 아키텍처**
-- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 33)
+- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 34)
 - [setup.md](docs/setup.md) — 로컬 환경 설정
 - [theme-behavior.md](docs/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-33-report.md](docs/phase-33-report.md) — 최신 (Watchlist Workflow, Stale-first Home, Responsive Report Layout)
+- [phase-34-report.md](docs/phase-34-report.md) — 최신 (Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
+- [phase-34-audit.md](docs/phase-34-audit.md) — Phase 34 감사 보고서
+- [phase-33-report.md](docs/phase-33-report.md) — Watchlist Workflow, Stale-first Home, Responsive Report Layout
 - [phase-33-audit.md](docs/phase-33-audit.md) — Phase 33 감사 보고서
 - [phase-32-report.md](docs/phase-32-report.md) — Beta Polish & Release Candidate
 - [phase-32-audit.md](docs/phase-32-audit.md) — Phase 32 감사 보고서
@@ -133,7 +138,8 @@ npm run build             # 프로덕션 빌드
 | 21–24 | 리서치 스냅샷 영속화, 4-source 뉴스 파이프라인, 관심 종목 워크플로우, Trust/Evaluation Layer, stale-while-revalidate |
 | 25–28 | Beta Hardening, 섹터 404 제거, 전역 테마 토큰, canonical sector routing, 홈 카드 UX, 런타임/문서 재정합 |
 | 29–31 | 투자의견/소스 카드 상태 정리, 날짜 의미론, mock 제거, 종목/섹터 오염 차단, KIS 업종코드 기반 연관 종목 |
-| **32–33 (현재)** | **Beta RC 마감, 관심 종목 워크플로우 활성화, 홈 stale-first UX, 종목 상세 responsive layout** |
+| 32–33 | Beta RC 마감, 관심 종목 워크플로우 활성화, 홈 stale-first UX, 종목 상세 responsive layout |
+| **34 (현재)** | **관심 종목 리서치 허브 제품화, 검색 결과 관심 종목 추가 복구, KIS 정보성 API 기반 watchlist/섹터/투자의견 보강, 섹터/감성/투자의견 UI polish** |
 
 ---
 

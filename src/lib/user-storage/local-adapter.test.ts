@@ -9,6 +9,10 @@ describe('User Persistence - LocalStorageAdapter', () => {
     }
   });
 
+  it('starts with an empty explicit-save watchlist', () => {
+    expect(LocalStorageAdapter.getAll().watchlist).toEqual([]);
+  });
+
   it('should handle buy price persistence correctly', () => {
     // Explicitly set
     LocalStorageAdapter.setBuyPrice('005930', 70000);

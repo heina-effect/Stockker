@@ -154,4 +154,11 @@ export interface AnalystOpinionSummary {
   avgTargetPrice: number;
   currentPrice?: number;
   updatedAt: string;
+  _meta?: {
+    source: "kis-openapi";
+    kisMode: "real" | "mock";
+    endpointMode: "real" | "mock";
+    isMockData: false;
+    note?: string;
+  };
 }

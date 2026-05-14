@@ -1,8 +1,7 @@
 import { DashboardHeader } from "@/components/home/dashboard-header";
 import { SectorAISection } from "@/components/sectors/sector-ai-section";
+import { SectorMarketSignalCard } from "@/components/sectors/sector-market-signal-card";
 import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
-import { getStockName } from "@/lib/stocks/metadata";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSectorSnapshot } from "@/server/research/snapshots/sector-snapshot-manager";
 
@@ -51,22 +50,7 @@ export default async function SectorReportPage({ params }: SectorPageProps) {
           </div>
 
           <div className="lg:col-span-4 flex flex-col gap-4">
-            {/* 섹터 구성 종목 — 간소화된 링크 목록 */}
-            <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-5 shadow-sm border border-slate-100 dark:border-zinc-800">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-50 mb-3">섹터 주요 종목</h3>
-              <div className="flex flex-col gap-2">
-                {sector.memberSymbols.map(sym => (
-                  <Link
-                    key={sym}
-                    href={`/stocks/${sym}`}
-                    className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-indigo-800 rounded-xl transition-colors"
-                  >
-                    <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">{getStockName(sym)}</span>
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">{sym}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            <SectorMarketSignalCard sectorId={sectorId} watchCandidates={snapshot?.watch_candidates ?? []} />
 
             <div className="bg-slate-50 dark:bg-zinc-900 rounded-[24px] p-5 border border-slate-100 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-500 text-center leading-relaxed">
               본 섹터 정보 및 관련 종목 데이터는 정보 제공을 목적으로 하며, 투자 수익이나 원금을 보장하지 않습니다.

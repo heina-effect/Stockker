@@ -1,9 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import { MarketState, type SymbolState, type MarketStore, type StockQuote } from "@/types/stock";
-import { useMockLive } from "./mock-live-provider";
 
 interface LiveMarketContextType {
     selectedSymbol: string;
@@ -17,13 +17,11 @@ interface LiveMarketContextType {
 const LiveMarketContext = createContext<LiveMarketContextType | undefined>(undefined);
 
 export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const mock = useMockLive();
-    
-    // Use useMemo to prevent re-bootstrapping when mock data updates (only on symbol list change)
-    const mockWatchlistSymbols = mock.watchlist.map(i => i.symbol).join(",");
-    const watchlistSymbols = useMemo(() => mockWatchlistSymbols.split(","), [mockWatchlistSymbols]);
-    
-    const [selectedSymbol, setSelectedSymbol] = useState("005930");
+    const pathname = usePathname();
+    const routeSymbol = useMemo(() => pathname?.match(/^\/stocks\/(\d{6})/)?.[1] ?? "", [pathname]);
+    const isStockRoute = Boolean(routeSymbol);
+
+    const [selectedSymbol, setSelectedSymbol] = useState(routeSymbol);
     const [marketStore, setMarketStore] = useState<MarketStore>({});
     
     // Track last update time for stale detection
@@ -48,8 +46,8 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     }, [marketStore, selectedSymbol]);
     
-    // List of stocks to bootstrap (selected + watchlist)
-    const bootstrap = useCallback(async (symbol: string, extras: string[] = [], signal?: AbortSignal) => {
+    // Live KIS bootstrap은 종목 상세처럼 실제 시세가 필요한 화면에서만 실행한다.
+    const bootstrap = useCallback(async (symbol: string, signal?: AbortSignal) => {
         const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         
         console.log(`[LiveMarket] Starting normalized bootstrap for ${symbol}`);
@@ -143,103 +141,27 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 return;
             }
 
-            // 2. Sequential background loads
             await sleep(1000);
-            if (signal?.aborted) return;
-
-            // Indices (KOSPI, KOSDAQ) initial fetch
-            // KIS API provides period closing values which we use as initial state if market is closed
-            for (const idx of ["0001", "1001"]) {
-                if (signal?.aborted) return;
-                try {
-                    // 1. Mark as connecting if not already loaded
-                    setMarketStore(prev => {
-                        if (!prev[idx]) {
-                            return { ...prev, [idx]: { symbol: idx, quote: null, orderbook: null, chart: [], source: MarketState.CONNECTING, lastUpdated: 0 } };
-                        }
-                        return prev;
-                    });
-                    
-                    // 2. Fetch bootstrap
-                    const res = await fetch(`/api/kis/bootstrap?symbol=${idx}&type=index`, { signal });
-                    const data = await res.json();
-                    
-                    if (data.ok && data.index) {
-                        setMarketStore(prev => {
-                            const existing = prev[idx] || { symbol: idx, chart: [], orderbook: null, lastUpdated: 0 };
-                            const updatedQuote = {
-                                symbol: idx,
-                                name: data.index.name,
-                                price: data.index.value,
-                                change: data.index.change,
-                                changeRate: data.index.changeRate,
-                                volume: 0, high: 0, low: 0, open: 0, timestamp: new Date().toISOString()
-                            } as StockQuote;
-                            
-                            return {
-                                ...prev,
-                                [idx]: {
-                                    ...existing,
-                                    quote: updatedQuote,
-                                    source: data.source === "live" ? MarketState.LIVE : MarketState.MOCK_FALLBACK,
-                                    lastUpdated: Date.now()
-                                }
-                            };
-                        });
-                    }
-                } catch (e) {
-                    console.error(`[LiveMarket] Index ${idx} bootstrap failed`, e);
-                }
-                
-                await sleep(500); // Prevent rate limit
-            }
-
-            // Load extras (watchlist) - only if not already loaded with LIVE data
-            for (const s of extras) {
-                if (s === symbol || signal?.aborted) continue;
-                // Skip if already have LIVE/STALE data - prevents unnecessary Rate Limit
-                let skipSymbol = false;
-                setMarketStore(prev => { 
-                    const src = prev[s]?.source;
-                    skipSymbol = src === MarketState.LIVE || src === MarketState.STALE;
-                    return prev; 
-                });
-                if (skipSymbol) {
-                    console.log(`[LiveMarket] Skipping extras ${s} - already LIVE`);
-                    continue;
-                }
-                try {
-                    const res = await fetch(`/api/kis/bootstrap?symbol=${s}`, { signal });
-                    const data = await res.json();
-                    if (data.ok) {
-                        updateSymbol(s, {
-                            quote: data.quote,
-                            orderbook: data.orderbook,
-                            source: data.source === "mock-fallback" ? MarketState.MOCK_FALLBACK : MarketState.LIVE,
-                            lastUpdated: Date.now()
-                        });
-                    } else {
-                        updateSymbol(s, { source: MarketState.MOCK_FALLBACK });
-                    }
-                } catch (e) {
-                    if (e instanceof Error && e.name === 'AbortError') break;
-                    console.error(`[LiveMarket] Failed background extra load for ${s}:`, e);
-                    updateSymbol(s, { source: MarketState.ERROR });
-                }
-                await sleep(1000);
-            }
 
         } catch (e) {
             if (e instanceof Error && e.name === 'AbortError') return;
             console.error("[LiveMarket] Bootstrap failed:", e);
             updateSymbol(symbol, { source: MarketState.MOCK_FALLBACK });
         }
-    }, [mock.chartData]);
+    }, []);
+
+    useEffect(() => {
+        if (routeSymbol && routeSymbol !== selectedSymbol) {
+            setSelectedSymbol(routeSymbol);
+        }
+    }, [routeSymbol, selectedSymbol]);
 
 
     // 4. Initial bootstrap and on symbol change
     const lastSymbolRef = useRef<string>("");
     useEffect(() => {
+        if (!isStockRoute || !selectedSymbol) return;
+
         // Only trigger full bootstrap when selectedSymbol changes
         if (lastSymbolRef.current === selectedSymbol) return;
         lastSymbolRef.current = selectedSymbol;
@@ -255,7 +177,7 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Use a wrapper to call bootstrap safely
         const startBootstrap = async () => {
             try {
-                await bootstrap(selectedSymbol, watchlistSymbols, controller.signal);
+                await bootstrap(selectedSymbol, controller.signal);
             } catch (e) {
                 if (e instanceof Error && e.name === 'AbortError') return;
                 console.error("[LiveMarket] Bootstrap effect error:", e);
@@ -264,11 +186,15 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         
         startBootstrap();
 
-        return () => {};
-    }, [selectedSymbol, bootstrap]); // Removed watchlistSymbols from deps to avoid re-triggering on mock updates
+        return () => {
+            controller.abort();
+        };
+    }, [selectedSymbol, bootstrap, isStockRoute]);
 
     // SSE: Real-time updates
     useEffect(() => {
+        if (!isStockRoute || !selectedSymbol) return;
+
         const eventSource = new EventSource(`/api/kis/stream?symbol=${selectedSymbol}`);
 
         eventSource.addEventListener("trade", (event: MessageEvent) => {
@@ -374,10 +300,12 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return () => {
             eventSource.close();
         };
-    }, [selectedSymbol]);
+    }, [selectedSymbol, isStockRoute]);
 
     // Stale detection timer
     useEffect(() => {
+        if (!isStockRoute || !selectedSymbol) return;
+
         const checkStale = () => {
             const now = Date.now();
             if (lastUpdateTsRef.current === 0) return;
@@ -421,7 +349,7 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         const timer = setInterval(checkStale, 2000);
         return () => clearInterval(timer);
-    }, [selectedSymbol]);
+    }, [selectedSymbol, isStockRoute]);
 
     const currentSymbolState = marketStore[selectedSymbol] || null;
     const indices = {
@@ -448,4 +376,8 @@ export const useLiveMarket = () => {
         throw new Error("useLiveMarket must be used within a LiveMarketProvider");
     }
     return context;
+};
+
+export const useOptionalLiveMarket = () => {
+    return useContext(LiveMarketContext) ?? null;
 };

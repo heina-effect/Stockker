@@ -64,7 +64,7 @@ export function TrendStocksCard() {
         )}
       </div>
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10px] text-slate-400 text-center">
-        * 제공되는 정보는 투자 참고용이며 원금 손실 위험이 있습니다.
+        기준: 출처 근거 수와 최근 이슈 밀도 중심. 투자 참고용입니다.
       </div>
     </div>
   );
