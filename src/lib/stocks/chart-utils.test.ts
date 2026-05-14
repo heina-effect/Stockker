@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateToOHLC, calculateMA } from './chart-utils';
+import { aggregateToOHLC, calculateMA, shouldAppendLiveDailyCandle } from './chart-utils';
 
 describe('Chart Utils - Intraday', () => {
   it('should correctly sort internal ticks and aggregate OHLC', () => {
@@ -44,5 +44,13 @@ describe('Chart Utils - Intraday', () => {
     
     // Index 5 (30, 40, 50) is valid
     expect(maData[5].ma3).toBe(40);
+  });
+
+  it('does not append a live daily candle when KIS daily already includes today', () => {
+    const now = new Date('2026-05-13T04:00:00.000Z'); // 2026-05-13 KST
+
+    expect(shouldAppendLiveDailyCandle({ date: '20260513', time: '05/13' }, now)).toBe(false);
+    expect(shouldAppendLiveDailyCandle({ time: '05/13' }, now)).toBe(false);
+    expect(shouldAppendLiveDailyCandle({ date: '20260512', time: '05/12' }, now)).toBe(true);
   });
 });

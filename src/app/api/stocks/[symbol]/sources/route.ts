@@ -27,7 +27,7 @@ export async function GET(
     const dbSources = await vectorStore.getRecentCuratedSources(symbol, 60 * 60 * 1000); // 1h window
 
     if (dbSources.length > 0) {
-      // 날짜 내림차순 정렬 (publishedAt 우선, 없으면 collectedAt)
+      // 날짜 내림차순 정렬 (publishedAt 우선, collectedAt은 tie-breaker/보조용)
       const filteredDbSources = filterSourcesForSymbol(dbSources.map(s => ({
         id: s.id,
         sourceType: s.sourceType,
@@ -43,8 +43,8 @@ export async function GET(
       })), symbol);
       const sorted = [...filteredDbSources].sort(
         (a, b) =>
-          new Date(b.generatedAt || b.collectedAt).getTime() -
-          new Date(a.generatedAt || a.collectedAt).getTime()
+          new Date(b.generatedAt || b.collectedAt || 0).getTime() -
+          new Date(a.generatedAt || a.collectedAt || 0).getTime()
       );
       const total = sorted.length;
       const start = (page - 1) * limit;
@@ -69,10 +69,15 @@ export async function GET(
       normalizeSources(rawNews, disclosures, { companyName: name, companyAliases, sectorMemberSymbols: sector?.memberSymbols }),
       symbol
     );
+    const sortedSources = [...allSources].sort(
+      (a, b) =>
+        new Date(b.generatedAt || b.collectedAt || 0).getTime() -
+        new Date(a.generatedAt || a.collectedAt || 0).getTime()
+    );
 
-    const total = allSources.length;
+    const total = sortedSources.length;
     const start = (page - 1) * limit;
-    const items = allSources.slice(start, start + limit);
+    const items = sortedSources.slice(start, start + limit);
     const hasMore = start + limit < total;
 
     return NextResponse.json({

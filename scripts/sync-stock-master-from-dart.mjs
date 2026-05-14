@@ -4,6 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 const ENV_PATH = ".env.local";
 const CORP_MASTER_PATH = "src/data/dart/corp-master.json";
 const CHUNK_SIZE = 500;
+const UNSUPPORTED_SYMBOLS = new Set([
+  "155960", // 지디: DART에는 남아 있으나 상장폐지 이력
+  "248020", // 젬: KONEX 종목, Stockker KOSPI/KOSDAQ 지원 범위 밖
+]);
 
 const FRIENDLY_NAMES = {
   "000060": "메리츠화재",
@@ -39,6 +43,7 @@ function toStockRows(corpMaster, existingBySymbol) {
     const symbol = row?.stock_code;
     const corpName = row?.corp_name;
     if (!/^\d{6}$/.test(symbol ?? "") || !corpName) continue;
+    if (UNSUPPORTED_SYMBOLS.has(symbol)) continue;
 
     const existing = existingBySymbol.get(symbol);
     rows.push({
@@ -110,6 +115,15 @@ async function deactivateMissingRows(db, corpSymbols) {
   return missing.length;
 }
 
+async function deactivateUnsupportedRows(db) {
+  const { error } = await db
+    .from("stock_master")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .in("symbol", Array.from(UNSUPPORTED_SYMBOLS));
+  if (error) throw new Error(`미지원 종목 비활성 처리 실패: ${error.message}`);
+  return UNSUPPORTED_SYMBOLS.size;
+}
+
 async function main() {
   loadEnvFile();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -127,11 +141,12 @@ async function main() {
   const rows = toStockRows(corpMaster, existingBySymbol);
   const corpSymbols = new Set(rows.map((row) => row.symbol));
   const upserted = await upsertChunks(db, rows);
+  const unsupportedDeactivated = await deactivateUnsupportedRows(db);
   const deactivated = process.argv.includes("--deactivate-missing")
     ? await deactivateMissingRows(db, corpSymbols)
     : 0;
 
-  console.log(`stock_master sync complete: ${upserted} DART rows upserted, ${deactivated} missing rows deactivated`);
+  console.log(`stock_master sync complete: ${upserted} DART rows upserted, ${unsupportedDeactivated} unsupported rows deactivated, ${deactivated} missing rows deactivated`);
 }
 
 main().catch((error) => {

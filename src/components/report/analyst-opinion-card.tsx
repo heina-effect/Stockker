@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TrendingUp, Building2, AlertCircle } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { formatResearchDate } from "@/lib/date-format";
 import type { AnalystOpinionItem, AnalystOpinionSummary } from "@/types/research";
 
 type CardData = AnalystOpinionSummary & { currentPrice?: number };
@@ -163,7 +164,7 @@ function OpinionRow({ item }: { item: AnalystOpinionItem }) {
         <span className="text-sm font-medium text-slate-800 dark:text-zinc-200 truncate">
           {item.firmName}
         </span>
-        <span className="text-[10px] text-slate-400">{item.date}</span>
+        <span className="text-[10px] text-slate-400">{formatResearchDate(new Date(item.date))}</span>
       </div>
 
       <div className="flex flex-col items-end flex-shrink-0 gap-0.5">

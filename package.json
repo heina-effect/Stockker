@@ -13,6 +13,7 @@
     "validate:master": "node scripts/validate-master-data.mjs",
     "validate:db-master": "node scripts/validate-db-master.mjs",
     "sync:stock-master": "node scripts/sync-stock-master-from-dart.mjs",
+    "sync:sector-master": "node scripts/sync-sector-master-fixes.mjs",
     "test:unit": "vitest run",
     "test:charts": "vitest run src/**/*.chart.test.ts src/**/*.candlestick.test.ts",
     "test:charts:intraday": "vitest run src/**/intraday*.test.ts src/**/aggregateToOHLC*.test.ts",

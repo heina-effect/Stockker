@@ -1,6 +1,6 @@
-# Release Freeze Rules — Stockker Beta
+# Release Freeze Rules — Stockker Beta RC
 
-Phase 25부터 베타 기간 동안 다음 규칙이 적용됩니다.
+Phase 32 Beta RC부터 베타 기간 동안 다음 규칙이 적용됩니다.
 
 ---
 
@@ -33,6 +33,8 @@ Phase 25부터 베타 기간 동안 다음 규칙이 적용됩니다.
 
 - `SourceListCard`의 페이지네이션 로직 제거 금지
 - 전체 소스 목록을 한 번에 렌더링하는 방식으로의 변경 금지
+- 초기 로드도 `/api/stocks/[symbol]/sources?page=1&limit=...` 경로를 사용해야 함
+- `collectedAt`을 발행일/공시일처럼 사용자에게 표시하는 변경 금지
 
 ### 1-6. AI/원본 분리
 
@@ -48,6 +50,12 @@ Phase 25부터 베타 기간 동안 다음 규칙이 적용됩니다.
 
 - "매수 추천", "강력 매수", "반드시 사야", "팔아라" 등 단정적/지시적 표현을 생성하도록 프롬프트를 변경하는 것 금지
 - `evaluator.ts`의 `IMPERATIVE_PHRASES` 목록 축소 금지
+
+### 1-9. Canonical master guard
+
+- 홈/섹터 라우팅은 canonical `sectorId`만 사용
+- unsupported symbol guard를 우회해 상장폐지/지원 외 시장 종목을 검색/상세에 노출하는 변경 금지
+- `stock_master`, `sector_master` pagination/validation 제거 금지
 
 ---
 

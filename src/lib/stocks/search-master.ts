@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { STOCK_UNIVERSE } from "./metadata";
 import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+import { isUnsupportedStockSymbol } from "./listing-status";
 
 export interface StockMasterItem {
   symbol: string;
@@ -37,6 +38,7 @@ export function getSearchMaster(): StockMasterItem[] {
     for (const c of Object.values(corps) as any[]) {
       if (!c.stock_code) continue;
       if (EXCLUDED_SYMBOLS.has(c.stock_code)) continue;
+      if (isUnsupportedStockSymbol(c.stock_code)) continue;
 
       // Heuristic for market label
       let market = "KOSPI";
@@ -62,6 +64,7 @@ export function getSearchMaster(): StockMasterItem[] {
 
   // 2. Merge STOCK_UNIVERSE (will override corp-master if present)
   for (const [symbol, meta] of Object.entries(STOCK_UNIVERSE)) {
+    if (isUnsupportedStockSymbol(symbol)) continue;
     const existing = master.get(symbol);
     master.set(symbol, {
       symbol: meta.symbol,

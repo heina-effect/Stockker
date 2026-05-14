@@ -21,6 +21,12 @@
 - 검색 API를 DB-first로 전환했다. `/api/stocks/search`는 이제 `stock_master + sector_master`를 먼저 랭킹하고, DB 조회 실패 또는 결과 없음일 때만 로컬 `corp-master.json + metadata + taxonomy` 인덱스로 fallback한다.
 - `scripts/sync-stock-master-from-dart.mjs`와 `npm run sync:stock-master`를 추가했다. 검색 원천이었던 DART `corp-master.json`의 3,916개 종목을 `stock_master`에 upsert하고 기존 `sector_tag`는 보존한다.
 - `scripts/validate-db-master.mjs`와 `npm run validate:db-master`를 추가했다. 원격 DB 검증 결과는 `0 errors / 0 warnings / 3,924 active stocks / 29 active sectors`.
+- `지디(155960)`, `젬(248020)` 노출 원인을 DART corp-master 잔존 데이터로 확인하고, `listing-status` guard를 추가해 검색 fallback, DB-first 검색, 상세 직접 URL에서 제외했다.
+- `sync-stock-master-from-dart`는 미지원 심볼을 upsert하지 않고 기존 row를 비활성화한다. `007_hide_unsupported_dart_symbols.sql` migration도 추가했다.
+- 원격 `stock_master`에서 `155960`, `248020`을 비활성화했다. 재검증 결과는 `0 errors / 0 warnings / 3,922 active stocks / 29 active sectors`.
+- 일봉 차트가 KIS 일봉의 오늘 캔들과 live quote 기반 `오늘` 캔들을 동시에 표시하지 않도록 `shouldAppendLiveDailyCandle()` guard를 추가했다. KIS daily 응답에는 `date: YYYYMMDD`를 포함해 중복 판정이 가능하게 했다.
+- `sec-shipping`에서 잘못 들어간 `010120` LS ELECTRIC을 제거하고, 대한해운(`005880`), KSS해운(`044450`), 흥아해운(`003280`)을 추가했다. 원격 `sector_master`도 즉시 정정했다.
+- 섹터 AI 분석 실패 상태에서도 “지금 이 섹터가 주목받는 이유” 카드와 `모멘텀 강도` 바가 유지되도록 에러 UI를 정리했다.
 
 ## 보존한 정책
 
@@ -38,6 +44,8 @@
 - `npm run validate:master`
 - `npm run validate:db-master`
 - `npm run sync:stock-master`
+- `npx vitest run src/lib/stocks/search-master.test.ts`
+- `npx vitest run src/lib/stocks/chart-utils.test.ts src/data/sectors/taxonomy.test.ts src/lib/stocks/master-validation.test.ts`
 - `npm run lint`
 - `npm run build`
 

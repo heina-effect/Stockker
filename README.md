@@ -11,6 +11,8 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **4-Source 뉴스 파이프라인**: KIS 뉴스, Open DART 공시, GNews, NewsAPI 병렬 수집 + pgvector 임베딩 큐레이션
 - **KIS 업종코드 기반 연관 종목**: idxcode.mst 파싱으로 전 종목 섹터 자동 추론 — taxonomy 미등록 종목도 KIS `bstp_cls_code`로 섹터 peer 탐색
 - **DB-first 검색 Master**: 검색은 `stock_master + sector_master`를 우선 사용하고, DART corp-master 기반 로컬 인덱스는 장애 fallback으로만 사용
+- **Local-first 관심 종목 워크플로우**: 검색 결과에서 관심 종목을 저장하고 `/workflows/watchlist`에서 리서치 상태를 모아봄
+- **Stale-first 홈 UX**: 이전 홈 인텔리전스를 먼저 보여주고 백그라운드에서 갱신
 - **데이터 오염 무관용**: mock fallback 완전 제거, 소스 관련성 필터는 제목(title) 전용, 빈 결과는 빈 UI로 표시
 - **평가 레이어 (Eval)**: AI 생성물의 환각·최신성·출처 충분성·면책 조항을 자동 검증
 - **추천 가드레일**: 지시적 매매 언어 차단, 출처 수 명시, disclaimer 필수 노출
@@ -78,6 +80,7 @@ npm run validate:full     # 전체 테스트 + 빌드
 npm run validate:master   # static metadata/taxonomy/DART master 검증
 npm run validate:db-master # 원격 stock_master/sector_master 검증
 npm run sync:stock-master # DART corp-master를 stock_master에 동기화
+npm run sync:sector-master # 섹터 master hotfix 동기화
 npm run test:evals        # AI 평가 테스트
 npm run build             # 프로덕션 빌드
 ```
@@ -87,12 +90,16 @@ npm run build             # 프로덕션 빌드
 ## 문서
 
 **시스템 및 아키텍처**
-- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 28 — 전역 테마, 정규 섹터 라우팅)
+- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 33)
 - [setup.md](docs/setup.md) — 로컬 환경 설정
 - [theme-behavior.md](docs/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-31-report.md](docs/phase-31-report.md) — 최신 (종목 오염 차단, 카드 상태 일관화, 섹터 표시, 연관 종목 강화)
+- [phase-33-report.md](docs/phase-33-report.md) — 최신 (Watchlist Workflow, Stale-first Home, Responsive Report Layout)
+- [phase-33-audit.md](docs/phase-33-audit.md) — Phase 33 감사 보고서
+- [phase-32-report.md](docs/phase-32-report.md) — Beta Polish & Release Candidate
+- [phase-32-audit.md](docs/phase-32-audit.md) — Phase 32 감사 보고서
+- [phase-31-report.md](docs/phase-31-report.md) — 종목 오염 차단, 카드 상태 일관화, 섹터 표시, 연관 종목 강화
 - [phase-31-audit.md](docs/phase-31-audit.md) — Phase 31 감사 보고서
 - [phase-30-report.md](docs/phase-30-report.md) — API 최적화, 오염 차단, KIS 업종 기반 연관 종목
 - [phase-30-audit.md](docs/phase-30-audit.md) — Phase 30 감사 보고서
@@ -123,17 +130,10 @@ npm run build             # 프로덕션 빌드
 | 13–15 | 전종목 확장, 섹터 분류체계, 홈 인텔리전스 레이어 |
 | 16–18 | AI 오케스트레이션 고도화 (2-stage routing), Observability |
 | 19–20 | pgvector 연동, 소스 임베딩 큐레이션, Metadata-First 렌더링 |
-| 21 | 리서치 스냅샷 영속화, 섹터 리서치 워크플로우 |
-| 22 | 4-소스 뉴스 파이프라인 확장 |
-| 23 | 스냅샷 재사용 극대화, 관심 종목 워크플로우 |
-| 24 | Trust/Evaluation Layer, Stale-while-revalidate, Daily Workflows |
-| 25 | Beta Hardening — 버그 수정, UX 일관성, 릴리즈 동결 준비 |
-| 26 | Post-Beta UX 수정 — 연관 종목 명확화, 테마 토글 완성, 섹터 페이지 비블로킹 |
-| 27 | 현실 수정 — 섹터 404 제거, 테마 실제 적용, 날짜 의미론, 섹터 UX 단순화 |
-| 28 | 런타임/문서 재정합 — 전역 테마 토큰, canonical sector normalization, full-card home links |
-| 29 | 투자의견 카드, 소스 로딩 UX, 소스 날짜 정렬, 종목 prefix 오염 차단 |
-| 30 | API 호출 최적화, mock 완전 제거, 오염 차단 강화, KIS 업종코드 기반 연관 종목 자동 매핑 |
-| **31 (현재)** | **종목 오염 차단, 상태 뱃지 정정, 카드 상태 일관화, 상세 섹터 표시, 연관 종목 강화** |
+| 21–24 | 리서치 스냅샷 영속화, 4-source 뉴스 파이프라인, 관심 종목 워크플로우, Trust/Evaluation Layer, stale-while-revalidate |
+| 25–28 | Beta Hardening, 섹터 404 제거, 전역 테마 토큰, canonical sector routing, 홈 카드 UX, 런타임/문서 재정합 |
+| 29–31 | 투자의견/소스 카드 상태 정리, 날짜 의미론, mock 제거, 종목/섹터 오염 차단, KIS 업종코드 기반 연관 종목 |
+| **32–33 (현재)** | **Beta RC 마감, 관심 종목 워크플로우 활성화, 홈 stale-first UX, 종목 상세 responsive layout** |
 
 ---
 

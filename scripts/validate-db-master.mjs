@@ -4,6 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 const ENV_PATH = ".env.local";
 const CORP_MASTER_PATH = "src/data/dart/corp-master.json";
 const PAGE_SIZE = 500;
+const UNSUPPORTED_SYMBOLS = new Set([
+  "155960",
+  "248020",
+]);
 
 function loadEnvFile() {
   if (!fs.existsSync(ENV_PATH)) return;
@@ -76,6 +80,9 @@ async function main() {
   const stockSymbols = new Set(activeStocks.map((row) => row.symbol));
 
   for (const row of activeStocks) {
+    if (UNSUPPORTED_SYMBOLS.has(row.symbol)) {
+      addIssue(issues, "error", "unsupported_stock_active", `${row.symbol} ${row.name} is active but must be hidden from Stockker search/detail`);
+    }
     if ((row.market === "KOSPI" || row.market === "KOSDAQ") && !dartNames.has(row.symbol)) {
       addIssue(issues, "warning", "active_stock_missing_in_dart", `${row.symbol} ${row.name} is active but absent from local DART corp-master`);
     }

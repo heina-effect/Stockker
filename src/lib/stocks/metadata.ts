@@ -466,6 +466,24 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSPI",
     "sector": "해운"
   },
+  "005880": {
+    "symbol": "005880",
+    "name": "대한해운",
+    "market": "KOSPI",
+    "sector": "해운"
+  },
+  "044450": {
+    "symbol": "044450",
+    "name": "KSS해운",
+    "market": "KOSPI",
+    "sector": "해운"
+  },
+  "003280": {
+    "symbol": "003280",
+    "name": "흥아해운",
+    "market": "KOSPI",
+    "sector": "해운"
+  },
   "034020": {
     "symbol": "034020",
     "name": "두산에너빌리티",

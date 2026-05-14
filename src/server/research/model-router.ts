@@ -15,6 +15,7 @@ import {
   filterSourcesForSymbol,
   hasUsableSnapshotEvidence,
 } from "./entity-guard";
+import { isUnsupportedStockSymbol } from "@/lib/stocks/listing-status";
 
 /**
  * 리서치 AI 라우터
@@ -159,13 +160,15 @@ export async function generateSearch(query: string) {
       getDBSectorUniverse(),
     ]);
 
-    const stockItems: StockMasterItem[] = Object.values(stocks).map((stock) => ({
-      symbol: stock.symbol,
-      name: stock.name,
-      type: stock.market === "INDEX" ? "index" : stock.market === "ETF" ? "etf" : "stock",
-      market: stock.market,
-      aliases: [],
-    }));
+    const stockItems: StockMasterItem[] = Object.values(stocks)
+      .filter((stock) => !isUnsupportedStockSymbol(stock.symbol))
+      .map((stock) => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        type: stock.market === "INDEX" ? "index" : stock.market === "ETF" ? "etf" : "stock",
+        market: stock.market,
+        aliases: [],
+      }));
 
     const sectorItems: StockMasterItem[] = Object.values(sectors).map((sector) => ({
       symbol: sector.sectorId,

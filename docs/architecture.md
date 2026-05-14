@@ -1,4 +1,4 @@
-# Stockker Architecture (Phase 31 — 신뢰도 잠금, DB-first 검색 master)
+# Stockker Architecture (Phase 33 — Runtime Truth, Watchlist Workflow, Stale-first Home)
 
 ## 1. 개요
 
@@ -88,13 +88,16 @@ SSR (server component):
 - 만료 시 `aiGenerateHomeIntelligence(recentSources)` 2-stage 재생성
 - 생성 결과는 `normalizeHomeIntelligence()`를 통과해 `trendingSectors`와 legacy `sectors`가 모두 canonical `SECTOR_UNIVERSE` ID만 포함하도록 보정
 - production fallback은 mock 시장 claims를 반환하지 않고 빈 배열과 fallback meta를 반환
+- 클라이언트 `HomeIntelligenceProvider`는 마지막 성공 응답을 `localStorage["stockker_home_intelligence_v1"]`에 보관한다. 재진입 시 stale cache를 먼저 렌더하고 백그라운드에서 단일 `/api/home/intelligence` fetch로 갱신한다.
 
 ### 검색 Master
 
 - `/api/stocks/search`는 `generateSearch()`를 통해 DB `stock_master`와 `sector_master`를 먼저 조회한다.
 - 검색 랭킹은 symbol/name exact match, alias match, prefix match, substring match 순으로 계산한다. 같은 점수에서는 종목을 섹터/ETF보다 우선한다.
 - `stock_master`는 DART `corp-master.json`을 `npm run sync:stock-master`로 동기화한다. 기존에 수동 보정한 `sector_tag`는 upsert 시 보존한다.
+- DART corp-master는 공시 법인 master라 상장폐지 또는 KOSPI/KOSDAQ 지원 범위 밖 종목이 포함될 수 있다. `listing-status.ts`의 unsupported guard는 이런 심볼을 검색/상세 진입에서 제외한다.
 - DB 조회 실패 또는 결과 없음일 때만 로컬 fallback(`src/data/dart/corp-master.json` + `STOCK_UNIVERSE` + `SECTOR_UNIVERSE`)을 사용한다.
+- `stock_master`는 1,000건을 초과하므로 `db-registry.ts`는 페이지네이션으로 active row 전체를 로드한다.
 - 원격 DB consistency는 `npm run validate:db-master`로 확인한다. 이 검증은 active stock, active sector, sector member/representative symbol의 깨짐을 점검한다.
 
 ---
@@ -115,6 +118,8 @@ SSR (server component):
 **저장 정책**: 자동 저장 없음. 사용자 명시적 액션(북마크 클릭, 관심 종목 추가 등)에서만 저장.
 
 `recentViewed`는 종목 상세 페이지 마운트 시 자동 추가됨 — 이것이 유일한 예외이며, 이는 "조회 히스토리"이므로 의도된 동작.
+
+관심 종목은 local-first가 단일 source of truth다. 검색 결과의 `관심 종목 추가` 버튼은 `LocalStorageAdapter.addToWatchlist()`만 호출하며, 저장 후 `stockker:user-storage-updated` 이벤트로 홈 aside와 workflow가 즉시 갱신된다. DB sync는 Phase 33 범위에 없다.
 
 ---
 
@@ -153,6 +158,9 @@ page.tsx (Server Component, 즉시 렌더링)
   └─ SourceListCard (Client, 페이지네이션)
 ```
 
+- 일봉 차트는 KIS daily 응답의 마지막 거래일이 KST 오늘이면 live quote 기반 `오늘` 캔들을 추가하지 않는다. 같은 거래일 캔들이 두 번 렌더링되는 것을 금지한다.
+- Phase 33 레이아웃은 `max-w-7xl`의 responsive grid를 사용한다. 차트/감성/투자의견/핵심 이슈/연관 종목/소스/평단가 카드는 큰 화면에서 분산 배치되고 모바일에서는 자연스럽게 stack된다.
+
 ### 섹터 상세 (`/sectors/[sectorId]`)
 
 ```
@@ -165,6 +173,7 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 ```
 
 **보장**: 캐시 미스에도 SSR이 절대 4–12초 블로킹하지 않음.
+AI 섹터 분석이 실패해도 섹터 설명, 주요 종목, 모멘텀 강도 UI는 유지한다.
 
 ---
 
@@ -180,6 +189,8 @@ page.tsx (Server Component, 즉시 쉘 렌더링)
 | 2. 메타데이터 peer | `stock_master` / `STOCK_UNIVERSE.sector` | canonical sector 보조 |
 | 3. 이슈 공동 언급 | `IssueCluster.relatedSymbols` | DB 캐시 / 소스 제목 추출 |
 | 4. 공시 연결 | 공동 언급 source가 Open DART인 경우 | 공시 기반 |
+
+- 연관 종목 카드는 heavy quote fanout을 하지 않는다. 공유 live store에 현재가가 있으면 표시하고, 없으면 `불러오는 중...` 또는 `최신가 없음` 상태를 표시한다.
 
 ### RelatedStock 필드
 

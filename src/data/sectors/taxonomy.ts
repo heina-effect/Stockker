@@ -176,7 +176,7 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     name: "해운",
     aliases: ["컨테이너", "벌크선", "물류", "운임지수", "BDI"],
     description: "글로벌 해상 운임(SCFI, BDI)과 물동량에 따라 실적이 결정되는 섹터",
-    memberSymbols: ["011200", "028670", "010120"],
+    memberSymbols: ["011200", "028670", "005880", "044450", "003280"],
     representativeSymbols: ["011200", "028670"],
     iconKey: "anchor"
   },

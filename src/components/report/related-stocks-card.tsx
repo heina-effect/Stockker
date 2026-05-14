@@ -13,7 +13,7 @@ const RELATION_LABEL: Record<RelationType, string> = {
   supply_chain: "공급망",
   disclosure_linked: "공시 연관",
   peer: "유사 종목",
-  ai_inferred: "AI 추론",
+  ai_inferred: "보조 연관",
 };
 
 const RELATION_COLORS: Record<RelationType, string> = {
@@ -94,6 +94,7 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
             const liveState = marketStore[stock.symbol];
             const currentPrice = liveState?.quote?.price || stock.price || 0;
             const currentChangeRate = liveState?.quote?.changeRate || stock.changeRate || 0;
+            const isQuoteLoading = liveState?.source === "connecting";
             const isLive = liveState?.source === "live";
             const isUp = currentChangeRate > 0;
             const isDown = currentChangeRate < 0;
@@ -132,10 +133,14 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
                     {isLive && (
                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                     )}
-                    {currentPrice ? `${formatNumber(currentPrice)}원` : "—"}
+                    {currentPrice
+                      ? `${formatNumber(currentPrice)}원`
+                      : isQuoteLoading
+                        ? "불러오는 중..."
+                        : "최신가 없음"}
                   </span>
                   <span className={`text-[10px] font-bold ${isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-slate-500"}`}>
-                    {currentChangeRate !== 0 ? `${isUp ? "+" : ""}${currentChangeRate}%` : "—"}
+                    {currentPrice && currentChangeRate !== 0 ? `${isUp ? "+" : ""}${currentChangeRate}%` : stock.quoteMode === "live-sync" ? "공유 시세" : "시세 대기"}
                   </span>
                 </div>
               </Link>

@@ -57,6 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ symb
                 const mmdd = dateStr ? `${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}` : "";
                 
                 return {
+                    date: dateStr,
                     time: mmdd,
                     open: Number(item.stck_oprc),
                     high: Number(item.stck_hgpr),

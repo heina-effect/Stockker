@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
+import { USER_STORAGE_EVENT } from "@/lib/user-storage/events";
 import Link from "next/link";
 import { getStockName } from "@/lib/stocks/metadata";
+import { Loader2 } from "lucide-react";
 
 export function WatchlistResearchBoard() {
   const [watchlist, setWatchlist] = useState<string[]>([]);
@@ -15,25 +17,47 @@ export function WatchlistResearchBoard() {
     const list = LocalStorageAdapter.getAll().watchlist;
     setWatchlist(list);
     setMounted(true);
-    
-    if (list.length > 0) {
-      // Fetch summaries for each
-      Promise.all(list.map(sym => 
-        fetch(`/api/stocks/${sym}/summary`).then(r => r.json()).catch(() => null)
-      )).then(results => {
-        const newReports: Record<string, any> = {};
-        results.forEach((res, i) => {
-          if (res?.ok && res.summary) {
-            newReports[list[i]] = res.summary;
-          }
-        });
-        setReports(newReports);
-        setLoading(false);
-      });
-    } else {
-      setLoading(false);
-    }
   }, []);
+
+  useEffect(() => {
+    const sync = () => setWatchlist(LocalStorageAdapter.getAll().watchlist);
+    window.addEventListener(USER_STORAGE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(USER_STORAGE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (watchlist.length === 0) {
+      setReports({});
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    setReports({});
+    setLoading(true);
+    Promise.all(
+      watchlist.map(sym =>
+        fetch(`/api/stocks/${sym}/report`).then(r => r.json()).catch(() => null)
+      )
+    ).then(results => {
+      if (!active) return;
+      const newReports: Record<string, any> = {};
+      results.forEach((res, i) => {
+        if (res?.ok && res.report) {
+          newReports[watchlist[i]] = res.report;
+        }
+      });
+      setReports(newReports);
+      setLoading(false);
+    });
+
+    return () => { active = false; };
+  }, [mounted, watchlist]);
 
   if (!mounted) return null;
 
@@ -67,6 +91,10 @@ export function WatchlistResearchBoard() {
                 <div className="animate-pulse flex flex-col gap-2">
                   <div className="h-4 bg-slate-200 dark:bg-zinc-800 rounded w-3/4" />
                   <div className="h-4 bg-slate-200 dark:bg-zinc-800 rounded w-full" />
+                  <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    리포트 준비 중...
+                  </div>
                 </div>
               ) : rep ? (
                 <>
@@ -74,7 +102,9 @@ export function WatchlistResearchBoard() {
                   <p className="text-sm text-slate-600 dark:text-zinc-400 leading-relaxed">{rep.aiSummary}</p>
                 </>
               ) : (
-                <p className="text-sm text-slate-500 italic">요약 정보를 불러오지 못했습니다.</p>
+                <div className="text-sm text-slate-500 dark:text-zinc-400">
+                  리포트 준비 중입니다. 상세 페이지에서 최신 이슈 수집이 완료되면 이곳에 요약이 표시됩니다.
+                </div>
               )}
             </div>
           </div>

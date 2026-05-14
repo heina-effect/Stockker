@@ -31,7 +31,7 @@ function generateFullDayIntradayGrid() {
 }
 
 // The mock generators have been removed to prefer real data from the KIS API using the /api/stocks/[symbol]/ohlc route
-import { aggregateToOHLC, calculateMA } from "@/lib/stocks/chart-utils";
+import { aggregateToOHLC, calculateMA, shouldAppendLiveDailyCandle } from "@/lib/stocks/chart-utils";
 
 interface CandlestickShapeProps {
   x?: number;
@@ -136,7 +136,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
                               (q.price / lastHist.close > 0.5) && 
                               (q.price / lastHist.close < 2.0);
 
-      if (isPricePlausible) {
+      if (isPricePlausible && shouldAppendLiveDailyCandle(lastHist)) {
         const todayCurrent: any = {
           time: "오늘",
           open: q.open || q.price,

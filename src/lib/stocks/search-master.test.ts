@@ -41,4 +41,9 @@ describe("Search Master", () => {
 
     expect(results[0]?.symbol).toBe("000880");
   });
+
+  it("excludes DART-only unsupported symbols from the local fallback index", () => {
+    expect(searchStock("지디").some(result => result.symbol === "155960")).toBe(false);
+    expect(searchStock("젬").some(result => result.symbol === "248020")).toBe(false);
+  });
 });

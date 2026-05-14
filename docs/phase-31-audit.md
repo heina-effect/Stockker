@@ -16,6 +16,11 @@
 - 읽기 전용 DB 감사 결과, 현재 업로드된 DB는 `49 stocks / 12 sectors`만 보유하고 있고 `14 errors / 2 warnings`가 확인됐다. 주요 오류는 `000880=LS`, `419080=펩트론`, `033640=SKC`, `222420=이오테크닉스`, `041510=SK스퀘어`, `003670=포스코인터내셔널`, `035720=KAKAO`, `073120=LIG넥스원`, `054060=뉴로메카`였다.
 - 검색 API(`/api/stocks/search`)는 DB `stock_master`를 읽지 않고 `src/data/dart/corp-master.json` 전체에 `STOCK_UNIVERSE`, `SECTOR_UNIVERSE`를 덮어쓴 로컬 인덱스를 사용했다. 따라서 DB master를 정제해도 검색 결과는 로컬 DART/metadata 상태에 다시 끌려갈 수 있었다.
 - 검색 원천 자체가 local DART였기 때문에, 검색에서 보이는 전체 종목 universe를 `stock_master`에 동기화하고 런타임 검색은 DB-first로 바꿔야 한다. 로컬 인덱스는 Supabase 장애 또는 env 누락 시 fallback으로만 유지한다.
+- `지디(155960)`, `젬(248020)`은 검색에서 DART corp-master를 그대로 사용하면서 노출됐다. `155960`은 DART에 남아 있지만 상장폐지 이력이 있고, `248020`은 KOSPI/KOSDAQ이 아닌 KONEX 성격이라 Stockker의 현재 KOSPI/KOSDAQ 리서치 런타임 지원 대상이 아니다.
+- DART corp-master는 공시 법인 코드 매핑에는 필요하지만 “현재 검색 가능한 상장 종목 master”로 단독 사용하면 상장폐지/지원 외 시장 종목이 섞인다. 검색/상세 진입에는 별도 listing support guard가 필요하다.
+- 일봉 차트에 같은 모양의 마지막 봉이 두 개 보인 원인은 KIS 일봉 응답이 이미 `2026-05-13` 캔들을 포함했는데, 클라이언트가 live quote로 만든 `오늘` 캔들을 추가로 append했기 때문이다. 일봉 API의 날짜 키와 KST 오늘 날짜가 같으면 live daily candle을 붙이면 안 된다.
+- 해운 섹터에 LS ELECTRIC이 노출된 원인은 `sec-shipping.memberSymbols`와 `sector_master.member_symbols`에 `010120`이 잘못 들어가 있었기 때문이다. `010120`은 LS ELECTRIC(전력)이며 해운 섹터 구성 종목이 아니다.
+- 섹터 AI 분석 API가 실패하면 기존 에러 분기에서는 “모멘텀 강도” 헤더가 사라질 수 있었다. AI 본문은 실패하더라도 모멘텀 지표 UI는 유지되어야 한다.
 
 ## 확인한 회귀 위험
 

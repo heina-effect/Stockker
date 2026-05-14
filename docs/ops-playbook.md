@@ -115,6 +115,23 @@ echo $SUPABASE_SERVICE_ROLE_KEY
 
 ---
 
+## 6.5 Master 데이터 검증
+
+검색/섹터/연관 종목이 이상하게 보일 때 먼저 master를 검증합니다.
+
+```bash
+npm run validate:master
+npm run validate:db-master
+```
+
+증상별 확인:
+- 검색에 없는 종목이 노출됨 → `listing-status.ts`, `stock_master.is_active` 확인
+- 섹터에 엉뚱한 종목이 노출됨 → `sector_master.member_symbols`, `src/data/sectors/taxonomy.ts` 확인
+- DB row가 1,000건만 읽히는 것처럼 보임 → `db-registry.ts` pagination 유지 확인
+- DART에는 있으나 현재 지원하지 않는 종목 → unsupported symbol로 비활성화
+
+---
+
 ## 7. 개발 서버 재시작
 
 ```bash

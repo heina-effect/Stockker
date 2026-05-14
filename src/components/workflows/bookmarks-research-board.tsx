@@ -25,7 +25,8 @@ export function BookmarksResearchBoard() {
         try {
           const res = await fetch(`/api/stocks/${symbol}/sentiment`);
           if (res.ok) {
-            results[symbol] = await res.json();
+            const json = await res.json();
+            results[symbol] = json.sentiment ?? json;
           }
         } catch (e) {
           console.error(e);

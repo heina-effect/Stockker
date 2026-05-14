@@ -32,4 +32,12 @@ describe('User Persistence - LocalStorageAdapter', () => {
       expect(all.watchlist).toContain("005930");
       expect(all.buyPrices["000660"]).toBeUndefined();
   });
+
+  it('adds watchlist symbols once and persists them', () => {
+    LocalStorageAdapter.setAll({ watchlist: ["005930"] });
+    LocalStorageAdapter.addToWatchlist("000660");
+    LocalStorageAdapter.addToWatchlist("000660");
+
+    expect(LocalStorageAdapter.getAll().watchlist).toEqual(["005930", "000660"]);
+  });
 });

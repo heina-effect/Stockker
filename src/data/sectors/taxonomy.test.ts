@@ -14,8 +14,14 @@ describe("sector taxonomy canonical helpers", () => {
   });
 
   it("rejects unmapped sector ids instead of inventing routes", () => {
-    expect(resolveSectorId("sec-defense")).toBeNull();
-    expect(resolveSectorId("방산")).toBeNull();
-    expect(getSectorById("sec-defense")).toBeNull();
+    expect(resolveSectorId("sec-not-real")).toBeNull();
+    expect(resolveSectorId("없는섹터")).toBeNull();
+    expect(getSectorById("sec-not-real")).toBeNull();
+  });
+
+  it("keeps LS ELECTRIC out of the shipping sector", () => {
+    const shipping = getSectorById("sec-shipping");
+    expect(shipping?.memberSymbols).not.toContain("010120");
+    expect(shipping?.memberSymbols).toEqual(expect.arrayContaining(["011200", "028670", "005880"]));
   });
 });

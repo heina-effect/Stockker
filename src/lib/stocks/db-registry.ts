@@ -4,9 +4,11 @@
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import type { SectorTheme } from "@/data/sectors/taxonomy";
 import type { StockMetadata } from "@/lib/stocks/metadata";
+import { isUnsupportedStockSymbol } from "@/lib/stocks/listing-status";
 
 // ─── 인메모리 캐시 (stale-while-revalidate 패턴) ────────────────
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5분
+const PAGE_SIZE = 1000;
 
 interface CacheEntry<T> {
   data: T;
@@ -73,16 +75,28 @@ async function loadStocksFromDB(): Promise<Record<string, StockMetadata>> {
     return STOCK_UNIVERSE;
   }
 
-  const { data, error } = await db
-    .from("stock_master")
-    .select("symbol, name, market, sector_tag")
-    .eq("is_active", true);
+  const data: { symbol: string; name: string; market: string; sector_tag: string | null }[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: page, error } = await db
+      .from("stock_master")
+      .select("symbol, name, market, sector_tag")
+      .eq("is_active", true)
+      .range(from, from + PAGE_SIZE - 1);
 
-  if (error || !data?.length) {
-    console.warn(
-      "[db-registry] stock_master load failed, falling back to static:",
-      error?.message
-    );
+    if (error) {
+      console.warn(
+        "[db-registry] stock_master load failed, falling back to static:",
+        error.message
+      );
+      const { STOCK_UNIVERSE } = await import("@/lib/stocks/metadata");
+      return STOCK_UNIVERSE;
+    }
+
+    data.push(...(page ?? []));
+    if (!page || page.length < PAGE_SIZE) break;
+  }
+
+  if (!data.length) {
     const { STOCK_UNIVERSE } = await import("@/lib/stocks/metadata");
     return STOCK_UNIVERSE;
   }
@@ -91,7 +105,7 @@ async function loadStocksFromDB(): Promise<Record<string, StockMetadata>> {
   return {
     ...STOCK_UNIVERSE,
     ...Object.fromEntries(
-      data.map((row) => [
+      data.filter((row) => !isUnsupportedStockSymbol(row.symbol)).map((row) => [
         row.symbol,
         {
           symbol: row.symbol,

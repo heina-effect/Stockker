@@ -133,6 +133,7 @@ npm run test:search        # 검색 테스트
 npm run validate:master    # static metadata/taxonomy/DART master 검증
 npm run validate:db-master # 원격 stock_master/sector_master 검증
 npm run sync:stock-master  # DART corp-master를 stock_master에 upsert
+npm run sync:sector-master # 섹터 master hotfix 동기화
 
 # 빌드
 npm run build
@@ -164,6 +165,32 @@ npx vitest run \
   src/server/research/pipeline/related-stocks.test.ts \
   src/components/report/source-list-card.test.tsx \
   src/components/report/intraday-hidden.test.ts
+```
+
+Phase 32 Beta RC 회귀를 좁게 확인할 때:
+
+```bash
+npx vitest run \
+  src/app/theme-contract.test.ts \
+  src/components/home/dashboard-header.test.tsx \
+  src/components/report/source-list-card.test.tsx \
+  src/lib/stocks/chart-utils.test.ts \
+  src/data/sectors/taxonomy.test.ts \
+  src/lib/stocks/search-master.test.ts \
+  src/components/report/intraday-hidden.test.ts
+```
+
+Phase 33 runtime workflow 회귀를 좁게 확인할 때:
+
+```bash
+npx vitest run \
+  src/components/home/search-hero-card.test.tsx \
+  src/lib/user-storage/local-adapter.test.ts \
+  src/components/workflows/watchlist-research-board.test.tsx \
+  src/components/home/home-intelligence-provider.test.tsx \
+  src/components/report/source-list-card.test.tsx \
+  src/components/report/intraday-hidden.test.ts \
+  src/lib/stocks/chart-utils.test.ts
 ```
 
 ---
@@ -227,3 +254,22 @@ TypeScript 경로 별칭 (`@/...`)은 `tsconfig.json`의 `paths` 설정으로 �
 3. 최근 핵심 이슈, 소스, 투자의견, 연관 종목 카드 제목이 loading/empty/error에서도 유지된다.
 4. 상세 헤더에 canonical 섹터명과 KIS 업종명이 표시된다.
 5. 연관 종목에 relation type과 reason이 표시된다.
+
+## 11. Phase 32 Beta RC 수동 확인
+
+1. light / dark / system 전환이 홈, 상세, 섹터, 워크플로우 전체 surface에 적용된다.
+2. `/sectors/sec-shipping` 주요 종목에 LS ELECTRIC이 보이지 않는다.
+3. 일봉 차트에서 KST 오늘 거래일 봉이 중복 표시되지 않는다.
+4. AI 분석 근거 소스 카드는 처음부터 `/sources?page=1&limit=5` pagination을 사용한다.
+5. 소스 카드의 날짜는 원문 발행일/공시일이며 `collectedAt`이 발행일처럼 보이지 않는다.
+6. 증권사 투자의견 카드가 로딩/빈/오류 상태에서도 프레임과 제목을 유지한다.
+
+## 12. Phase 33 수동 확인
+
+1. 홈 검색 결과에서 종목의 `+` 버튼을 눌러 관심 종목에 추가한다.
+2. 홈 우측 관심 종목 카드가 새로고침 없이 즉시 갱신된다.
+3. 새로고침 후 관심 종목이 유지된다.
+4. `/workflows/watchlist`에서 저장된 종목 카드가 보이고, snapshot이 없으면 “리포트 준비 중” 상태가 보인다.
+5. 홈 재진입 시 이전 인텔리전스가 먼저 보이고 백그라운드에서 “갱신 중” 상태가 표시된다.
+6. 종목 상세가 큰 화면에서 더 넓은 grid를 사용하고 모바일에서는 stack된다.
+7. 연관 종목 현재가가 없을 때도 relation type/reason과 `최신가 없음` 상태가 보인다.

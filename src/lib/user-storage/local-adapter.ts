@@ -1,5 +1,7 @@
 "use client";
 
+import { notifyUserStorageUpdated } from "./events";
+
 const IS_BROWSER = typeof window !== "undefined";
 
 export interface UserPreferences {
@@ -58,6 +60,7 @@ export const LocalStorageAdapter = {
     const current = this.getAll();
     const next = { ...current, ...data };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    notifyUserStorageUpdated();
   },
 
   getBuyPrice(symbol: string): number | undefined {

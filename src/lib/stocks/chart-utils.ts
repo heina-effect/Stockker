@@ -63,3 +63,28 @@ export function calculateMA<T extends Record<string, unknown>>(data: T[], period
     return { ...d, [`ma${period}`]: sum / period };
   });
 }
+
+export function formatKstDateKey(date: Date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(date).replace(/-/g, "");
+}
+
+export function formatKstMonthDay(date: Date = new Date()) {
+  const key = formatKstDateKey(date);
+  return `${key.slice(4, 6)}/${key.slice(6, 8)}`;
+}
+
+export function shouldAppendLiveDailyCandle(
+  lastCandle: { date?: string; time?: string } | undefined | null,
+  now: Date = new Date()
+) {
+  if (!lastCandle) return false;
+  const todayKey = formatKstDateKey(now);
+  const todayLabel = formatKstMonthDay(now);
+  return lastCandle.date !== todayKey && lastCandle.time !== todayLabel;
+}
