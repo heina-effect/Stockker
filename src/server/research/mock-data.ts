@@ -1,9 +1,6 @@
 import type { 
   StockSearchItem, 
   StockReportSummary, 
-  SentimentScore, 
-  IssueCluster,
-  SourceItem,
   BuyPricePlan, 
   RelatedStock 
 } from "@/types/research";
@@ -53,7 +50,7 @@ export const mockSentiment = (symbol: string): any => {
   };
 };
 
-export const mockIssues = (symbol: string): { clusters: any[], sources: any[] } => ({
+export const mockIssues = (): { clusters: any[], sources: any[] } => ({
   clusters: [
     {
       id: "cluster-1",
@@ -154,7 +151,7 @@ export const mockBuyPlan = (symbol: string, targetPrice: number, currentPrice?: 
   };
 };
 
-export const mockRelatedStocks = (symbol: string): RelatedStock[] => [
+export const mockRelatedStocks = (): RelatedStock[] => [
   { symbol: "000660", name: "SK하이닉스", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 152000, changeRate: 1.5, freshness: "recent" },
   { symbol: "042700", name: "한미반도체", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 82000, changeRate: -0.5, freshness: "recent" },
   { symbol: "039030", name: "이오테크닉스", reason: "반도체 섹터 동종 기업", relationType: "sector_peer", relationReason: "반도체 섹터 내 동종 기업으로 동일 시장 환경에 노출됨", quoteMode: "live-sync", price: 125000, changeRate: 3.2, freshness: "recent" }

@@ -15,6 +15,36 @@ interface LiveMarketContextType {
 }
 
 const LiveMarketContext = createContext<LiveMarketContextType | undefined>(undefined);
+const LIVE_QUOTE_CACHE_PREFIX = "stockker_live_quote_v1:";
+const LIVE_QUOTE_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function readCachedQuote(symbol: string): Pick<SymbolState, "quote" | "lastUpdated"> | null {
+    if (typeof window === "undefined") return null;
+
+    try {
+        const raw = window.localStorage.getItem(`${LIVE_QUOTE_CACHE_PREFIX}${symbol}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed?.quote?.price || !parsed?.lastUpdated) return null;
+        if (Date.now() - Number(parsed.lastUpdated) > LIVE_QUOTE_CACHE_MAX_AGE_MS) return null;
+        return { quote: parsed.quote, lastUpdated: Number(parsed.lastUpdated) };
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedQuote(symbol: string, quote: StockQuote | null | undefined, lastUpdated: number) {
+    if (typeof window === "undefined" || !quote?.price || quote.price <= 0) return;
+
+    try {
+        window.localStorage.setItem(
+            `${LIVE_QUOTE_CACHE_PREFIX}${symbol}`,
+            JSON.stringify({ quote, lastUpdated }),
+        );
+    } catch {
+        // 시세 캐시는 UX 보조용이다. 저장 실패가 화면을 막으면 안 된다.
+    }
+}
 
 export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const pathname = usePathname();
@@ -48,10 +78,6 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     // Live KIS bootstrap은 종목 상세처럼 실제 시세가 필요한 화면에서만 실행한다.
     const bootstrap = useCallback(async (symbol: string, signal?: AbortSignal) => {
-        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-        
-        console.log(`[LiveMarket] Starting normalized bootstrap for ${symbol}`);
-        
         const updateSymbol = (s: string, data: Partial<SymbolState>) => {
             setMarketStore(prev => {
                 const existing = prev[s];
@@ -127,21 +153,22 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     price: currentPrice 
                 });
 
+                const nextLastUpdated = Date.now();
+
                 updateSymbol(symbol, {
                     quote,
                     orderbook: isIndex ? null : stockData.orderbook,
                     chart,
                     source: stockData.source === "mock-fallback" ? MarketState.MOCK_FALLBACK : MarketState.LIVE,
-                    lastUpdated: Date.now()
+                    lastUpdated: nextLastUpdated
                 });
+                if (!isIndex) writeCachedQuote(symbol, quote, nextLastUpdated);
                 
-                lastUpdateTsRef.current = Date.now();
+                lastUpdateTsRef.current = nextLastUpdated;
             } else {
                 updateSymbol(symbol, { source: MarketState.MOCK_FALLBACK });
                 return;
             }
-
-            await sleep(1000);
 
         } catch (e) {
             if (e instanceof Error && e.name === 'AbortError') return;
@@ -165,6 +192,25 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // Only trigger full bootstrap when selectedSymbol changes
         if (lastSymbolRef.current === selectedSymbol) return;
         lastSymbolRef.current = selectedSymbol;
+
+        const cached = readCachedQuote(selectedSymbol);
+        if (cached) {
+            setMarketStore(prev => {
+                const existing = prev[selectedSymbol];
+                if (existing?.quote?.price && existing.source === MarketState.LIVE) return prev;
+                return {
+                    ...prev,
+                    [selectedSymbol]: {
+                        symbol: selectedSymbol,
+                        quote: cached.quote,
+                        orderbook: existing?.orderbook ?? null,
+                        chart: existing?.chart ?? [],
+                        source: MarketState.STALE,
+                        lastUpdated: cached.lastUpdated,
+                    },
+                };
+            });
+        }
         
         // Cancel previous if any
         if (currentAbortControllerRef.current) {
@@ -202,6 +248,8 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 const data = JSON.parse(event.data);
                 const symbol = data.symbol;
                 const price = data.price;
+                let quoteToCache: StockQuote | null = null;
+                const updatedAt = Date.now();
 
                 setMarketStore(prev => {
                     const existing = prev[symbol] || {
@@ -216,6 +264,7 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     const updatedQuote = existing.quote 
                         ? { ...existing.quote, price, change: data.change, changeRate: data.changeRate, volume: data.volume }
                         : { symbol, price, change: data.change, changeRate: data.changeRate, volume: data.volume, name: "", high: 0, low: 0, open: 0, timestamp: new Date().toISOString() } as StockQuote;
+                    quoteToCache = updatedQuote;
 
                     let updatedChart = existing.chart;
                     // Always try to keep some history even if not selected, but only update active chart points for selected
@@ -231,12 +280,13 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             quote: updatedQuote,
                             chart: updatedChart,
                             source: MarketState.LIVE, // Automatically recover to LIVE on any data
-                            lastUpdated: Date.now()
+                            lastUpdated: updatedAt
                         }
                     };
                 });
 
-                lastUpdateTsRef.current = Date.now();
+                writeCachedQuote(symbol, quoteToCache, updatedAt);
+                lastUpdateTsRef.current = updatedAt;
             } catch (err) {
                 console.error("Failed to parse trade SSE:", err);
             }
@@ -246,6 +296,8 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             try {
                 const data = JSON.parse(event.data);
                 const symbol = data.symbol; // "0001" or "1001"
+                let quoteToCache: StockQuote | null = null;
+                const updatedAt = Date.now();
                 
                 setMarketStore(prev => {
                     const existing = prev[symbol] || {
@@ -260,6 +312,7 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     const updatedQuote = existing.quote 
                         ? { ...existing.quote, price: data.value, change: data.change, changeRate: data.changeRate }
                         : { symbol, price: data.value, change: data.change, changeRate: data.changeRate, name: "", high: 0, low: 0, open: 0, timestamp: new Date().toISOString() } as StockQuote;
+                    quoteToCache = updatedQuote;
 
                     let updatedChart = existing.chart;
                     if (symbol === selectedSymbol) {
@@ -274,12 +327,13 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                             quote: updatedQuote,
                             chart: updatedChart,
                             source: MarketState.LIVE, // Recover indices too
-                            lastUpdated: Date.now()
+                            lastUpdated: updatedAt
                         }
                     };
                 });
 
-                lastUpdateTsRef.current = Date.now();
+                writeCachedQuote(symbol, quoteToCache, updatedAt);
+                lastUpdateTsRef.current = updatedAt;
             } catch (err) {
                 console.error("Failed to parse index SSE:", err);
             }
@@ -293,8 +347,8 @@ export const LiveMarketProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             lastUpdateTsRef.current = Date.now();
         });
 
-        eventSource.onerror = (e) => {
-            console.error("SSE Connection Error:", e);
+        eventSource.onerror = () => {
+            lastUpdateTsRef.current = Date.now();
         };
 
         return () => {

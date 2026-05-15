@@ -254,7 +254,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       )}
 
       <p className="mt-4 text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">
-        실제 뉴스 및 Open DART 공시 데이터를 기반으로 AI 선별 후 분석합니다. 환각(Hallucination) 현상이 일부 있을 수 있습니다.
+        실제 뉴스 및 Open DART 공시를 AI가 선별한 근거 목록입니다. 분석 요약은 원문 링크와 함께 확인해 주세요.
       </p>
         </>
       )}

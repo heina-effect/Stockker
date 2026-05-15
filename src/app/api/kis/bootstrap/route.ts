@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const symbol = searchParams.get("symbol");
     const type = searchParams.get("type"); // 'stock' (default) or 'index'
+    const includeOrderbook = searchParams.get("includeOrderbook") === "1";
 
     if (!symbol) {
         return NextResponse.json({ ok: false, error: "Symbol is required" }, { status: 400 });
@@ -50,14 +51,17 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        // Fetch snapshot data sequentially to avoid EGW00201
+        // 상세 첫 화면은 현재가가 우선이다. 호가는 명시적으로 요청된 경우에만 뒤따라 조회한다.
         const quote = await getDomesticStockQuote(symbol);
-        
-        // Wait a bit before the next call to KIS API
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        const orderbook = await getDomesticStockOrderbook(symbol);
+        let orderbook = null;
 
+        if (includeOrderbook) {
+            try {
+                orderbook = await getDomesticStockOrderbook(symbol);
+            } catch (orderbookError) {
+                console.warn(`[Bootstrap] Orderbook skipped for ${symbol}:`, orderbookError);
+            }
+        }
 
         return NextResponse.json({
             ok: true,
@@ -90,9 +94,9 @@ export async function GET(req: NextRequest) {
             },
             orderbook: {
                 symbol,
-                levels: Array(10).fill({ askPrice: 70100, askSize: 100, bidPrice: 69900, bidSize: 100 }),
-                totalAskSize: 1000,
-                totalBidSize: 1000,
+                levels: [],
+                totalAskSize: 0,
+                totalBidSize: 0,
                 timestamp: new Date().toISOString()
             },
             fetchedAt: new Date().toISOString()

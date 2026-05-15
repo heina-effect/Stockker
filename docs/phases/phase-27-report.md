@@ -269,6 +269,6 @@ npx supabase db push
 | `src/server/research/model-router.ts` | DB 캐시 경로 generatedAt 브릿지 추가 |
 | `supabase/migrations/004_schema_fixes.sql` | 복합 인덱스, issue_clusters 제거, snapshot 보장 |
 | `README.md` | 마이그레이션 단계 추가 (npx supabase link/db push) |
-| `docs/setup.md` | 섹션 4 — PAT 발급, link, repair 절차 구체화 |
-| `docs/phase-27-audit.md` | 감사 문서 |
-| `docs/phase-27-report.md` | 본 문서 |
+| `docs/core/setup.md` | 섹션 4 — PAT 발급, link, repair 절차 구체화 |
+| `docs/phases/phase-27-audit.md` | 감사 문서 |
+| `docs/phases/phase-27-report.md` | 본 문서 |

@@ -107,7 +107,7 @@ if (!snapshot) {
 
 ## 8. 변경하면 안 되는 릴리즈 동결 가드레일은?
 
-`docs/release-freeze-rules.md` 기준:
+`docs/release/release-freeze-rules.md` 기준:
 
 | 가드레일 | 상태 |
 |---------|------|

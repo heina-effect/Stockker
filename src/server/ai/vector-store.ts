@@ -103,8 +103,8 @@ class InMemoryVectorAdapter implements VectorStoreAdapter {
     );
   }
 
-  async findNearestTrustedCentroid(_vector: number[]): Promise<number> { return 0.6; }
-  async findNearestSpamCentroid(_vector: number[]): Promise<number> { return 0.1; }
+  async findNearestTrustedCentroid(): Promise<number> { return 0.6; }
+  async findNearestSpamCentroid(): Promise<number> { return 0.1; }
 
   async getRecentCuratedSources(symbol: string, maxAgeMs = 30 * 60 * 1000): Promise<EmbeddedSource[]> {
     const cutoff = Date.now() - maxAgeMs;

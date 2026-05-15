@@ -1,5 +1,4 @@
 import {
-  isSectorId,
   resolveSectorId,
   type SectorId,
   type SectorTheme,

@@ -45,7 +45,7 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 # 1. 의존성 설치
 npm install
 
-# 2. 환경 변수 설정 (docs/setup.md 참고)
+# 2. 환경 변수 설정 (docs/core/setup.md 참고)
 cp .env.local.example .env.local
 
 # 3. Supabase DB 마이그레이션 적용 (신규 설치 시 필수)
@@ -61,7 +61,7 @@ npm run validate:full
 ```
 
 > `supabase link`는 [Supabase 개인 액세스 토큰(PAT)](https://supabase.com/dashboard/account/tokens)이 필요합니다.  
-> 자세한 환경 변수 및 마이그레이션 설정은 [docs/setup.md](docs/setup.md)를 참고하세요.
+> 자세한 환경 변수 및 마이그레이션 설정은 [docs/core/setup.md](docs/core/setup.md)를 참고하세요.
 
 ---
 
@@ -92,38 +92,40 @@ npm run build             # 프로덕션 빌드
 
 ## 문서
 
+문서 전체 구조는 [docs/README.md](docs/README.md)를 기준으로 정리되어 있습니다.
+
 **시스템 및 아키텍처**
-- [architecture.md](docs/architecture.md) — 시스템 아키텍처 (Phase 34)
-- [setup.md](docs/setup.md) — 로컬 환경 설정
-- [theme-behavior.md](docs/theme-behavior.md) — light / dark / system 동작과 token contract
+- [architecture.md](docs/core/architecture.md) — 시스템 아키텍처 (Phase 34)
+- [setup.md](docs/core/setup.md) — 로컬 환경 설정
+- [theme-behavior.md](docs/core/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-34-report.md](docs/phase-34-report.md) — 최신 (Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
-- [phase-34-audit.md](docs/phase-34-audit.md) — Phase 34 감사 보고서
-- [phase-33-report.md](docs/phase-33-report.md) — Watchlist Workflow, Stale-first Home, Responsive Report Layout
-- [phase-33-audit.md](docs/phase-33-audit.md) — Phase 33 감사 보고서
-- [phase-32-report.md](docs/phase-32-report.md) — Beta Polish & Release Candidate
-- [phase-32-audit.md](docs/phase-32-audit.md) — Phase 32 감사 보고서
-- [phase-31-report.md](docs/phase-31-report.md) — 종목 오염 차단, 카드 상태 일관화, 섹터 표시, 연관 종목 강화
-- [phase-31-audit.md](docs/phase-31-audit.md) — Phase 31 감사 보고서
-- [phase-30-report.md](docs/phase-30-report.md) — API 최적화, 오염 차단, KIS 업종 기반 연관 종목
-- [phase-30-audit.md](docs/phase-30-audit.md) — Phase 30 감사 보고서
-- [phase-28-report.md](docs/phase-28-report.md) — Phase 28 (전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 UX)
-- [phase-28-audit.md](docs/phase-28-audit.md) — Phase 28 감사 보고서
-- [phase-27-report.md](docs/phase-27-report.md) — Phase 27 (섹터 404 제거, 테마 수리, 날짜 의미론, 섹터 UX)
-- [phase-26-report.md](docs/phase-26-report.md) — Phase 26 (연관 종목 명확화, 테마 완성, 섹터 비블로킹)
+- [phase-34-report.md](docs/phases/phase-34-report.md) — 최신 (Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
+- [phase-34-audit.md](docs/phases/phase-34-audit.md) — Phase 34 감사 보고서
+- [phase-33-report.md](docs/phases/phase-33-report.md) — Watchlist Workflow, Stale-first Home, Responsive Report Layout
+- [phase-33-audit.md](docs/phases/phase-33-audit.md) — Phase 33 감사 보고서
+- [phase-32-report.md](docs/phases/phase-32-report.md) — Beta Polish & Release Candidate
+- [phase-32-audit.md](docs/phases/phase-32-audit.md) — Phase 32 감사 보고서
+- [phase-31-report.md](docs/phases/phase-31-report.md) — 종목 오염 차단, 카드 상태 일관화, 섹터 표시, 연관 종목 강화
+- [phase-31-audit.md](docs/phases/phase-31-audit.md) — Phase 31 감사 보고서
+- [phase-30-report.md](docs/phases/phase-30-report.md) — API 최적화, 오염 차단, KIS 업종 기반 연관 종목
+- [phase-30-audit.md](docs/phases/phase-30-audit.md) — Phase 30 감사 보고서
+- [phase-28-report.md](docs/phases/phase-28-report.md) — Phase 28 (전역 테마 토큰, 정규 섹터 라우팅, 홈 카드 UX)
+- [phase-28-audit.md](docs/phases/phase-28-audit.md) — Phase 28 감사 보고서
+- [phase-27-report.md](docs/phases/phase-27-report.md) — Phase 27 (섹터 404 제거, 테마 수리, 날짜 의미론, 섹터 UX)
+- [phase-26-report.md](docs/phases/phase-26-report.md) — Phase 26 (연관 종목 명확화, 테마 완성, 섹터 비블로킹)
 
 **정책 및 운영**
-- [beta-release-checklist.md](docs/beta-release-checklist.md) — 베타 릴리즈 체크리스트
-- [known-issues.md](docs/known-issues.md) — 알려진 이슈
-- [release-freeze-rules.md](docs/release-freeze-rules.md) — 릴리즈 동결 규칙
-- [ops-playbook.md](docs/ops-playbook.md) — 운영/장애 대응 가이드
-- [ops-observability.md](docs/ops-observability.md) — 모니터링 및 관찰성
-- [recommendation-guardrails.md](docs/recommendation-guardrails.md) — 추천 안전 가드레일
-- [evaluation-policy.md](docs/evaluation-policy.md) — AI 출력물 평가 정책
+- [beta-release-checklist.md](docs/release/beta-release-checklist.md) — 베타 릴리즈 체크리스트
+- [known-issues.md](docs/release/known-issues.md) — 알려진 이슈
+- [release-freeze-rules.md](docs/release/release-freeze-rules.md) — 릴리즈 동결 규칙
+- [ops-playbook.md](docs/ops/ops-playbook.md) — 운영/장애 대응 가이드
+- [ops-observability.md](docs/ops/ops-observability.md) — 모니터링 및 관찰성
+- [recommendation-guardrails.md](docs/core/recommendation-guardrails.md) — 추천 안전 가드레일
+- [evaluation-policy.md](docs/core/evaluation-policy.md) — AI 출력물 평가 정책
 
 **워크플로우 및 기능**
-- [research-workflows.md](docs/research-workflows.md) — 저장 및 리서치 워크플로우
+- [research-workflows.md](docs/core/research-workflows.md) — 저장 및 리서치 워크플로우
 
 ---
 

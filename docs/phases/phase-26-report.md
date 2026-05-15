@@ -149,5 +149,5 @@ Phase 26은 Phase 25 베타 하드닝 이후 발견된 세 가지 사용자 가�
 | `src/app/sectors/[sectorId]/page.tsx` | 블로킹 generateSectorSnapshot 제거 |
 | `src/components/sectors/sector-ai-section.tsx` | 비동기 AI 섹션 클라이언트 컴포넌트 신규 |
 | `src/server/research/pipeline/related-stocks.test.ts` | 계약 테스트 6개 신규 |
-| `docs/phase-26-audit.md` | 감사 문서 |
-| `docs/phase-26-report.md` | 본 문서 |
+| `docs/phases/phase-26-audit.md` | 감사 문서 |
+| `docs/phases/phase-26-report.md` | 본 문서 |

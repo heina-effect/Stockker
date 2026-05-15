@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     // Handle client disconnect
     req.signal.onabort = () => {
         wsRegistry.unregister(symbol, onKISWebsocketEvent);
+        clearInterval(heartbeat);
         writer.close().catch(() => {});
     };
 

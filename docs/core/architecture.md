@@ -276,7 +276,7 @@ Phase 34부터 섹터 상세는 AI snapshot과 별개로 KIS 정보성 API를 �
 - **핵심 설정**: `globals.css`에 light/dark token set과 `@custom-variant dark (&:where(.dark, .dark *));` 추가 필수
   - Tailwind v4는 dark: 유틸리티를 기본적으로 미디어 쿼리에 바인딩
   - `.dark` class와 token contract가 함께 있어야 전체 앱 표면이 일관되게 바뀜
-- 자세한 규칙은 `docs/theme-behavior.md` 참조
+- 자세한 규칙은 `docs/core/theme-behavior.md` 참조
 
 ## 8.5. 섹터 라우팅 정합성 (Phase 28 수정)
 

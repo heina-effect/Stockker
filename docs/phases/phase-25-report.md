@@ -67,13 +67,13 @@ Phase 25는 기능 확장이 아닌 **베타 품질 경화(Hardening)**에 집�
 | 문서 | 변경 내용 |
 |---|---|
 | `README.md` | Next.js 16.1.6, Gemini 2.5 Flash로 정정. 명확한 빠른 시작 가이드. |
-| `docs/setup.md` | "Phase 12" → "Phase 25 Beta". 전체 환경 변수 목록 (Gemini, GNews, NewsAPI, Supabase) 추가. VS Code 권장 설정 추가. |
-| `docs/architecture.md` | Phase 25 기준으로 전면 재작성. 정확한 모델명, 파이프라인 다이어그램, 가드레일 테이블 포함. |
-| `docs/phase-25-audit.md` | 신규 생성. 베타 준비 상태 전체 진단. |
-| `docs/beta-release-checklist.md` | 신규 생성. 배포 전 자동/수동 체크리스트. |
-| `docs/known-issues.md` | 신규 생성. P0~P3 이슈 분류 및 임시 완화 방법. |
-| `docs/release-freeze-rules.md` | 신규 생성. 베타 기간 동결 항목 명시. |
-| `docs/ops-playbook.md` | 신규 생성. 장애 대응 및 헬스 체크 가이드. |
+| `docs/core/setup.md` | "Phase 12" → "Phase 25 Beta". 전체 환경 변수 목록 (Gemini, GNews, NewsAPI, Supabase) 추가. VS Code 권장 설정 추가. |
+| `docs/core/architecture.md` | Phase 25 기준으로 전면 재작성. 정확한 모델명, 파이프라인 다이어그램, 가드레일 테이블 포함. |
+| `docs/phases/phase-25-audit.md` | 신규 생성. 베타 준비 상태 전체 진단. |
+| `docs/release/beta-release-checklist.md` | 신규 생성. 배포 전 자동/수동 체크리스트. |
+| `docs/release/known-issues.md` | 신규 생성. P0~P3 이슈 분류 및 임시 완화 방법. |
+| `docs/release/release-freeze-rules.md` | 신규 생성. 베타 기간 동결 항목 명시. |
+| `docs/ops/ops-playbook.md` | 신규 생성. 장애 대응 및 헬스 체크 가이드. |
 
 ---
 

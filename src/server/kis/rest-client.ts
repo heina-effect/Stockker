@@ -214,6 +214,6 @@ export async function getDomesticStockNews(symbol: string): Promise<any[]> {
 /**
  * 해외 주식 현재가 조회 (Placeholder)
  */
-export async function getOverseasStockQuote(_symbol: string): Promise<StockQuote> {
+export async function getOverseasStockQuote(): Promise<StockQuote> {
     throw new Error("Overseas stock REST not implemented in this phase");
 }

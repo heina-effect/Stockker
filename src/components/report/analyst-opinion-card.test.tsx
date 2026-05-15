@@ -18,7 +18,6 @@ describe("AnalystOpinionCard", () => {
       json: async () => ({
         ok: true,
         data: {
-          currentPrice: 50000,
           avgTargetPrice: 80000,
           updatedAt: "2026-05-14T00:00:00.000Z",
           _meta: { source: "kis-openapi", kisMode: "real", endpointMode: "real", isMockData: false },
@@ -38,6 +37,8 @@ describe("AnalystOpinionCard", () => {
   });
 
   it("shows summary metrics, opinion badges, and paginates three rows at a time", async () => {
+    livePrice = 50000;
+
     render(<AnalystOpinionCard symbol="005930" />);
 
     expect(await screen.findByText("평균")).toBeTruthy();
@@ -61,7 +62,7 @@ describe("AnalystOpinionCard", () => {
     expect(screen.queryByText("A증권")).toBeNull();
   });
 
-  it("uses live quote price before API currentPrice for upside calculations", async () => {
+  it("uses live quote price for upside calculations", async () => {
     livePrice = 291500;
 
     render(<AnalystOpinionCard symbol="005930" />);

@@ -72,13 +72,13 @@ const SECTOR_ICON_MAP = {
   plane: Plane,
 };
 
-export function StockReportHeader({ symbol }: { symbol: string }) {
+export function StockReportHeader({ symbol, initialName }: { symbol: string; initialName?: string }) {
   const [data, setData] = useState<StockReportSummary | null>(null);
   const { marketStore, setSelectedSymbol, selectedSymbol } = useLiveMarket();
   const [isBookmarked, setIsBookmarked] = useState(false);
 
   // metadata-first: 종목명/티커는 즉시 표시 (search master에서 동기 조회)
-  const immediateStockName = getStockName(symbol) || symbol;
+  const immediateStockName = initialName || getStockName(symbol) || symbol;
   const canonicalSector = getCanonicalSectorForSymbol(symbol);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export function StockReportHeader({ symbol }: { symbol: string }) {
   }, [symbol, selectedSymbol, setSelectedSymbol]);
 
   // ── metadata-first: 종목명/티커/북마크는 data 로딩 전에도 즉시 표시 ──────
-  const stockName = data?.name || immediateStockName;
+  const stockName = data?.name && data.name !== symbol ? data.name : immediateStockName;
   const reportFreshness = data?.reportFreshness ?? "loading";
   const lastUpdated = data?.lastUpdated ?? new Date().toISOString();
 

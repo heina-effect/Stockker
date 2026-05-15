@@ -53,7 +53,7 @@ export async function fetchNewsApi(config: NewsApiProviderConfig): Promise<Sourc
 
     return data.articles
       .filter((article: any) => article.title && article.title !== "[Removed]")
-      .map((article: any, idx: number) => {
+      .map((article: any) => {
         const providerName = article.source?.name || "NewsAPI";
         return {
           id: stableId("newsapi", config.symbol, article.title),

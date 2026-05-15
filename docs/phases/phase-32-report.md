@@ -40,4 +40,4 @@
 
 ## Beta Release 판단
 
-현재 기준으로 베타 RC 가능. 단, 배포 전 `docs/beta-release-checklist.md`의 수동 검증 8개 항목은 실제 브라우저에서 완료해야 한다.
+현재 기준으로 베타 RC 가능. 단, 배포 전 `docs/release/beta-release-checklist.md`의 수동 검증 8개 항목은 실제 브라우저에서 완료해야 한다.

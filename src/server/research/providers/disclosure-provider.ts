@@ -73,6 +73,7 @@ export async function getDisclosures(symbol: string): Promise<SourceItem[]> {
 
 /** @internal Only exported for testing. Do NOT call in production code paths. */
 export function getMockDisclosuresForTesting(symbol: string, stockName: string): SourceItem[] {
+    void stockName;
     return [
         {
             id: `dart-${symbol}-1`,

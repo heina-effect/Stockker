@@ -49,7 +49,7 @@ export async function fetchGNews(config: GNewsProviderConfig): Promise<SourceIte
       return [];
     }
 
-    return data.articles.map((article: any, idx: number) => {
+    return data.articles.map((article: any) => {
       const providerName = article.source?.name || "GNews";
       return {
         id: stableId("gnews", config.symbol, article.title),

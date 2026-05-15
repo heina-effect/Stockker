@@ -20,7 +20,7 @@ async function checkTables() {
   ];
   const results = {};
   for (const t of tables) {
-    const { data, error } = await client.from(t).select("id").limit(0);
+    const { error } = await client.from(t).select("id").limit(0);
     results[t] = error ? `❌ MISSING (${error.code})` : "✅ EXISTS";
     console.log(`  ${t}: ${results[t]}`);
   }

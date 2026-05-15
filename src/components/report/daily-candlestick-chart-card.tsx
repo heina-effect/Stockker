@@ -95,7 +95,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
           setErrorMsg(data.error || "Failed to fetch data");
           setBaseData([]);
         }
-      } catch (err) {
+      } catch {
         setErrorMsg("Network error");
         setBaseData([]);
       } finally {
@@ -111,7 +111,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
     LocalStorageAdapter.setAll({ preferences: { ...prefs, chartMode: mode }});
   };
 
-  const isLoading = (!state || state.source === "connecting") || isFetching;
+  const isLoading = isFetching;
 
   if (isLoading) {
     return (
@@ -129,33 +129,29 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
     if (state?.quote && chartData.length > 0) {
       const q = state.quote;
       const lastHist = chartData[chartData.length - 1];
+      const livePrice = Number(q.price);
+      const historicalClose = Number(lastHist.close);
       
       // Scaling Guard: If the live price is extremely different from historical (> 2x or < 0.5x),
       // it's likely a data source error or fallback (like 0). Skip it to protect Y-axis.
-      const isPricePlausible = q.price > 0 && 
-                              (q.price / lastHist.close > 0.5) && 
-                              (q.price / lastHist.close < 2.0);
+      const isPricePlausible =
+        livePrice > 0 &&
+        historicalClose > 0 &&
+        livePrice / historicalClose > 0.5 &&
+        livePrice / historicalClose < 2.0;
 
       if (isPricePlausible && shouldAppendLiveDailyCandle(lastHist)) {
         const todayCurrent: any = {
           time: "오늘",
-          open: q.open || q.price,
-          high: Math.max(q.high || q.price, q.price),
-          low: Math.min(q.low || q.price, q.price),
-          close: q.price,
+          open: q.open || livePrice,
+          high: Math.max(q.high || livePrice, livePrice),
+          low: Math.min(q.low || livePrice, livePrice),
+          close: livePrice,
           volume: q.volume || 0,
         };
         todayCurrent.isUp = todayCurrent.close >= todayCurrent.open;
         todayCurrent.body = [Math.min(todayCurrent.open, todayCurrent.close), Math.max(todayCurrent.open, todayCurrent.close)];
         chartData.push(todayCurrent);
-      } else {
-        // price=0: SSE 연결 전 초기값 (정상) → debug만
-        // price>0 but scale 이상: 데이터 오류 가능 → warn
-        if (q.price > 0) {
-          console.warn(`[ChartScale] Implausible live price ${q.price} (Hist: ${lastHist.close}) — skipping`);
-        } else {
-          console.debug(`[ChartScale] price=0 skipped (SSE connecting)`);
-        }
       }
     }
   } else {
@@ -217,6 +213,8 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
   const ma5Label = chartMode === "daily" ? "MA5" : "10분봉 MA5";
   const ma20Label = chartMode === "daily" ? "MA20" : "10분봉 MA20";
   const timeLabel = chartMode === "daily" ? "일자" : "시각";
+  const freshnessState = state?.source === "live" ? "live" : state?.source === "mock-fallback" ? "error" : state ? "stale" : "loading";
+  const freshnessTimestamp = new Date(state?.lastUpdated || Date.now()).toISOString();
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[280px]">
@@ -238,7 +236,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
              <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-purple-500"></span> {ma20Label}</span>
            </div>
         </div>
-        <FreshnessLabel type="price" state={state.source === "live" ? "live" : state.source === "mock-fallback" ? "error" : "stale"} timestamp={new Date(state.lastUpdated || 0).toISOString()} />
+        <FreshnessLabel type="price" state={freshnessState} timestamp={freshnessTimestamp} />
       </div>
 
       {errorMsg && (
@@ -253,7 +251,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
            <p className="text-sm">당일 분봉 차트 데이터가 아직 집계되지 않았습니다.</p>
          </div>
       ) : (
-        <div className="flex-1 w-full relative mt-4" style={{ minHeight: 0 }}>
+        <div className="h-[170px] w-full relative mt-4">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }} barCategoryGap="15%">
               <XAxis 

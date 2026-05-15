@@ -23,7 +23,7 @@ export const MockLiveProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>(MOCK_MARKET_INDICES);
   const [chartData, setChartData] = useState<PricePoint[]>(generateMockChartData(MOCK_WATCHLIST[0].price));
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected] = useState(true);
 
   useEffect(() => {
     const interval = setInterval(() => {

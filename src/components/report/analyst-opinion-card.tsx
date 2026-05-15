@@ -36,9 +36,7 @@ export function AnalystOpinionCard({ symbol }: { symbol: string }) {
   const liveMarket = useOptionalLiveMarket();
   const liveCurrentPrice = liveMarket?.marketStore[symbol]?.quote?.price;
   const effectiveCurrentPrice =
-    liveCurrentPrice && liveCurrentPrice > 0
-      ? liveCurrentPrice
-      : data?.currentPrice;
+    liveCurrentPrice && liveCurrentPrice > 0 ? liveCurrentPrice : undefined;
 
   useEffect(() => {
     let mounted = true;

@@ -46,7 +46,7 @@
 
 **현상**: 당일 분봉 차트는 기본적으로 표시하지 않는다.  
 **이유**: 장중 변동성으로 AI 리서치 판단이 오염되는 것을 방지하기 위한 정책.  
-**재개 조건**: `docs/intraday-reopen-checklist.md` 충족 후 별도 Phase에서 검토.
+**재개 조건**: `docs/release/intraday-reopen-checklist.md` 충족 후 별도 Phase에서 검토.
 
 ## 최근 해결
 

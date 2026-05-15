@@ -9,6 +9,7 @@ import { computeSectorMomentumSignals, applyMomentumSignals } from "@/server/res
 
 const TTL_MS = 15 * 60 * 1000;          // 15 minutes fresh
 const STALE_WINDOW_MS = 5 * 60 * 1000;  // serve stale for up to 5 extra minutes while refreshing
+const MOMENTUM_TIMEOUT_MS = 1200;
 
 let cachedIntelligence: any = null;
 let lastFetched = 0;
@@ -29,6 +30,21 @@ function hasMeaningfulHomeContent(value: any): boolean {
     (Array.isArray(value?.sectors) && value.sectors.length > 0) ||
     (Array.isArray(value?.aiPicks) && value.aiPicks.length > 0)
   );
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>(resolve => {
+        timeout = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 export async function getHomeIntelligence(): Promise<any> {
@@ -65,7 +81,16 @@ async function refreshCache(): Promise<any> {
 
     // 섹터 모멘텀 신호로 trendingSectors 보정 (non-blocking, 실패 시 원본 유지)
     try {
-      const momentumSignals = await computeSectorMomentumSignals(sectorUniverse);
+      const visibleSectorUniverse = Object.fromEntries(
+        (fresh.trendingSectors || [])
+          .map((sector: any) => [sector.sectorId, sectorUniverse[sector.sectorId]])
+          .filter((entry: any[]) => Boolean(entry[0] && entry[1]))
+      );
+      const momentumSignals = await withTimeout(
+        computeSectorMomentumSignals(visibleSectorUniverse),
+        MOMENTUM_TIMEOUT_MS,
+        new Map(),
+      );
       if (momentumSignals.size > 0) {
         fresh.trendingSectors = applyMomentumSignals(fresh.trendingSectors || [], momentumSignals);
         fresh.sectors = fresh.trendingSectors;

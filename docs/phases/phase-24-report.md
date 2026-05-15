@@ -6,7 +6,7 @@ Phase 24에서는 단순한 정보의 나열을 넘어, AI 리서치 결과물�
 ## 2. 주요 구현 사항 및 개선점
 
 ### A. AI 신뢰도 및 평가 레이어 도입 (Trust & Evaluation Layer)
-- **공식 평가 정책 수립**: `docs/evaluation-policy.md`를 작성하여 AI 생성물에 대한 5가지 핵심 검증 차원(Grounding, Relevance, Recency, Sufficiency, Hallucination Risk)을 정의했습니다.
+- **공식 평가 정책 수립**: `docs/core/evaluation-policy.md`를 작성하여 AI 생성물에 대한 5가지 핵심 검증 차원(Grounding, Relevance, Recency, Sufficiency, Hallucination Risk)을 정의했습니다.
 - **기계적 평가 스크립트 추가**: `src/server/research/evals/evaluator.ts`에 평가 로직을 구현하고, `npm run test:evals`로 자동화된 테스트를 추가하여, 면책 조항 누락, 지시적 표현(매수 추천 등), 출처 부족 등의 위험 요소가 있는 생성물이 걸러지도록 장치를 마련했습니다.
 
 ### B. 스냅샷 재사용 대폭 확장 (Snapshot Reuse Expansion)

@@ -8,6 +8,7 @@ import { RelatedStocksCard } from "@/components/report/related-stocks-card";
 import { SourceListCard } from "@/components/report/source-list-card";
 import { AnalystOpinionCard } from "@/components/report/analyst-opinion-card";
 import { isUnsupportedStockSymbol } from "@/lib/stocks/listing-status";
+import { getServerStockName } from "@/lib/stocks/search-master";
 import { notFound } from "next/navigation";
 
 interface ReportPageProps {
@@ -17,6 +18,7 @@ interface ReportPageProps {
 export default async function StockReportPage({ params }: ReportPageProps) {
   const symbol = (await params).symbol;
   if (isUnsupportedStockSymbol(symbol)) notFound();
+  const initialStockName = getServerStockName(symbol);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -26,7 +28,7 @@ export default async function StockReportPage({ params }: ReportPageProps) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Column: Report Detail */}
           <div className="lg:col-span-8 flex flex-col gap-6">
-            <StockReportHeader symbol={symbol} />
+            <StockReportHeader symbol={symbol} initialName={initialStockName} />
             <SentimentScoreCard symbol={symbol} />
             <DailyCandlestickChartCard symbol={symbol} />
             <IssueTimelineCard symbol={symbol} />

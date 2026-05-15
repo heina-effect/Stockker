@@ -87,6 +87,6 @@ Phase 32 Beta RC부터 베타 기간 동안 다음 규칙이 적용됩니다.
 베타 종료 후 다음 조건 충족 시 동결 해제를 검토합니다:
 
 - [ ] 베타 테스터 피드백 수렴 완료
-- [ ] `docs/known-issues.md`의 P0/P1 이슈 전부 해결
+- [ ] `docs/release/known-issues.md`의 P0/P1 이슈 전부 해결
 - [ ] `npm run validate:full` 지속적 통과
-- [ ] 인트라데이 재도입의 경우: `docs/intraday-reopen-checklist.md` 모든 항목 통과
+- [ ] 인트라데이 재도입의 경우: `docs/release/intraday-reopen-checklist.md` 모든 항목 통과

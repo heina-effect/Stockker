@@ -161,7 +161,7 @@ npm run test:evals
 ## 9. 베타 기간 중 긴급 연락
 
 문제 발생 시:
-1. `docs/known-issues.md`에 이슈 기록
+1. `docs/release/known-issues.md`에 이슈 기록
 2. P0 이슈: 즉시 hotfix PR 생성
 3. P1 이슈: 다음 배포 주기에 포함
-4. 동결 항목 관련 문의: `docs/release-freeze-rules.md` 참조
+4. 동결 항목 관련 문의: `docs/release/release-freeze-rules.md` 참조

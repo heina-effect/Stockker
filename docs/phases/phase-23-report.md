@@ -7,7 +7,7 @@ Phase 23에서는 Stockker의 기존 4-Source 파이프라인(KIS, DART, GNews, 
 
 ### A. Docs vs Runtime 불일치 해소 (Mandatory Reality Check)
 - 기존 `architecture.md` 및 `research-api-contract.md`에 남아 있던 과거 KIS/DART 단일 소스 중심의 서술과 "GPT-5.4" 등의 허구적 명세(Drift)를 완전히 제거했습니다.
-- 현재의 4-Source 파이프라인, Gemini 단일 아키텍처(Flash/Flash-Lite), 그리고 Supabase 기반의 DB-First 정책이 문서와 정확히 일치하도록 동기화했습니다 (`docs/phase-23-audit.md` 참조).
+- 현재의 4-Source 파이프라인, Gemini 단일 아키텍처(Flash/Flash-Lite), 그리고 Supabase 기반의 DB-First 정책이 문서와 정확히 일치하도록 동기화했습니다 (`docs/phases/phase-23-audit.md` 참조).
 
 ### B. Snapshot 재사용 극대화 (DB-First 큐레이션)
 - `/api/stocks/[symbol]/issues` 라우트에서 호출하는 `generateIssues` 로직을 대폭 개선했습니다.

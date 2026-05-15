@@ -6,7 +6,7 @@
 ## 2. 주요 작업 내용
 
 ### 2.1 Repo Audit 및 설정 정규화
-- **Audit 수행**: `docs/kis-config-audit.md`를 통해 기존 KIS 관련 설정 및 환경변수 전수 조사.
+- **Audit 수행**: `docs/ops/kis-config-audit.md`를 통해 기존 KIS 관련 설정 및 환경변수 전수 조사.
 - **모델명 통일**: 모든 AI 모델명을 `Gemini 3 Flash`로 표준화.
 - **Config 정규화**: `src/server/kis/config.ts`에서 Zod를 이용한 강력한 환경변수 검증 및 Alias 지원(Legacy → Canonical) 구현.
 

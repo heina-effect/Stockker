@@ -3,9 +3,9 @@
 ## 1. 문서와 실제 런타임 간의 괴리 (Docs vs Runtime Reconciliation)
 
 ### 오래된 문서 (Stale Documents)
-- **`docs/architecture.md`**: 매우 낡은 상태입니다. 여전히 "Phase 12"라고 명시되어 있으며, "OpenAI GPT-5.4-mini"나 "GPT-5.5"와 같은 실존하지 않거나 사용하지 않는 모델을 언급하고 있습니다. 현재 우리는 전적으로 Gemini 3.1 Pro / Flash / Flash-Lite 패밀리를 사용하고 있습니다. 또한 데이터 파이프라인이 KIS와 Open DART로만 제한되어 있다고 설명하고 있어, 새롭게 추가된 다중 소스(GNews, NewsAPI)와 Supabase pgvector 연동 내용이 누락되어 있습니다.
-- **`docs/research-api-contract.md`**: 낡은 상태입니다. `SourceItem` 대신 과거의 `IssueItem`을 참조하고 있으며, `fetchGNews`나 `fetchNewsApi`의 존재를 반영하지 않은 채 `getDomesticStockNews` 및 `getDisclosures`만 언급하고 있습니다.
-- **`docs/vector-store-design.md`**: 대부분 정확하지만 Phase 19 기준에 머물러 있습니다. 홈 화면 인텔리전스에서 전역 큐레이션 소스(Global Curated Sources)를 활용하는 현재 방식을 반영하여 업데이트가 필요합니다.
+- **`docs/core/architecture.md`**: 매우 낡은 상태입니다. 여전히 "Phase 12"라고 명시되어 있으며, "OpenAI GPT-5.4-mini"나 "GPT-5.5"와 같은 실존하지 않거나 사용하지 않는 모델을 언급하고 있습니다. 현재 우리는 전적으로 Gemini 3.1 Pro / Flash / Flash-Lite 패밀리를 사용하고 있습니다. 또한 데이터 파이프라인이 KIS와 Open DART로만 제한되어 있다고 설명하고 있어, 새롭게 추가된 다중 소스(GNews, NewsAPI)와 Supabase pgvector 연동 내용이 누락되어 있습니다.
+- **`docs/core/research-api-contract.md`**: 낡은 상태입니다. `SourceItem` 대신 과거의 `IssueItem`을 참조하고 있으며, `fetchGNews`나 `fetchNewsApi`의 존재를 반영하지 않은 채 `getDomesticStockNews` 및 `getDisclosures`만 언급하고 있습니다.
+- **`docs/core/vector-store-design.md`**: 대부분 정확하지만 Phase 19 기준에 머물러 있습니다. 홈 화면 인텔리전스에서 전역 큐레이션 소스(Global Curated Sources)를 활용하는 현재 방식을 반영하여 업데이트가 필요합니다.
 
 ### 실제 런타임 현황 (Phase 22 기준)
 - `collectRawSources`를 통해 작동하는 견고한 4개 소스 파이프라인(KIS, Open DART, GNews, NewsAPI)을 갖추고 있습니다.
@@ -37,4 +37,4 @@
 - **전환되지 않음**: 통합된 "관심 종목 리서치 모아보기" 대시보드나 상세한 "최근 본 종목 히스토리" 뷰 등 사용자의 저장 데이터를 기반으로 한 연속적인 리서치 경로가 마련되어 있지 않습니다.
 
 ### 현재의 다중 소스 스택과 모순되는 낡은 문서는 무엇인가?
-- `docs/architecture.md`와 `docs/research-api-contract.md`가 현재의 4개 소스 스택 및 Gemini 전용 AI 아키텍처와 모순됩니다.
+- `docs/core/architecture.md`와 `docs/core/research-api-contract.md`가 현재의 4개 소스 스택 및 Gemini 전용 AI 아키텍처와 모순됩니다.

@@ -5,38 +5,87 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 interface HomeIntelligenceContextType {
   data: any | null;
   isLoading: boolean;
+  isRefreshing: boolean;
   error: Error | null;
 }
 
 const HomeIntelligenceContext = createContext<HomeIntelligenceContextType>({
   data: null,
   isLoading: true,
+  isRefreshing: false,
   error: null,
 });
+
+const HOME_INTELLIGENCE_CACHE_KEY = "stockker_home_intelligence_v1";
+const HOME_INTELLIGENCE_TIMEOUT_MS = 8000;
+
+function readCachedHomeIntelligence() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const cached = window.localStorage.getItem(HOME_INTELLIGENCE_CACHE_KEY);
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    return parsed?.intelligence && typeof parsed.intelligence === "object" ? parsed.intelligence : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedHomeIntelligence(intelligence: any) {
+  if (typeof window === "undefined" || !intelligence) return;
+
+  try {
+    window.localStorage.setItem(
+      HOME_INTELLIGENCE_CACHE_KEY,
+      JSON.stringify({ intelligence, cachedAt: new Date().toISOString() }),
+    );
+  } catch {
+    // localStorage quota/permission errors should never block the dashboard.
+  }
+}
 
 export function HomeIntelligenceProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), HOME_INTELLIGENCE_TIMEOUT_MS);
+
+    const cached = readCachedHomeIntelligence();
+    if (cached) {
+      setData(cached);
+      setIsLoading(false);
+      setIsRefreshing(true);
+    }
 
     async function fetchIntel() {
       try {
-        const res = await fetch("/api/home/intelligence");
+        const res = await fetch("/api/home/intelligence", { signal: controller.signal });
         if (!res.ok) throw new Error("Failed to fetch home intelligence");
         const json = await res.json();
         if (mounted) {
           setData(json.intelligence);
+          writeCachedHomeIntelligence(json.intelligence);
+          setError(null);
         }
       } catch (err: any) {
         if (mounted) {
-          setError(err);
+          if (err?.name !== "AbortError") {
+            setError(err);
+          } else if (!cached) {
+            setError(new Error("Home intelligence request timed out"));
+          }
         }
       } finally {
+        window.clearTimeout(timeout);
         if (mounted) {
           setIsLoading(false);
+          setIsRefreshing(false);
         }
       }
     }
@@ -45,11 +94,13 @@ export function HomeIntelligenceProvider({ children }: { children: React.ReactNo
 
     return () => {
       mounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
   return (
-    <HomeIntelligenceContext.Provider value={{ data, isLoading, error }}>
+    <HomeIntelligenceContext.Provider value={{ data, isLoading, isRefreshing, error }}>
       {children}
       {data && (data._meta || data._cacheState) && process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 bg-slate-900/80 text-white text-[10px] px-3 py-2 rounded-lg shadow-lg z-50 backdrop-blur-sm pointer-events-none flex flex-col gap-1">

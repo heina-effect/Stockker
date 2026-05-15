@@ -25,23 +25,9 @@ const ai = process.env.GEMINI_API_KEY
 
 const EMBEDDING_MODEL = "gemini-embedding-001"; // 3072-dim, v1beta OK
 const EMBEDDING_DIM = 3072;
-const SPAM_REJECT_THRESHOLD = 0.82;
 const DEDUP_CLUSTER_THRESHOLD = 0.88;
 const MIN_QUALITY_SCORE = 30;
 const FRESHNESS_WINDOW_MS = 25 * 60 * 1000; // 25분 내 curated sources는 재사용
-
-const PROVIDER_TRUST: Record<string, number> = {
-  "KIS News": 0.8,
-  "Open DART": 1.0,
-  "한국경제": 0.85,
-  "연합뉴스": 0.9,
-  "이데일리": 0.8,
-  "머니투데이": 0.8,
-  "헤럴드경제": 0.75,
-  "GNews": 0.75,
-  "NewsAPI": 0.7,
-  "Mock News": 0.0,
-};
 
 const SPAM_HEADLINES = [
   "지금 사야 할 종목 TOP 5",

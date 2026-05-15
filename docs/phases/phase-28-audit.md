@@ -55,9 +55,9 @@
 
 ## 8. 어떤 문서가 완료됐다고 말하지만 런타임이 아직 어긋나는가?
 
-- `docs/phase-26-report.md`: `ThemeProvider` 추가와 3-way 테마 지속성을 완료로 기록했다.
-- `docs/phase-27-report.md`: Tailwind v4 `.dark` 연동으로 테마가 실제 작동하고, 섹터 404가 제거됐다고 기록했다.
-- `docs/architecture.md`: 테마 시스템이 모든 페이지에 자동 적용되고, 홈 AI 섹터 출력이 유효 ID로 필터링된다고 설명한다.
+- `docs/phases/phase-26-report.md`: `ThemeProvider` 추가와 3-way 테마 지속성을 완료로 기록했다.
+- `docs/phases/phase-27-report.md`: Tailwind v4 `.dark` 연동으로 테마가 실제 작동하고, 섹터 404가 제거됐다고 기록했다.
+- `docs/core/architecture.md`: 테마 시스템이 모든 페이지에 자동 적용되고, 홈 AI 섹터 출력이 유효 ID로 필터링된다고 설명한다.
 - `README.md`: Phase 27을 현재 완료 상태로 소개하며 "테마 실제 적용"과 "섹터 404 제거"를 완료 항목으로 표시한다.
 
 런타임 기준으로는 전역 테마 토큰, canonical sector normalization, 홈 카드 클릭 영역, 홈 종목 metric semantics가 아직 부족하다.

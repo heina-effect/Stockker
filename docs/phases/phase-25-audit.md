@@ -105,7 +105,7 @@ Stockker가 실제 베타 테스터에게 공개될 수 있는 품질 수준에 
 
 | 문서 | 현재 상태 |
 |---|---|
-| `docs/setup.md` | "Phase 12" 헤더, 구버전 env var 목록만 있음. Gemini, GNews, NewsAPI, Supabase 설정 누락 |
+| `docs/core/setup.md` | "Phase 12" 헤더, 구버전 env var 목록만 있음. Gemini, GNews, NewsAPI, Supabase 설정 누락 |
 | `README.md` | 잘못된 Next.js 버전("Next.js 15" → 실제 16.1.6), Gemini 모델명 부정확("1.5 Flash" → 2.5) |
 | 베타 릴리즈 체크리스트 | 미존재 |
 | Known Issues 문서 | 미존재 |
@@ -135,11 +135,11 @@ Stockker가 실제 베타 테스터에게 공개될 수 있는 품질 수준에 
 | P0 | 홈 footer 면책 문구 수정 (모킹 스텁 → 정상 면책) | 신뢰성 |
 | P1 | 홈 카드 로딩/빈/에러 상태 구분 | UX |
 | P1 | `AIPicksCard` candidateCategory 배지 추가 | 투명성 |
-| P1 | `docs/setup.md` 업데이트 | 문서 |
+| P1 | `docs/core/setup.md` 업데이트 | 문서 |
 | P1 | `README.md` 버전/모델명 정정 | 문서 |
-| P2 | `docs/beta-release-checklist.md` 생성 | 릴리즈 |
-| P2 | `docs/known-issues.md` 생성 | 릴리즈 |
-| P2 | `docs/release-freeze-rules.md` 생성 | 릴리즈 |
-| P2 | `docs/ops-playbook.md` 생성 | 릴리즈 |
-| P2 | `docs/architecture.md` Phase 25 업데이트 | 문서 |
+| P2 | `docs/release/beta-release-checklist.md` 생성 | 릴리즈 |
+| P2 | `docs/release/known-issues.md` 생성 | 릴리즈 |
+| P2 | `docs/release/release-freeze-rules.md` 생성 | 릴리즈 |
+| P2 | `docs/ops/ops-playbook.md` 생성 | 릴리즈 |
+| P2 | `docs/core/architecture.md` Phase 25 업데이트 | 문서 |
 | P3 | Workflow 빈 상태에 추가 안내 개선 | UX |
