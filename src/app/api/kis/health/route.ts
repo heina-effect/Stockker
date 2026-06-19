@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { kisConfig, getKisConfig } from "@/server/kis/config";
 import { getKisAccessToken } from "@/server/kis/auth";
 import { getKisApprovalKey } from "@/server/kis/approval";
@@ -6,7 +6,18 @@ import { getKisApprovalKey } from "@/server/kis/approval";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 인증 게이트: cronSecret Bearer 필요(미설정 시 dev에서만 허용).
+  // 무인증 호출이 KIS 토큰 발급을 강제하거나 config 요약을 들여다보지 못하게 한다.
+  const authHeader = request.headers.get("authorization");
+  const isAuthorized = kisConfig.cronSecret
+    ? authHeader === `Bearer ${kisConfig.cronSecret}`
+    : process.env.NODE_ENV === "development";
+
+  if (!isAuthorized) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   const safeConfig = getKisConfig();
   
   let accessTokenStatus = "unknown";

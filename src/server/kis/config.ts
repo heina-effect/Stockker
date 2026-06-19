@@ -197,12 +197,42 @@ export const aiConfig = {
 
 /**
  * Health check & document helper
+ *
+ * 보안: 비밀을 절대 spread하지 않는다. `{...kisConfig}`는 quote.appKey/appSecret,
+ * tokenEncryptionKey, cronSecret, upstashToken 등 평문 비밀을 모두 노출하므로,
+ * 안전한 필드(공개 도메인/모드/마스킹된 키/구성 여부 불리언)만 화이트리스트로 반환한다.
  */
 export const getKisConfig = () => {
-    // Return a safe version without full secrets
+    const mask = (value?: string | null) =>
+        value ? `${value.slice(0, 4)}…(${value.length})` : null;
+
     return {
-        ...kisConfig,
-        appKey: appKey ? `${appKey.slice(0, 4)}...` : null,
-        appSecret: appSecret ? "set" : "not-set",
+        mode,
+        customerType: kisConfig.customerType,
+        enableRealtime: kisConfig.enableRealtime,
+        defaultSymbol: kisConfig.defaultSymbol,
+
+        // 공개 KIS 도메인 — 비밀 아님
+        restBaseUrl: kisConfig.restBaseUrl,
+        wsBaseUrl: kisConfig.wsBaseUrl,
+
+        // 키는 앞 4자 + 길이만 노출 (식별용), 시크릿은 구성 여부만
+        appKey: mask(appKey),
+        appSecretConfigured: Boolean(appSecret),
+
+        quote: {
+            restBaseUrl: kisConfig.quote.restBaseUrl,
+            appKey: mask(kisConfig.quote.appKey),
+            configured: kisConfig.quote.configured,
+        },
+
+        // 계정/비밀은 구성 여부 불리언만 (값 노출 금지)
+        htsIdConfigured: Boolean(kisConfig.htsId),
+        accountConfigured: Boolean(kisConfig.accountNo),
+        tokenEncryptionKeyConfigured: Boolean(kisConfig.tokenEncryptionKey),
+        cronSecretConfigured: Boolean(kisConfig.cronSecret),
+        upstashConfigured: Boolean(kisConfig.upstashUrl && kisConfig.upstashToken),
+
+        aliasWarnings: kisConfig.aliasWarnings,
     };
 };

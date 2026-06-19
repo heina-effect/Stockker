@@ -79,3 +79,4 @@
 - Phase 33: 홈 stale-first 클라이언트 UX 적용
 - Phase 33: 종목 상세 responsive layout 개선
 - Phase 31: 종목 상세 entity guard 및 weak snapshot rejection 강화
+- Phase 37(보안): `/api/kis/health`의 `getKisConfig()` 자격증명 평문 노출 차단(실전키·tokenEncryptionKey·cronSecret·upstashToken) — 화이트리스트 마스킹 + cronSecret 인증 게이트, 토큰 암호화 키 sha256 KDF, 토큰 캐시 파일 0600

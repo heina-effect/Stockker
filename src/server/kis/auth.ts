@@ -4,6 +4,7 @@ import { Redis } from "@upstash/redis";
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   randomBytes,
 } from "node:crypto";
 import { kisConfig } from "./config";
@@ -47,11 +48,10 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 
 function getEncryptionKey() {
-  const key = Buffer.from(kisConfig.tokenEncryptionKey, "utf8");
-  if (key.length !== 32) {
-    return Buffer.alloc(32, kisConfig.tokenEncryptionKey);
-  }
-  return key;
+  // sha256으로 32바이트 키를 파생한다. 기존 Buffer.alloc(32, key)는 짧은 키를
+  // 단순 반복으로 채워 엔트로피가 낮아지는 문제가 있어 KDF로 교체했다.
+  // (AES-256-GCM은 정확히 32바이트 키가 필요)
+  return createHash("sha256").update(kisConfig.tokenEncryptionKey, "utf8").digest();
 }
 
 function encrypt(text: string): string {
@@ -214,7 +214,11 @@ async function saveTokenToCache(tokenKey: string, token: StoredToken) {
       const cacheKeyFromTokenKey = tokenKey.split(":").pop() || "mock";
       const fallbackPath = path.join(os.tmpdir(), `kis_token_cache_${cacheKeyFromTokenKey}.json`);
       try {
-        fs.writeFileSync(fallbackPath, encrypted, "utf-8");
+        // 소유자만 읽기/쓰기(0600). 공유 호스트에서 타 사용자가 암호문을 읽지 못하게 한다.
+        // writeFileSync의 mode는 신규 생성 시에만 적용되므로, 기존 파일(0644)에도
+        // 권한을 강제하기 위해 chmod를 함께 호출한다.
+        fs.writeFileSync(fallbackPath, encrypted, { encoding: "utf-8", mode: 0o600 });
+        fs.chmodSync(fallbackPath, 0o600);
       } catch {
         // ignore error
       }
