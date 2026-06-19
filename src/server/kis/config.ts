@@ -170,6 +170,13 @@ export const kisConfig = {
   restBaseUrl,
   wsBaseUrl,
 
+  quote: {
+    appKey: kisParsed.KIS_APP_KEY_PROD || kisParsed.my_app || appKey,
+    appSecret: kisParsed.KIS_APP_SECRET_PROD || kisParsed.my_sec || appSecret,
+    restBaseUrl: kisParsed.KIS_REST_BASE_URL_PROD || "https://openapi.koreainvestment.com:9443",
+    configured: Boolean(kisParsed.KIS_APP_KEY_PROD && kisParsed.KIS_APP_SECRET_PROD)
+  },
+
   tokenEncryptionKey: kisParsed.KIS_TOKEN_ENCRYPTION_KEY,
   refreshBufferMs: kisParsed.KIS_REFRESH_BUFFER_MS,
   cronRefreshThresholdMs: kisParsed.KIS_CRON_REFRESH_THRESHOLD_MS,

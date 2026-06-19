@@ -32,7 +32,8 @@ export async function getDomesticStockQuote(symbol: string): Promise<StockQuote>
     
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-price?${query.toString()}`, {
       method: "GET",
-      trId: "FHKST01010100"
+      trId: "FHKST01010100",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -55,7 +56,8 @@ export async function getDomesticStockOrderbook(symbol: string): Promise<StockOr
 
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn?${query.toString()}`, {
       method: "GET",
-      trId: "FHKST01010200"
+      trId: "FHKST01010200",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -92,7 +94,8 @@ export async function getDomesticIndex(code: string): Promise<MarketIndex> {
     });
     return await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-index-price?${query.toString()}`, {
       method: "GET",
-      trId: "FHKUP03500100" // 업종기간별시세
+      trId: "FHKUP03500100", // 업종기간별시세
+      useQuoteCreds: true
     });
   };
 
@@ -136,7 +139,8 @@ export async function getDomesticStockDaily(symbol: string): Promise<any> {
 
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?${query.toString()}`, {
       method: "GET",
-      trId: "FHKST03010100"
+      trId: "FHKST03010100",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -163,7 +167,8 @@ export async function getDomesticStockIntraday(symbol: string, time: string = "0
 
         const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice?${query.toString()}`, {
             method: "GET",
-            trId: "FHKST03010200"
+            trId: "FHKST03010200",
+            useQuoteCreds: true
         });
 
         if (data.rt_cd !== "0") {
@@ -188,7 +193,8 @@ export async function getDomesticStockNews(symbol: string): Promise<any[]> {
     try {
       const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-content?${query.toString()}`, {
           method: "GET",
-          trId: "FHKST01012200"
+          trId: "FHKST01012200",
+          useQuoteCreds: true
       });
 
       if (data.rt_cd !== "0") {
@@ -239,6 +245,7 @@ export async function getDomesticVolumeRank(belongClassCode: string = "0"): Prom
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/volume-rank?${query.toString()}`, {
       method: "GET",
       trId: "FHPST01710000",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -273,7 +280,8 @@ export async function getDomesticStockWeekly(symbol: string): Promise<any[]> {
 
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?${query.toString()}`, {
       method: "GET",
-      trId: "FHKST03010100"
+      trId: "FHKST03010100",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -306,7 +314,8 @@ export async function getDomesticIndexDaily(code: string): Promise<any[]> {
 
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-index-price?${query.toString()}`, {
       method: "GET",
-      trId: "FHKUP03500100"
+      trId: "FHKUP03500100",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {
@@ -329,7 +338,8 @@ export async function getDomesticStockDetail(symbol: string): Promise<any> {
     
     const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-price?${query.toString()}`, {
       method: "GET",
-      trId: "FHKST01010100"
+      trId: "FHKST01010100",
+      useQuoteCreds: true
     });
 
     if (data.rt_cd !== "0") {

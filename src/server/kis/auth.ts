@@ -78,37 +78,66 @@ function decrypt(cipherText: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Core Logic                                                                  */
+/* Core Logic & Credentials                                                    */
 /* -------------------------------------------------------------------------- */
 
-const TOKEN_KEY = `stockker:kis:token:${kisConfig.mode}`;
+export interface KisCreds {
+  appKey: string;
+  appSecret: string;
+  restBaseUrl: string;
+  cacheKey: string;
+}
 
-let refreshPromise: Promise<string> | null = null;
+export function resolveCreds(useQuote?: boolean): KisCreds {
+  if (useQuote) {
+    if (!kisConfig.quote.configured) {
+      throw new Error("시세 조회에는 실전 앱키(KIS_APP_KEY_PROD)가 필요합니다");
+    }
+    return {
+      appKey: kisConfig.quote.appKey!,
+      appSecret: kisConfig.quote.appSecret!,
+      restBaseUrl: kisConfig.quote.restBaseUrl,
+      cacheKey: "quote"
+    };
+  }
+  return {
+    appKey: kisConfig.appKey!,
+    appSecret: kisConfig.appSecret!,
+    restBaseUrl: kisConfig.restBaseUrl,
+    cacheKey: kisConfig.mode
+  };
+}
 
-export async function getKisAccessToken(forceRefresh = false): Promise<string> {
-  if (!kisConfig.appKey || !kisConfig.appSecret) {
-    throw new Error("KIS Credentials are not configured");
+const refreshPromises = new Map<string, Promise<string>>();
+
+export async function getKisAccessToken(forceRefresh = false, creds?: KisCreds): Promise<string> {
+  const resolvedCreds = creds || resolveCreds(false);
+  const tokenKey = `stockker:kis:token:${resolvedCreds.cacheKey}`;
+
+  if (!resolvedCreds.appKey || !resolvedCreds.appSecret) {
+    throw new Error(`KIS Credentials for ${resolvedCreds.cacheKey} are not configured`);
   }
 
   if (!forceRefresh) {
-    const cached = await fetchCachedToken();
+    const cached = await fetchCachedToken(tokenKey);
     if (cached && isTokenValid(cached)) {
       return cached.accessToken;
     }
   }
 
+  let refreshPromise = refreshPromises.get(resolvedCreds.cacheKey);
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     try {
-      console.log(`[KIS] Fetching new access token for mode: ${kisConfig.mode}`);
-      const response = await fetch(`${kisConfig.restBaseUrl}/oauth2/tokenP`, {
+      console.log(`[KIS] Fetching new access token for cacheKey: ${resolvedCreds.cacheKey}`);
+      const response = await fetch(`${resolvedCreds.restBaseUrl}/oauth2/tokenP`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           grant_type: "client_credentials",
-          appkey: kisConfig.appKey,
-          appsecret: kisConfig.appSecret,
+          appkey: resolvedCreds.appKey,
+          appsecret: resolvedCreds.appSecret,
         }),
       });
 
@@ -129,28 +158,30 @@ export async function getKisAccessToken(forceRefresh = false): Promise<string> {
         issuedAt: new Date().toISOString(),
       };
 
-      await saveTokenToCache(newToken);
+      await saveTokenToCache(tokenKey, newToken);
       return newToken.accessToken;
     } finally {
-      refreshPromise = null;
+      refreshPromises.delete(resolvedCreds.cacheKey);
     }
   })();
 
+  refreshPromises.set(resolvedCreds.cacheKey, refreshPromise);
   return refreshPromise;
 }
 
-async function fetchCachedToken(): Promise<StoredToken | null> {
+async function fetchCachedToken(tokenKey: string): Promise<StoredToken | null> {
   try {
     const redis = getRedis();
     let raw: string | null = null;
     if (redis) {
-      raw = await redis.get(TOKEN_KEY);
+      raw = await redis.get(tokenKey);
     } else {
-      raw = memoryCache.get(TOKEN_KEY) || null;
+      raw = memoryCache.get(tokenKey) || null;
     }
 
     if (!raw) {
-      const fallbackPath = path.join(os.tmpdir(), "kis_token_cache.json");
+      const cacheKeyFromTokenKey = tokenKey.split(":").pop() || "mock";
+      const fallbackPath = path.join(os.tmpdir(), `kis_token_cache_${cacheKeyFromTokenKey}.json`);
       if (fs.existsSync(fallbackPath)) {
         try {
           raw = fs.readFileSync(fallbackPath, "utf-8");
@@ -169,18 +200,19 @@ async function fetchCachedToken(): Promise<StoredToken | null> {
   }
 }
 
-async function saveTokenToCache(token: StoredToken) {
+async function saveTokenToCache(tokenKey: string, token: StoredToken) {
   try {
     const encrypted = encrypt(JSON.stringify(token));
     const redis = getRedis();
     if (redis) {
       const ttl = Math.floor((new Date(token.expiresAt).getTime() - Date.now()) / 1000);
       if (ttl > 0) {
-        await redis.set(TOKEN_KEY, encrypted, { ex: ttl });
+        await redis.set(tokenKey, encrypted, { ex: ttl });
       }
     } else {
-      memoryCache.set(TOKEN_KEY, encrypted);
-      const fallbackPath = path.join(os.tmpdir(), "kis_token_cache.json");
+      memoryCache.set(tokenKey, encrypted);
+      const cacheKeyFromTokenKey = tokenKey.split(":").pop() || "mock";
+      const fallbackPath = path.join(os.tmpdir(), `kis_token_cache_${cacheKeyFromTokenKey}.json`);
       try {
         fs.writeFileSync(fallbackPath, encrypted, "utf-8");
       } catch {
@@ -198,12 +230,16 @@ function isTokenValid(token: StoredToken): boolean {
   return expiry > Date.now() + kisConfig.refreshBufferMs;
 }
 
-// 글로벌 KIS API 요청 큐 및 인터벌 제어 (초당 5회 제한 방어를 위한 최소 280ms 간격 보장)
+// 글로벌 KIS API 요청 큐 및 인터벌 제어
 class KisRequestQueue {
   private queue: (() => Promise<any>)[] = [];
   private isProcessing = false;
   private lastRequestTime = 0;
-  private minIntervalMs = 510; // 510ms로 상향하여 모의투자 TPS 2 제한 방어 (초당 최대 1.9회 호출 수준)
+  private minIntervalMs: number;
+
+  constructor(minIntervalMs = 510) {
+    this.minIntervalMs = minIntervalMs;
+  }
 
   public async enqueue<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -245,8 +281,12 @@ class KisRequestQueue {
 
 declare global {
   var __kis_request_queue__: KisRequestQueue | undefined;
+  var __kis_request_queue_quote__: KisRequestQueue | undefined;
 }
-const globalKisRequestQueue = globalThis.__kis_request_queue__ ?? (globalThis.__kis_request_queue__ = new KisRequestQueue());
+// 주문 큐: 모의투자 TPS 2 제한 대응 (510ms, 초당 최대 1.9회)
+const globalKisRequestQueue = globalThis.__kis_request_queue__ ?? (globalThis.__kis_request_queue__ = new KisRequestQueue(510));
+// 실전 시세 전용 큐: 실전 도메인 TPS 20 기준, 200ms 간격으로 여유 있게 제어 (초당 최대 5회)
+const globalKisQuoteQueue = globalThis.__kis_request_queue_quote__ ?? (globalThis.__kis_request_queue_quote__ = new KisRequestQueue(200));
 
 export async function callKisApi<T = unknown>(
   endpoint: string,
@@ -255,23 +295,30 @@ export async function callKisApi<T = unknown>(
     body?: unknown;
     headers?: Record<string, string>;
     trId?: string;
+    useQuoteCreds?: boolean;
   } = {}
 ) {
-  const token = await getKisAccessToken();
-  const { method = "GET", body, headers = {}, trId } = options;
+  const { method = "GET", body, headers = {}, trId, useQuoteCreds } = options;
+  const creds = resolveCreds(useQuoteCreds);
+  const token = await getKisAccessToken(false, creds);
 
-  const url = `${kisConfig.restBaseUrl}${endpoint}`;
+  const url = `${creds.restBaseUrl}${endpoint}`;
   const finalHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
-    appkey: kisConfig.appKey!,
-    appsecret: kisConfig.appSecret!,
+    appkey: creds.appKey,
+    appsecret: creds.appSecret,
     tr_id: trId || (method === "GET" ? "FHKST01010100" : ""),
     ...headers,
   };
 
-  // 글로벌 요청 큐를 통해 API 호출 속도 조율
-  return globalKisRequestQueue.enqueue(async () => {
+  if (typeof window === "undefined" && process.env.NODE_ENV === "development") {
+    console.log(`[KIS API debug] Calling endpoint: ${endpoint} | Domain: ${creds.restBaseUrl} | cacheKey: ${creds.cacheKey}`);
+  }
+
+  // 실전 시세(quote)는 전용 큐, 그 외(주문 등)는 일반 큐로 분리하여 상호 rate limit 간섭 방지
+  const queue = useQuoteCreds ? globalKisQuoteQueue : globalKisRequestQueue;
+  return queue.enqueue(async () => {
     const response = await fetch(url, {
       method,
       headers: finalHeaders,
