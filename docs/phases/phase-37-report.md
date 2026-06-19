@@ -98,3 +98,75 @@ Phase 37 완료 이후, 실전 API 호출 시 항상 빈 결과(`normal: 0, aggr
 - **KIS 실전 시세 연동 정상 확인**: `volumeRankLength: 45`, `pureStocksLength: 16`으로 실전 도메인 데이터 수신 확인
 - **회전율 2차 필터 정상 작동**: `detail.vol_tnrt` 기반 회전율 판정이 실제 종목에 적용됨 확인
 
+---
+
+## Phase 37 Addendum 2 — 거시필터 KOSDAQ 지수 페이지네이션 (kosdaqState.value=0 버그)
+
+오버나이트 스크리닝의 거시필터에서 스크리닝 본체가 성공해도 `kosdaqState.value`가 일관되게 `0`으로 반환되는 버그를 근본 수정했다.
+
+### 진단 (추측이 아닌 raw 응답 측정)
+
+`getDomesticIndexDaily("1001")`의 raw 응답을 직접 로깅해 확인한 결과:
+
+- 응답은 `rt_cd:"0"` 정상, 지수 종가 필드 `bstp_nmix_prpr`도 정상(예: 950.26) — **필드명 문제 아님**
+- 진짜 원인은 **`output2Length: 50`** — KIS 업종 일자별 지수 API(`FHKUP03500100`)가 단일 호출당 약 50봉만 반환
+- `route.ts` 거시필터는 `kosdaqIndexDaily.length >= 120` 가드를 통과해야 `kosdaqClose`/MA를 채우는데, 50 < 120이라 블록 전체가 스킵되어 `kosdaqClose`가 초기값 0 그대로 남던 것
+- 연쇄 확인: 주식 일봉/주봉(`FHKST03010100`)도 단일 호출 약 100봉으로 측정됨 (120 미만). 단, 종목 정배열 기준은 알고리즘 핵심이므로 **이번 수정 범위에서 변경하지 않음**
+
+### 수정 내역 (`rest-client.ts`의 `getDomesticIndexDaily`만 변경)
+
+1. **지수 페이지네이션 도입**: 날짜 창(`FID_INPUT_DATE_1`/`DATE_2`)을 과거로 옮겨가며 호출해 120봉 이상(목표 130봉, 최대 4페이지) 누적. `stck_bsop_date` 기준 중복 제거 후 최신순 정렬.
+2. **하루 단위 캐시**: 캐시 키에 KST 날짜 포함(`index_daily_{code}_{YYYYMMDD}`), TTL 26h. 거래일당 1회만 신규 조회하고 이후 스크리닝은 캐시 재사용.
+3. **동일 큐 경유 (rate limit 보호 유지)**: 모든 페이지 호출이 `callKisApi` → 단일 통합 큐(`globalKisRequestQueue`)를 통과. 수동 setTimeout으로 큐를 우회하지 않음. (※ Addendum 3에서 시세/주문 큐를 단일화함)
+4. **Graceful Break + 백오프 재시도**: 페이지가 `EGW00201`로 막히면 1.2s 백오프 후 1회 재시도, 그래도 실패 시 확보분으로 진행(첫 페이지 실패만 에러 전파). Phase 36 종목별 루프 패턴과 동일.
+5. **종목 120일 정배열 기준 무변경**: 페이지네이션은 거시필터 지수에만 적용.
+
+### 검증 결과
+
+```
+# 지수 페이지네이션 격리 검증 (계정 휴식 상태)
+{ "ok": true, "length": 150, "meets120": true,
+  "latest": { "date": "20260619", "close": "955.87" },
+  "oldest": { "date": "20251107", "close": "876.81" } }
+
+# end-to-end 스크리닝 (실데이터)
+kosdaqValue: 966.02, reduceWeight: true
+maState: { ma5: 1010.3, ma20: 1039.4, ma60: 1108.8, ma120: 1084.5 }
+```
+
+- 지수 150봉 확보(3페이지 × 50) → MA120까지 실값 산출, KOSDAQ 종가 실값(966.02) 정상 반영, 역배열 `reduceWeight=true` 판정 확인.
+- `npm run validate` 통과 (typecheck/master 0 errors).
+
+### 후속 과제 (Phase 37 이후)
+
+- **volume-rank throttle**: 단일 `volume-rank` 호출에서도 `EGW00201`이 관측되는 경우가 있었는데, 이는 반복 테스트로 인한 일시적 계정 penalty가 누적된 환경 요인이다. 거시필터가 실데이터로 동작한 것이 휴식 후 정상 동작의 증거다. quote 전용 큐 간격(`200ms`)이 실전 계정의 지수 엔드포인트 초당 한도에 다소 빠듯하다는 신호 → **Addendum 3에서 큐 단일화 + 350ms 상향으로 대응**.
+
+---
+
+## Phase 37 Addendum 3 — KIS 요청 큐 단일화 + 간격 상향 (penalty 박스 재발 방지)
+
+Addendum 2 검증 중 실전 계정의 초당 한도가 매우 빡빡해 단일 호출도 `EGW00201`로 트립될 수 있음을 확인했다. 시세 전용 큐 간격(`200ms`)이 빠듯하다는 신호였고, 주문 기능이 미구현이라 시세/주문 큐 분리의 실익도 없으므로 큐를 단일화하고 간격을 보수적으로 상향했다.
+
+### 수정 내역 (`auth.ts`)
+
+1. **두 큐 → 단일 통합 큐**: `globalKisQuoteQueue`(200ms) / `globalKisRequestQueue`(510ms)를 제거하고, 모든 `callKisApi`(시세/주문)가 하나의 `globalThis` 싱글톤 큐 `globalKisRequestQueue`를 통과하도록 단일화.
+2. **`minIntervalMs = 350`**: 초당 ~2.8건. penalty 박스 회피 보수값.
+3. **단일 인스턴스 기동 로그**: `KisRequestQueue`에 `id`를 부여하고 기동 시 `[KIS Queue] unified request queue ready | minInterval=350ms | instanceId=...`를 출력 → dev 핫리로드에서 싱글톤이 1개만 유지되는지 확인.
+4. **EGW00201 1.2s 백오프 1회 재시도**: 기존 패턴(지수 페이지네이션 등) 유지.
+
+### 향후 메모 (이번 범위 밖)
+
+- 주문 기능 추가 시 `cacheKey`(앱키)별 큐 매핑(`Map<cacheKey, Queue>`)으로 전환. 같은 앱키는 같은 큐로 강제하고, 주문/시세를 독립 병렬화한다.
+
+### 검증 결과
+
+```
+[KIS Queue] unified request queue ready | minInterval=350ms | instanceId=s87e7a   # 단일 인스턴스
+
+# warm 상태(토큰 캐시 보유) 5회 연속
+run 1~5: { ok:true, kosdaq:966.59, EGW00201 없음 }
+```
+
+- **단일 350ms 큐 확정**(재시작마다 단일 instanceId), **steady-state(warm) 5/5 클린**, `npm run validate` 통과.
+- **알려진 한계**: 토큰 캐시를 비운 cold-start에서는 신규 토큰 발급 직후 첫 1~2회 호출이 `EGW00201`로 트립한 뒤 자동 복구된다. settle(1s/3s)·토큰 큐 래핑으로는 안정적으로 제거되지 않아 미적용으로 되돌렸다. 토큰은 24h 캐시되어 cold-start는 프로세스당 사실상 하루 1회이며 다음 호출에서 복구되므로, 350ms 속도를 유지하고 self-recovery를 수용한다. cold-start까지 무결이 필요하면 큐 간격을 510ms+로 올리는 트레이드오프가 유일한 신뢰 레버다.
+

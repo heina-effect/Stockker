@@ -294,35 +294,114 @@ export async function getDomesticStockWeekly(symbol: string): Promise<any[]> {
 
 /**
  * 국내 지수 기간별 시세 조회 (FHKUP03500100)
+ *
+ * KIS 지수 기간별시세는 단일 호출당 약 50봉만 반환하므로, 거시필터의 120일
+ * 정배열(5>20>60>120) 판정을 위해 날짜 창을 과거로 옮겨가며 페이지네이션해
+ * 120봉 이상을 확보한다. 결과는 KST 날짜를 캐시 키에 포함해 하루 단위로 캐시한다.
+ *
+ * 모든 페이지 호출은 callKisApi를 통해 단일 통합 큐(globalKisRequestQueue)를
+ * 거치므로 추가 호출도 동일 큐에서 rate limit이 보호된다.
  */
 export async function getDomesticIndexDaily(code: string): Promise<any[]> {
-  return withDedupeAndCache(`index_daily_${code}`, 60000, async () => {
-    const today = new Date();
-    const lastEightMonths = new Date(today.getTime() - 240 * 24 * 60 * 60 * 1000);
-    const formatKSTDate = (d: Date) => {
-        const kstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-        return kstDate.toISOString().split('T')[0].replace(/-/g, '');
-    };
-    
-    const query = new URLSearchParams({
-      FID_COND_MRKT_DIV_CODE: "U", 
-      FID_INPUT_ISCD: code,
-      FID_INPUT_DATE_1: formatKSTDate(lastEightMonths),
-      FID_INPUT_DATE_2: formatKSTDate(today), 
-      FID_PERIOD_DIV_CODE: "D",
-    });
+  const formatKSTDate = (d: Date) => {
+    const kstDate = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    return kstDate.toISOString().split('T')[0].replace(/-/g, '');
+  };
 
-    const data = await callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-index-price?${query.toString()}`, {
-      method: "GET",
-      trId: "FHKUP03500100",
-      useQuoteCreds: true
-    });
+  // 하루 단위 캐시: KST 날짜를 키에 포함해 매 거래일 1회만 신규 조회
+  const kstToday = formatKSTDate(new Date());
+  const cacheKey = `index_daily_${code}_${kstToday}`;
+  const ONE_DAY_MS = 26 * 60 * 60 * 1000; // 다음 거래일 진입까지 안전 보존
 
-    if (data.rt_cd !== "0") {
-      throw new Error(`KIS API Error: ${data.msg1}`);
+  return withDedupeAndCache(cacheKey, ONE_DAY_MS, async () => {
+    const TARGET = 130;     // 120 MA + 여유분
+    const MAX_PAGES = 4;    // 약 50봉/페이지 × 4 = 최대 ~200봉
+    const WINDOW_DAYS = 90; // 페이지당 약 90 캘린더일(≈ 60거래일) 요청
+    const DATE_FIELD = "stck_bsop_date";
+
+    const merged: any[] = [];
+    const seen = new Set<string>();
+    let endDate = new Date();
+
+    for (let page = 0; page < MAX_PAGES && merged.length < TARGET; page++) {
+      const startDate = new Date(endDate.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+      const query = new URLSearchParams({
+        FID_COND_MRKT_DIV_CODE: "U",
+        FID_INPUT_ISCD: code,
+        FID_INPUT_DATE_1: formatKSTDate(startDate),
+        FID_INPUT_DATE_2: formatKSTDate(endDate),
+        FID_PERIOD_DIV_CODE: "D",
+      });
+
+      const fetchPage = () => callKisApi<KisRawResponse>(`/uapi/domestic-stock/v1/quotations/inquire-index-price?${query.toString()}`, {
+        method: "GET",
+        trId: "FHKUP03500100",
+        useQuoteCreds: true
+      });
+
+      const isRateLimitError = (msg: string) =>
+        msg.includes("egw00201") || msg.includes("429") || msg.includes("건수") || msg.includes("초과") || msg.includes("limit");
+
+      let data: KisRawResponse;
+      try {
+        data = await fetchPage();
+      } catch (e) {
+        const errMsg = String((e as Error).message || e).toLowerCase();
+        // rate limit(EGW00201)으로 같은 초에 페이지 버스트가 막히면 1.2s 백오프 후 1회 재시도한다.
+        // (route.ts 종목별 루프와 동일한 패턴) 큐는 그대로 사용하며 종목 기준은 변경하지 않는다.
+        if (isRateLimitError(errMsg)) {
+          await new Promise(resolve => setTimeout(resolve, 1200));
+          try {
+            data = await fetchPage();
+          } catch (retryErr) {
+            // 재시도도 실패하면 Graceful Break: 그때까지 확보한 봉으로 진행.
+            // 단 첫 페이지조차 못 받으면 데이터가 전혀 없으므로 에러를 전파한다.
+            if (page === 0) throw retryErr;
+            console.warn(`[Index Pagination] page ${page} failed after retry, using ${merged.length} bars:`, (retryErr as Error).message);
+            break;
+          }
+        } else {
+          if (page === 0) throw e;
+          console.warn(`[Index Pagination] page ${page} failed, using ${merged.length} bars:`, (e as Error).message);
+          break;
+        }
+      }
+
+      if (data.rt_cd !== "0") {
+        if (page === 0) throw new Error(`KIS API Error: ${data.msg1}`);
+        break;
+      }
+
+      const rows = (data.output2 as unknown as any[]) || [];
+      if (rows.length === 0) break;
+
+      let oldest: string | null = null;
+      let added = 0;
+      for (const r of rows) {
+        const dt = String(r[DATE_FIELD] || "");
+        if (!dt) continue;
+        if (!oldest || dt < oldest) oldest = dt;
+        if (!seen.has(dt)) {
+          seen.add(dt);
+          merged.push(r);
+          added++;
+        }
+      }
+      if (added === 0 || !oldest) break; // 더 이상 진척 없음
+
+      // 다음 창은 가장 오래된 일자 직전 영업일까지로 이동
+      const od = new Date(Date.UTC(
+        Number(oldest.slice(0, 4)),
+        Number(oldest.slice(4, 6)) - 1,
+        Number(oldest.slice(6, 8))
+      ));
+      endDate = new Date(od.getTime() - 24 * 60 * 60 * 1000);
     }
 
-    return (data.output2 as unknown as any[]) || [];
+    // 최신순(인덱스 0 = 최신) 정렬 — calculateMA가 slice(0, period)로 최신부터 사용
+    merged.sort((a, b) => String(b[DATE_FIELD]).localeCompare(String(a[DATE_FIELD])));
+    return merged;
   });
 }
 

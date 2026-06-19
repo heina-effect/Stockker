@@ -236,6 +236,8 @@ class KisRequestQueue {
   private isProcessing = false;
   private lastRequestTime = 0;
   private minIntervalMs: number;
+  // 핫리로드 시 동일 싱글톤 인스턴스가 재사용되는지 기동 로그로 확인하기 위한 식별자
+  public readonly id = Math.random().toString(36).slice(2, 8);
 
   constructor(minIntervalMs = 510) {
     this.minIntervalMs = minIntervalMs;
@@ -281,12 +283,16 @@ class KisRequestQueue {
 
 declare global {
   var __kis_request_queue__: KisRequestQueue | undefined;
-  var __kis_request_queue_quote__: KisRequestQueue | undefined;
 }
-// 주문 큐: 모의투자 TPS 2 제한 대응 (510ms, 초당 최대 1.9회)
-const globalKisRequestQueue = globalThis.__kis_request_queue__ ?? (globalThis.__kis_request_queue__ = new KisRequestQueue(510));
-// 실전 시세 전용 큐: 실전 도메인 TPS 20 기준, 200ms 간격으로 여유 있게 제어 (초당 최대 5회)
-const globalKisQuoteQueue = globalThis.__kis_request_queue_quote__ ?? (globalThis.__kis_request_queue_quote__ = new KisRequestQueue(200));
+// 단일 통합 큐: 모든 KIS REST 호출(시세/주문)이 하나의 globalThis 싱글톤 큐를 통과한다.
+// minIntervalMs=350 → 초당 ~2.8건. 실전 계정의 빡빡한 초당 한도(EGW00201) 패널티 박스를
+// 보수적으로 회피하기 위한 값이다. 주문 기능은 현재 미구현이라 시세/주문 큐 분리(B안)의
+// 이점이 없으므로 단일화한다. (향후 주문 추가 시 cacheKey(앱키)별 큐 매핑으로 전환 검토)
+const globalKisRequestQueue = globalThis.__kis_request_queue__ ?? (globalThis.__kis_request_queue__ = new KisRequestQueue(350));
+// dev 핫리로드 시 큐 인스턴스가 1개만 존재하는지 확인 (싱글톤이면 id가 매 모듈 평가마다 동일)
+if (process.env.NODE_ENV === "development") {
+  console.log(`[KIS Queue] unified request queue ready | minInterval=350ms | instanceId=${globalKisRequestQueue.id}`);
+}
 
 export async function callKisApi<T = unknown>(
   endpoint: string,
@@ -316,9 +322,8 @@ export async function callKisApi<T = unknown>(
     console.log(`[KIS API debug] Calling endpoint: ${endpoint} | Domain: ${creds.restBaseUrl} | cacheKey: ${creds.cacheKey}`);
   }
 
-  // 실전 시세(quote)는 전용 큐, 그 외(주문 등)는 일반 큐로 분리하여 상호 rate limit 간섭 방지
-  const queue = useQuoteCreds ? globalKisQuoteQueue : globalKisRequestQueue;
-  return queue.enqueue(async () => {
+  // 모든 KIS REST 호출(시세/주문)을 단일 통합 큐로 직렬화해 전역 rate limit을 보호한다.
+  return globalKisRequestQueue.enqueue(async () => {
     const response = await fetch(url, {
       method,
       headers: finalHeaders,
