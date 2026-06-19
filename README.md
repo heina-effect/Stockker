@@ -21,8 +21,10 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **추천 가드레일**: 지시적 매매 언어 차단, 출처 수 명시, disclaimer 필수 노출
 - **저장 워크플로우**: 관심 종목 / 최근 본 종목 / 북마크 리포트 — 로컬 저장, 명시적 저장 전용
 - **섹터 심층 분석**: 주도주 / 소외주 / 관찰 후보 포함한 섹터 리서치
-- **정규 섹터 라우팅**: 홈 섹터 카드는 `SECTOR_UNIVERSE`의 canonical ID만 사용
+- **오버나이트 스크리닝 리포트**: 주봉/일봉 정배열, 거래량 회전율(vol_tnrt >= 5%), 윗꼬리 제한(3.5% 이하) 및 KIS 실시간 시세 API를 연동한 오버나이트 유망 종목 스크리닝 및 위험 종목(주의/경고/위험/유의/정지/정리매매/단기과열) 정밀 배제 리포트 제공
+- **글로벌 KIS API 요청 큐 및 Graceful Break**: globalThis 싱글톤 기반의 요청 큐(KisRequestQueue)로 모의투자 API 제한(TPS 2)을 전역 방어하고, 호출 한도 초과 시 부분 분석 성공 데이터만 안전하게 서비스하는 예외 대처 설계 도입
 - **전역 테마 시스템**: light / dark / system 모드가 앱 표면 전체에 토큰 기반으로 적용
+
 
 ---
 
@@ -100,7 +102,9 @@ npm run build             # 프로덕션 빌드
 - [theme-behavior.md](docs/core/theme-behavior.md) — light / dark / system 동작과 token contract
 
 **페이즈 리포트**
-- [phase-34-report.md](docs/phases/phase-34-report.md) — 최신 (Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
+- [phase-36-report.md](docs/phases/phase-36-report.md) — 최신 (오버나이트 스크리닝 알고리즘 고도화, 회전율 유동성 도입, KIS 현재가 기반 위험필터 확정 및 안정성 강화)
+- [phase-35-report.md](docs/phases/phase-35-report.md) — Phase 35 리포트 (관심 종목 로딩 최적화, LG에너지솔루션/웰킵스하이텍 매핑 버그 해결)
+- [phase-34-report.md](docs/phases/phase-34-report.md) — Phase 34 리포트 (Watchlist Productization, KIS 정보성 API, 섹터/투자의견 보강)
 - [phase-34-audit.md](docs/phases/phase-34-audit.md) — Phase 34 감사 보고서
 - [phase-33-report.md](docs/phases/phase-33-report.md) — Watchlist Workflow, Stale-first Home, Responsive Report Layout
 - [phase-33-audit.md](docs/phases/phase-33-audit.md) — Phase 33 감사 보고서
@@ -116,6 +120,7 @@ npm run build             # 프로덕션 빌드
 - [phase-26-report.md](docs/phases/phase-26-report.md) — Phase 26 (연관 종목 명확화, 테마 완성, 섹터 비블로킹)
 
 **정책 및 운영**
+- [beta-rc-gate.md](docs/release/beta-rc-gate.md) — Beta RC 게이트 검증 결과
 - [beta-release-checklist.md](docs/release/beta-release-checklist.md) — 베타 릴리즈 체크리스트
 - [known-issues.md](docs/release/known-issues.md) — 알려진 이슈
 - [release-freeze-rules.md](docs/release/release-freeze-rules.md) — 릴리즈 동결 규칙
@@ -141,7 +146,10 @@ npm run build             # 프로덕션 빌드
 | 25–28 | Beta Hardening, 섹터 404 제거, 전역 테마 토큰, canonical sector routing, 홈 카드 UX, 런타임/문서 재정합 |
 | 29–31 | 투자의견/소스 카드 상태 정리, 날짜 의미론, mock 제거, 종목/섹터 오염 차단, KIS 업종코드 기반 연관 종목 |
 | 32–33 | Beta RC 마감, 관심 종목 워크플로우 활성화, 홈 stale-first UX, 종목 상세 responsive layout |
-| **34 (현재)** | **관심 종목 리서치 허브 제품화, 검색 결과 관심 종목 추가 복구, KIS 정보성 API 기반 watchlist/섹터/투자의견 보강, 섹터/감성/투자의견 UI polish** |
+| 34 | 관심 종목 리서치 허브 제품화, 검색 결과 관심 종목 추가 복구, KIS 정보성 API 기반 watchlist/섹터/투자의견 보강, 섹터/감성/투자의견 UI polish |
+| 35 | 관심 종목 로딩 최적화 및 웰킵스하이텍/LG에너지솔루션 종목 맵핑 오탐 버그 해결 |
+| **36 (현재)** | **오버나이트 스크리닝 리포트 제품화, 거래량 회전율 유동성 기준 도입, KIS 현재가 API 기반 위험종목 차단(경고/정지/과열 등), 전역 API 요청 큐 적용 및 Graceful Break 백엔드 안전장치 구축** |
+
 
 ---
 

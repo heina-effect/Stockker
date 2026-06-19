@@ -58,3 +58,27 @@ KIS 공식 개발자 문서에는 위 순위/시세분석 API가 존재하지만
 - 홈 `나의 관심 종목` 카드와 `/workflows/watchlist`를 같은 summary API로 연결한다.
 - 섹터 상세에 KIS 업종기간별시세 기반 시장 신호 카드를 추가한다.
 - 직접 래퍼가 없는 KIS 순위 API는 문서상 known risk로 남기고, UI 문구는 현재 구현 기준에 맞춰 과장하지 않는다.
+
+## Beta RC Gate 추가 감사 — 2026-05-15
+
+### 확인된 P0 후보
+
+1. **검색 결과 없음 submit fallback**
+   - 검색 결과가 없더라도 영문/숫자 입력이면 `/stocks/<query>`로 이동할 수 있었다.
+   - 없는 종목명/임의 문자열 검증에서 상세 진입 오염 또는 404 UX로 이어질 수 있어 출시 차단 후보로 분류했다.
+
+2. **DB-first 검색의 alias 손실 및 지연**
+   - `generateSearch()`가 DB `stock_master`를 우선 사용할 때 stock alias를 비워 두고 있었다.
+   - DB 연결이 느릴 때 검색 응답이 local master fallback으로 빠르게 내려오지 못할 수 있었다.
+
+3. **소형/테마 fixture metadata coverage 부족**
+   - 대한광통신, 우리로, 인벤티지랩, 에스피시스템스는 DART corp-master에는 있으나 정적 metadata/taxonomy coverage가 약했다.
+   - DB가 비거나 느린 환경에서 상세 섹터 표시/연관 종목/검색 안정성이 떨어질 수 있었다.
+
+4. **SourceListCard 초기 로드 경로 회귀**
+   - release freeze rule은 초기 로드도 `/sources?page=1&limit=...` 사용을 요구하지만, 런타임은 다시 `/issues`를 통해 전체 sources를 받아오고 있었다.
+   - source pagination 정책 위반 가능성이 있어 P0 후보로 분류했다.
+
+### 결론
+
+위 P0 후보는 모두 코드 수정 및 focused test로 잠갔다. 남은 항목은 브라우저 콘솔/모바일 viewport 육안 확인, 첫 방문 KIS quote 체감처럼 베타 중 관찰 가능한 P1이다.

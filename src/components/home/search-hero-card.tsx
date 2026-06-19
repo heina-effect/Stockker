@@ -69,8 +69,6 @@ export function SearchHeroCard() {
       handleSelect(results[focusedIndex]);
     } else if (results.length > 0) {
       handleSelect(results[0]);
-    } else if (query.trim().length > 0 && /^[A-Za-z0-9-]+$/.test(query)) {
-      handleSelect({ symbol: query, name: query }); // Fallback
     }
   };
 

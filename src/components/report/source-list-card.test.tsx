@@ -19,14 +19,16 @@ describe("SourceListCard pagination", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the paginated source endpoint for load more", async () => {
+  it("uses the paginated source endpoint for initial load and load more", async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("/issues")) {
+      if (url.includes("page=1")) {
         return {
           ok: true,
           json: async () => ({
             ok: true,
-            sources: [1, 2, 3, 4, 5, 6].map(n => source(String(n))),
+            sources: [1, 2, 3, 4, 5].map(n => source(String(n))),
+            total: 6,
+            hasMore: true,
           }),
         };
       }
@@ -47,6 +49,7 @@ describe("SourceListCard pagination", () => {
     await waitFor(() => {
       expect(screen.getByText("source 1")).toBeTruthy();
     });
+    expect(fetchMock).toHaveBeenCalledWith("/api/stocks/005930/sources?page=1&limit=5");
 
     fireEvent.click(screen.getByRole("button", { name: /더 보기/ }));
 

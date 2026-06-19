@@ -94,6 +94,8 @@ SSR (server component):
 
 - `/api/stocks/search`는 `generateSearch()`를 통해 DB `stock_master`와 `sector_master`를 먼저 조회한다.
 - 검색 랭킹은 symbol/name exact match, alias match, prefix match, substring match 순으로 계산한다. 같은 점수에서는 종목을 섹터/ETF보다 우선한다.
+- DB-first 검색은 900ms를 넘기면 local master fallback으로 내려온다. DB stock item에도 local master의 alias/name을 병합해 별칭 검색 정확도를 유지한다.
+- 검색 결과가 없을 때 임의 문자열을 상세 페이지로 보내지 않는다. 없는 종목명은 빈 상태로 머무른다.
 - `stock_master`는 DART `corp-master.json`을 `npm run sync:stock-master`로 동기화한다. 기존에 수동 보정한 `sector_tag`는 upsert 시 보존한다.
 - DART corp-master는 공시 법인 master라 상장폐지 또는 KOSPI/KOSDAQ 지원 범위 밖 종목이 포함될 수 있다. `listing-status.ts`의 unsupported guard는 이런 심볼을 검색/상세 진입에서 제외한다.
 - DB 조회 실패 또는 결과 없음일 때만 로컬 fallback(`src/data/dart/corp-master.json` + `STOCK_UNIVERSE` + `SECTOR_UNIVERSE`)을 사용한다.

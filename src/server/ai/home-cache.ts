@@ -184,3 +184,9 @@ function getFallbackHomeIntelligence() {
     ],
   };
 }
+
+export function clearHomeIntelligenceCache() {
+  cachedIntelligence = null;
+  lastFetched = 0;
+  console.log("[HomeCache] Cache cleared successfully.");
+}

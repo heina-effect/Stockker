@@ -46,16 +46,18 @@ export async function generateSectorSnapshot(sectorId: string): Promise<SectorRe
   const sector = universe[sectorId];
   if (!sector) return null;
 
-  // Gather clusters from representative symbols
-  let allClusters: any[] = [];
-  for (const sym of sector.representativeSymbols) {
+  // Gather clusters from representative symbols in parallel
+  const promises = sector.representativeSymbols.map(async (sym) => {
     try {
       const { clusters } = await generateIssues(sym);
-      allClusters = [...allClusters, ...clusters];
+      return clusters;
     } catch (e) {
       console.warn(`[SectorSnapshot] Failed to get issues for ${sym}:`, e);
+      return [];
     }
-  }
+  });
+  const clusterResults = await Promise.all(promises);
+  const allClusters = clusterResults.flat();
 
   // Dedupe and sort by recent
   const sortedClusters = allClusters

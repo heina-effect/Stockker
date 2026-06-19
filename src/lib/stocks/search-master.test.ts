@@ -46,4 +46,23 @@ describe("Search Master", () => {
     expect(searchStock("지디").some(result => result.symbol === "155960")).toBe(false);
     expect(searchStock("젬").some(result => result.symbol === "248020")).toBe(false);
   });
+
+  it("covers RC gate search fixtures with exact or high-confidence matches", () => {
+    const fixtures = [
+      ["한화", "000880"],
+      ["LS ELECTRIC", "010120"],
+      ["LIG넥스원", "079550"],
+      ["에이프릴바이오", "397030"],
+      ["펩트론", "087010"],
+      ["삼성전자", "005930"],
+      ["대한광통신", "010170"],
+      ["인벤티지랩", "389470"],
+      ["우리로", "046970"],
+      ["에스피시스템스", "317830"],
+    ];
+
+    for (const [query, symbol] of fixtures) {
+      expect(searchStock(query)[0]?.symbol).toBe(symbol);
+    }
+  });
 });

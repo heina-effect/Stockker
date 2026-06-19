@@ -19,6 +19,32 @@ const HomeIntelligenceContext = createContext<HomeIntelligenceContextType>({
 const HOME_INTELLIGENCE_CACHE_KEY = "stockker_home_intelligence_v1";
 const HOME_INTELLIGENCE_TIMEOUT_MS = 8000;
 
+function sanitizeCachedData(intel: any) {
+  if (!intel) return intel;
+  
+  // 1. stocks 내 LG에너지솔루션 심볼 강제 보정
+  if (Array.isArray(intel.stocks)) {
+    intel.stocks = intel.stocks.map((s: any) => {
+      if (s?.name === "LG에너지솔루션" && s?.symbol !== "373220") {
+        return { ...s, symbol: "373220" };
+      }
+      return s;
+    });
+  }
+  
+  // 2. aiPicks 내 LG에너지솔루션 심볼 강제 보정
+  if (Array.isArray(intel.aiPicks)) {
+    intel.aiPicks = intel.aiPicks.map((p: any) => {
+      if (p?.type === "stock" && p?.name === "LG에너지솔루션" && p?.targetId !== "373220") {
+        return { ...p, targetId: "373220" };
+      }
+      return p;
+    });
+  }
+  
+  return intel;
+}
+
 function readCachedHomeIntelligence() {
   if (typeof window === "undefined") return null;
 
@@ -26,7 +52,10 @@ function readCachedHomeIntelligence() {
     const cached = window.localStorage.getItem(HOME_INTELLIGENCE_CACHE_KEY);
     if (!cached) return null;
     const parsed = JSON.parse(cached);
-    return parsed?.intelligence && typeof parsed.intelligence === "object" ? parsed.intelligence : null;
+    if (parsed?.intelligence && typeof parsed.intelligence === "object") {
+      return sanitizeCachedData(parsed.intelligence);
+    }
+    return null;
   } catch {
     return null;
   }
@@ -36,9 +65,10 @@ function writeCachedHomeIntelligence(intelligence: any) {
   if (typeof window === "undefined" || !intelligence) return;
 
   try {
+    const sanitized = sanitizeCachedData(intelligence);
     window.localStorage.setItem(
       HOME_INTELLIGENCE_CACHE_KEY,
-      JSON.stringify({ intelligence, cachedAt: new Date().toISOString() }),
+      JSON.stringify({ intelligence: sanitized, cachedAt: new Date().toISOString() }),
     );
   } catch {
     // localStorage quota/permission errors should never block the dashboard.

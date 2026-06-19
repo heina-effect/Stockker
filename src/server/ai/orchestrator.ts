@@ -103,9 +103,27 @@ function checkSourceQuality(sources: SourceItem[]): { ok: boolean; reason?: Fall
   return { ok: true, count: realSources.length };
 }
 
+let lastOrchestratorQuotaTime = 0;
+const ORCHESTRATOR_COOLDOWN_MS = 60 * 1000;
+
+function logOrchestratorError(context: string, err: any) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  if (msg.includes("429") || msg.includes("quota") || msg.includes("resource_exhausted") || msg.includes("cooldown")) {
+    lastOrchestratorQuotaTime = Date.now();
+    console.warn(`[Orchestrator] ${context} failed: Gemini API Quota Exceeded (429). Silent fallback active.`);
+  } else {
+    console.error(`[Orchestrator] ${context} failed:`, err?.message || err);
+  }
+}
+
 // ─── Gemini helper ────────────────────────────────────────────────────────────
 async function geminiJSON<T>(model: string, prompt: string): Promise<T> {
   if (!ai) throw new Error("no_api_key");
+  
+  if (Date.now() - lastOrchestratorQuotaTime < ORCHESTRATOR_COOLDOWN_MS) {
+    throw new Error("quota_exceeded_cooldown");
+  }
+
   const res = await ai.models.generateContent({
     model,
     contents: prompt,
@@ -204,7 +222,7 @@ Rules:
     };
   } catch (e: any) {
     const reason = classifyError(e);
-    console.error(`[Orchestrator] Stage 2 sentiment failed for ${symbol}:`, e);
+    logOrchestratorError(`Stage 2 sentiment for ${symbol}`, e);
     return safeMockSentiment(symbol, reason, startTime, GEMINI_FLASH);
   }
 }
@@ -256,7 +274,7 @@ Rules:
     };
   } catch (e: any) {
     const reason = classifyError(e);
-    console.error(`[Orchestrator] Report summary failed for ${symbol}:`, e);
+    logOrchestratorError(`Report summary for ${symbol}`, e);
     return safeMockReport(symbol, reason, startTime, GEMINI_FLASH);
   }
 }
@@ -303,7 +321,7 @@ Rules:
       watchCandidates: parsed.watchCandidates || []
     };
   } catch (e: any) {
-    console.error(`[Orchestrator] Sector summary failed for ${sector.name}:`, e);
+    logOrchestratorError(`Sector summary for ${sector.name}`, e);
     return { summary: "해당 섹터에 대한 분석 중 오류가 발생했습니다.", trendStrength: 50 };
   }
 }
@@ -416,7 +434,7 @@ Sector rules:
     return parsed;
   } catch (e: any) {
     const reason = classifyError(e);
-    console.error("[Orchestrator] Home intelligence Stage 2 failed:", e);
+    logOrchestratorError("Home intelligence Stage 2", e);
     return {
       _meta: createMeta({ provider: "gemini", model: GEMINI_FLASH, mode: "fallback", fallbackReason: reason, latencyMs: Date.now() - startTime }),
     };

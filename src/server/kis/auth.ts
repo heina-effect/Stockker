@@ -198,6 +198,56 @@ function isTokenValid(token: StoredToken): boolean {
   return expiry > Date.now() + kisConfig.refreshBufferMs;
 }
 
+// 글로벌 KIS API 요청 큐 및 인터벌 제어 (초당 5회 제한 방어를 위한 최소 280ms 간격 보장)
+class KisRequestQueue {
+  private queue: (() => Promise<any>)[] = [];
+  private isProcessing = false;
+  private lastRequestTime = 0;
+  private minIntervalMs = 510; // 510ms로 상향하여 모의투자 TPS 2 제한 방어 (초당 최대 1.9회 호출 수준)
+
+  public async enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const res = await fn();
+          resolve(res);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      const fn = this.queue.shift();
+      if (fn) {
+        const now = Date.now();
+        const elapsed = now - this.lastRequestTime;
+        const waitTime = this.minIntervalMs - elapsed;
+        
+        if (waitTime > 0) {
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+        
+        this.lastRequestTime = Date.now();
+        await fn();
+      }
+    }
+
+    this.isProcessing = false;
+  }
+}
+
+declare global {
+  var __kis_request_queue__: KisRequestQueue | undefined;
+}
+const globalKisRequestQueue = globalThis.__kis_request_queue__ ?? (globalThis.__kis_request_queue__ = new KisRequestQueue());
+
 export async function callKisApi<T = unknown>(
   endpoint: string,
   options: {
@@ -220,16 +270,19 @@ export async function callKisApi<T = unknown>(
     ...headers,
   };
 
-  const response = await fetch(url, {
-    method,
-    headers: finalHeaders,
-    body: body ? JSON.stringify(body) : undefined,
+  // 글로벌 요청 큐를 통해 API 호출 속도 조율
+  return globalKisRequestQueue.enqueue(async () => {
+    const response = await fetch(url, {
+      method,
+      headers: finalHeaders,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(`KIS API Error: ${response.status} ${JSON.stringify(errData)}`);
+    }
+
+    return await response.json() as T;
   });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(`KIS API Error: ${response.status} ${JSON.stringify(errData)}`);
-  }
-
-  return await response.json() as T;
 }

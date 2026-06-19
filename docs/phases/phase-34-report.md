@@ -77,8 +77,31 @@
   - `src/components/dashboard/live-market-provider.test.tsx`
   - `src/components/workflows/watchlist-research-board.test.tsx`
 
+## Beta RC Gate 추가 수정 — 2026-05-15
+
+### 검색 안정성
+- DB-first 검색이 900ms 안에 응답하지 않으면 local master fallback으로 내려오도록 했다.
+- DB stock item에 local master의 alias/name을 병합해 `LIG넥스원`, `LS ELECTRIC`, `한화` 같은 별칭/정확도 케이스를 보강했다.
+- 검색 결과가 없을 때 임의 영문/숫자 입력을 `/stocks/<query>`로 보내던 fallback을 제거했다.
+
+### 섹터/metadata coverage
+- 대한광통신(`010170`)과 우리로(`046970`)를 `광통신·통신장비` canonical sector에 매핑했다.
+- 인벤티지랩(`389470`)은 바이오/차세대 바이오 coverage에 포함했다.
+- 에스피시스템스(`317830`)는 로봇·자동화 coverage에 포함했다.
+- RC fixture 검색/섹터 테스트를 추가했다.
+
+### Source pagination
+- `SourceListCard` 초기 로드를 `/api/stocks/[symbol]/sources?page=1&limit=5`로 복구했다.
+- `더 보기`뿐 아니라 초기 로드도 pagination endpoint를 사용하는 테스트를 추가했다.
+
+### RC Gate 문서
+- `docs/release/beta-rc-gate.md`를 추가했다.
+- `docs/release/known-issues.md`, `docs/release/beta-release-checklist.md`, `docs/release/release-freeze-rules.md`를 2026-05-15 기준으로 갱신했다.
+
 ## 남은 리스크
 
 - KIS 공식 문서에는 거래량순위, 체결강도 상위, 관심종목등록 상위 API가 있으나 현재 코드에 안정 래퍼가 없다. 이번 Phase에서는 추정 TR-ID로 새 래퍼를 만들지 않았다.
 - `/api/watchlist/summary`는 최대 10개 종목까지 묶지만 각 종목의 report/sentiment/issues/opinion을 조회하므로, Gemini/KIS quota 상태에 따라 일부 필드가 `리포트 준비 중` 또는 `데이터 없음`으로 낮아질 수 있다.
 - KIS 업종 흐름은 대표 종목 quote의 `kisIndustryCode`가 있어야 업종기간별시세까지 표시된다. 업종코드가 없으면 대표 종목 시세 fallback으로 동작한다.
+- 완전 첫 방문/캐시 없는 종목의 현재가는 KIS quote 응답 시간에 영향을 받는다. 성공 quote cache가 생긴 뒤에는 즉시 stale 가격을 표시한다.
+- 실제 브라우저 콘솔과 모바일 layout은 Beta 공개 직전 수동 확인이 필요하다.

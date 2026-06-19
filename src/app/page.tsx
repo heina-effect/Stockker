@@ -6,6 +6,7 @@ import { TrendStocksCard } from "@/components/home/trend-stocks-card";
 import { TrendSectorsCard } from "@/components/home/trend-sectors-card";
 import { AIPicksCard } from "@/components/home/ai-picks-card";
 import { HomeIntelligenceProvider } from "@/components/home/home-intelligence-provider";
+import { OvernightScreeningCard } from "@/components/home/overnight-screening-card";
 
 export default function HomePage() {
   return (
@@ -18,6 +19,7 @@ export default function HomePage() {
           {/* Left Column: Main Research Search and Preview */}
           <div className="lg:col-span-8 flex flex-col gap-8">
             <SearchHeroCard />
+            <OvernightScreeningCard />
             
             <HomeIntelligenceProvider>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

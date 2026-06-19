@@ -72,8 +72,8 @@ export async function GET(req: NextRequest) {
             orderbook,
             fetchedAt: new Date().toISOString()
         });
-    } catch (e) {
-        console.error(`[Bootstrap] Error for ${symbol}:`, e);
+    } catch (e: any) {
+        console.warn(`[Bootstrap] Error for ${symbol}:`, e?.message || e);
         // Provide consistent mock data even on fatal errors to prevent UI breakage
         return NextResponse.json({
             ok: true,

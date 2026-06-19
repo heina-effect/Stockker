@@ -49,23 +49,35 @@ const STRATEGY_TAGS: Record<string, string[]> = {
   sector_momentum:["섹터", "업종", "테마", "동반"],
 };
 
-// ─── Embedding helpers ───────────────────────────────────────────────────────
+let lastQuotaExceededTime = 0;
+const QUOTA_COOLDOWN_MS = 60 * 1000; // 429 발생 시 1분간 대기
+
 async function embedText(text: string): Promise<number[]> {
   if (!ai) return [];
+  
+  const now = Date.now();
+  if (now - lastQuotaExceededTime < QUOTA_COOLDOWN_MS) {
+    return []; // 쿨다운 중일 때는 요청을 조용히 건너뜀
+  }
+
   try {
     const result = await ai.models.embedContent({
       model: EMBEDDING_MODEL,
       contents: text,
     });
-    // @google/genai v1.x: response shape is { embeddings: [{ values }] }
-    // fallback: { embedding: { values } }
     const values =
       (result as any).embeddings?.[0]?.values ??
       (result as any).embedding?.values ??
       [];
     return values as number[];
-  } catch (e) {
-    console.warn("[Curator] embedText failed:", e);
+  } catch (e: any) {
+    const msg = String(e?.message || e || "").toLowerCase();
+    if (msg.includes("429") || msg.includes("quota") || msg.includes("resource_exhausted")) {
+      lastQuotaExceededTime = Date.now();
+      console.warn(`[Curator] Gemini API Quota Exceeded (429). Entering silent cooldown for ${QUOTA_COOLDOWN_MS / 1000}s.`);
+    } else {
+      console.warn("[Curator] embedText failed:", e?.message || e);
+    }
     return [];
   }
 }
@@ -73,7 +85,15 @@ async function embedText(text: string): Promise<number[]> {
 async function embedBatch(texts: string[]): Promise<number[][]> {
   const results: number[][] = [];
   for (const text of texts) {
-    results.push(await embedText(text));
+    const now = Date.now();
+    if (now - lastQuotaExceededTime < QUOTA_COOLDOWN_MS) {
+      break; // 쿼터 초과 쿨다운 시 배치 루프를 조기 중단하여 지연을 방지
+    }
+    const vec = await embedText(text);
+    results.push(vec);
+    if (vec.length === 0 && now - lastQuotaExceededTime < 1000) {
+      break; // 방금 429가 발생했다면 루프 탈출
+    }
     await new Promise(r => setTimeout(r, 50)); // rate-limit guard
   }
   return results;
@@ -242,10 +262,10 @@ export async function curateSourcesWithEmbedding(
   // ── Step 6: Score quality ─────────────────────────────────────────────────
   const scored: EmbeddedSource[] = [];
   for (let i = 0; i < toEmbed.length; i++) {
-    const item = { ...toEmbed[i], embedding: sourceEmbeddings[i] };
-    const vec = sourceEmbeddings[i];
+    const vec = sourceEmbeddings[i] || [];
+    const item = { ...toEmbed[i], embedding: vec };
 
-    const spamSimilarity = vec.length > 0 && spamCentroid.length > 0
+    const spamSimilarity = vec.length > 0 && spamCentroid && spamCentroid.length > 0
       ? cosineSimilarity(vec, spamCentroid) : 0;
     const trustedSimilarity = vec.length > 0
       ? await vectorStore.findNearestTrustedCentroid(vec) : 0.5;

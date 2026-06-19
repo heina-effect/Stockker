@@ -95,12 +95,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, items: [], fetchedAt: new Date().toISOString() });
   }
 
-  const items = [];
-  for (const symbol of symbols) {
+  const promises = symbols.map(async (symbol) => {
     try {
-      items.push(await summarizeSymbol(symbol));
+      return await summarizeSymbol(symbol);
     } catch (error) {
-      items.push({
+      return {
         symbol,
         name: getServerStockName(symbol),
         sector: null,
@@ -115,9 +114,11 @@ export async function GET(req: NextRequest) {
         whyNow: "리포트 준비 중입니다.",
         error: String(error),
         fetchedAt: new Date().toISOString(),
-      });
+      };
     }
-  }
+  });
+
+  const items = await Promise.all(promises);
 
   return NextResponse.json({ ok: true, items, fetchedAt: new Date().toISOString() });
 }

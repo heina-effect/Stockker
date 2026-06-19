@@ -34,7 +34,22 @@ import { getStockSnapshot, saveStockSnapshot } from "./snapshots/snapshot-manage
 import type { StockReportSummary, SentimentScore } from "@/types/research";
 
 const SNAPSHOT_TTL_MS = 60 * 60 * 1000; // 1 hr freshness
+const SEARCH_DB_TIMEOUT_MS = 900;
 const snapshotPromiseCache = new Map<string, Promise<{ report: StockReportSummary, sentiment: SentimentScore }>>();
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockReportSummary, sentiment: SentimentScore }> {
   const name = getServerStockName(symbol);
@@ -155,19 +170,26 @@ async function getOrGenerateSnapshot(symbol: string): Promise<{ report: StockRep
 
 export async function generateSearch(query: string) {
   try {
-    const [stocks, sectors] = await Promise.all([
+    const [stocks, sectors] = await withTimeout(Promise.all([
       getDBStockUniverse(),
       getDBSectorUniverse(),
-    ]);
+    ]), SEARCH_DB_TIMEOUT_MS);
+    const localMaster = getSearchMaster();
 
     const stockItems: StockMasterItem[] = Object.values(stocks)
       .filter((stock) => !isUnsupportedStockSymbol(stock.symbol))
       .map((stock) => ({
+        ...stock,
+        ...(() => {
+          const local = localMaster.find(item => item.symbol === stock.symbol);
+          return {
+            name: local?.name || stock.name,
+            aliases: local?.aliases || [],
+          };
+        })(),
         symbol: stock.symbol,
-        name: stock.name,
         type: stock.market === "INDEX" ? "index" : stock.market === "ETF" ? "etf" : "stock",
         market: stock.market,
-        aliases: [],
       }));
 
     const sectorItems: StockMasterItem[] = Object.values(sectors).map((sector) => ({

@@ -24,4 +24,11 @@ describe("sector taxonomy canonical helpers", () => {
     expect(shipping?.memberSymbols).not.toContain("010120");
     expect(shipping?.memberSymbols).toEqual(expect.arrayContaining(["011200", "028670", "005880"]));
   });
+
+  it("covers RC gate small-cap sector fixtures with canonical sectors", () => {
+    expect(getSectorById("sec-optical-equipment")?.memberSymbols).toEqual(expect.arrayContaining(["010170", "046970"]));
+    expect(getSectorById("sec-robotics")?.memberSymbols).toContain("317830");
+    expect(getSectorById("sec-biotech")?.memberSymbols).toEqual(expect.arrayContaining(["397030", "389470"]));
+    expect(getSectorById("sec-obesity-bio")?.memberSymbols).toContain("087010");
+  });
 });

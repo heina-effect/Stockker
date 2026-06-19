@@ -195,6 +195,18 @@ npx vitest run \
   src/lib/stocks/chart-utils.test.ts
 ```
 
+Beta RC Gate 검색/섹터/source pagination 회귀를 좁게 확인할 때:
+
+```bash
+npx vitest run \
+  src/lib/stocks/search-master.test.ts \
+  src/data/sectors/taxonomy.test.ts \
+  src/components/home/search-hero-card.test.tsx \
+  src/components/report/source-list-card.test.tsx \
+  src/server/research/entity-guard.test.ts \
+  src/server/research/detail-entry-guard.test.ts
+```
+
 ---
 
 ## 6. VS Code 개발 환경 권장 설정

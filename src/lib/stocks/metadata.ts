@@ -328,6 +328,12 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "market": "KOSDAQ",
     "sector": "바이오"
   },
+  "389470": {
+    "symbol": "389470",
+    "name": "인벤티지랩",
+    "market": "KOSDAQ",
+    "sector": "바이오"
+  },
   "277810": {
     "symbol": "277810",
     "name": "레인보우로보틱스",
@@ -343,6 +349,12 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
   "348340": {
     "symbol": "348340",
     "name": "뉴로메카",
+    "market": "KOSDAQ",
+    "sector": "로봇"
+  },
+  "317830": {
+    "symbol": "317830",
+    "name": "에스피시스템스",
     "market": "KOSDAQ",
     "sector": "로봇"
   },
@@ -645,6 +657,18 @@ export const STOCK_UNIVERSE: Record<string, StockMetadata> = {
     "name": "LG유플러스",
     "market": "KOSPI",
     "sector": "통신"
+  },
+  "010170": {
+    "symbol": "010170",
+    "name": "대한광통신",
+    "market": "KOSDAQ",
+    "sector": "광통신"
+  },
+  "046970": {
+    "symbol": "046970",
+    "name": "우리로",
+    "market": "KOSDAQ",
+    "sector": "광통신"
   },
   "004020": {
     "symbol": "004020",

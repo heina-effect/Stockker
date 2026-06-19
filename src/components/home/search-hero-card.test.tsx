@@ -67,4 +67,25 @@ describe("SearchHeroCard Regression Test", () => {
     expect(storageState.watchlist).toContain("000660");
     vi.unstubAllGlobals();
   });
+
+  it("does not navigate or save recent search when there are no results", async () => {
+    const { LocalStorageAdapter } = await import("@/lib/user-storage/local-adapter");
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      json: async () => ({
+        ok: true,
+        results: [],
+      }),
+    })));
+
+    render(<SearchHeroCard />);
+    const input = screen.getByPlaceholderText("삼성전자 또는 005930");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "ZZZNOPE" } });
+    await screen.findByText("검색 결과가 없습니다.");
+
+    fireEvent.submit(input.closest("form")!);
+
+    expect(LocalStorageAdapter.addRecentSearch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });

@@ -32,7 +32,7 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     name: "바이오·제약",
     aliases: ["바이오", "제약", "신약", "CMO", "헬스케어"],
     description: "신약 개발, 바이오 시밀러, 위탁생산(CMO) 및 의료기기 관련 섹터",
-    memberSymbols: ["068270", "196170", "028300", "397030"],
+    memberSymbols: ["068270", "196170", "028300", "397030", "389470"],
     representativeSymbols: ["068270", "196170"],
     iconKey: "flask"
   },
@@ -95,8 +95,8 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     name: "차세대 바이오·비만",
     aliases: ["비만치료제", "GLP-1", "플랫폼바이오", "ADC"],
     description: "글로벌 메가 트렌드인 비만 치료제 및 약물 전달 플랫폼 기술 중심의 고성장 바이오",
-    memberSymbols: ["196170", "000100", "128940", "087010"],
-    representativeSymbols: ["196170", "000100"],
+    memberSymbols: ["196170", "000100", "128940", "087010", "389470"],
+    representativeSymbols: ["196170", "087010"],
     iconKey: "dna"
   },
   "sec-robotics": {
@@ -104,7 +104,7 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     name: "로봇·자동화",
     aliases: ["협동로봇", "휴머노이드", "스마트팩토리", "AGV"],
     description: "인구 구조 변화와 AI 결합을 통한 산업 및 서비스 로봇 시장 확대 섹터",
-    memberSymbols: ["277810", "454910", "348340"],
+    memberSymbols: ["277810", "454910", "348340", "317830"],
     representativeSymbols: ["277810", "454910"],
     iconKey: "bot"
   },
@@ -250,6 +250,15 @@ export const SECTOR_UNIVERSE: Record<string, SectorTheme> = {
     description: "안정적인 현금 흐름과 높은 배당 수익률을 제공하는 대표적 방어 섹터",
     memberSymbols: ["017670", "030200", "032640"],
     representativeSymbols: ["017670", "030200"],
+    iconKey: "signal"
+  },
+  "sec-optical-equipment": {
+    sectorId: "sec-optical-equipment",
+    name: "광통신·통신장비",
+    aliases: ["광통신", "통신장비", "광케이블", "5G장비", "네트워크장비"],
+    description: "광섬유·광케이블과 통신 인프라 장비 수요에 민감한 네트워크 장비 섹터",
+    memberSymbols: ["010170", "046970"],
+    representativeSymbols: ["010170", "046970"],
     iconKey: "signal"
   },
   "sec-steel": {

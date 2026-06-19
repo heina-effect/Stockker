@@ -72,15 +72,16 @@ export function SourceListCard({ symbol }: { symbol: string }) {
     setLoading(true);
     setError(false);
 
-    fetch(`/api/stocks/${symbol}/issues`)
+    fetch(`/api/stocks/${symbol}/sources?page=1&limit=${PAGE_SIZE}`)
       .then(r => { if (!r.ok) throw new Error("API error"); return r.json(); })
       .then(d => {
         if (!mounted) return;
         if (d.ok && d.sources) {
           const sorted = sortByDate(d.sources);
-          setSources(sorted.slice(0, PAGE_SIZE));
-          setSourceCount(sorted.length);
-          setHasMore(sorted.length > PAGE_SIZE);
+          setSources(sorted);
+          setSourceCount(d.total ?? sorted.length);
+          setHasMore(d.hasMore ?? false);
+          setPage(1);
         } else {
           setError(true);
         }
