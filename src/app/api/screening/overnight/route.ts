@@ -25,6 +25,51 @@ function calculateAvgVolume(candles: any[], period: number = 20): number {
   return sum / period;
 }
 
+// 헬퍼: EGW00201(초당 거래건수 초과) 등 rate limit 에러 감지
+function isRateLimitError(msg: string): boolean {
+  const m = String(msg).toLowerCase();
+  return m.includes("egw00201") || m.includes("429") || m.includes("건수") || m.includes("초과") || m.includes("limit");
+}
+
+// 헬퍼: rate limit 시 backoff 후 1회 재시도하는 공통 래퍼.
+// 지수/순위(루프 이전)와 종목 루프 호출 모두에 적용해 cold-start 첫 호출을 자동 복구한다.
+// (전역 큐 + 재시도 이중 방어. rate limit이 아닌 에러는 재시도 없이 즉시 전파)
+async function withRateLimitRetry<T>(fn: () => Promise<T>, retries = 1, backoffMs = 1500): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e as Error)?.message || e);
+      if (attempt < retries && isRateLimitError(msg)) {
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+// 헬퍼: 디버그 응답에 들어가는 에러 문자열에서 자격증명류 토큰을 마스킹한다.
+// 응답 본문에는 stack을 절대 넣지 않으며, message류만 정제해 노출한다.
+function sanitizeError(msg: string | undefined | null): string {
+  if (!msg) return "";
+  let out = String(msg);
+  const patterns: RegExp[] = [
+    /(appkey["':=\s]+)[^\s"',}]+/gi,
+    /(appsecret["':=\s]+)[^\s"',}]+/gi,
+    /(secret["':=\s]+)[^\s"',}]+/gi,
+    /(authorization["':=\s]+)[^\s"',}]+/gi,
+    /(bearer\s+)[^\s"',}]+/gi,
+  ];
+  for (const re of patterns) {
+    out = out.replace(re, "$1***");
+  }
+  return out;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const isDebug = searchParams.get("debug") === "true";
@@ -39,7 +84,7 @@ export async function GET(req: Request) {
     let kosdaqClose = 0;
     
     try {
-      const kosdaqIndexDaily = await getDomesticIndexDaily("1001");
+      const kosdaqIndexDaily = await withRateLimitRetry(() => getDomesticIndexDaily("1001"));
       if (kosdaqIndexDaily && kosdaqIndexDaily.length >= 120) {
         kosdaqClose = Number(kosdaqIndexDaily[0].bstp_nmix_prpr || 0);
         kosdaqMAState = {
@@ -60,14 +105,14 @@ export async function GET(req: Request) {
         reduceWeight = false;
       }
     } catch (err: any) {
-      console.warn("[Overnight API] KOSDAQ index fetch failed:", err);
+      // stack은 서버 로그에만 남기고 응답 본문에는 절대 넣지 않는다.
+      console.error("[Overnight API] KOSDAQ index fetch failed:", err?.stack || err);
       if (isDebug) {
         return NextResponse.json({
           ok: false,
           error: "KOSDAQ index fetch failed",
           diagnostics: {
-            message: err.message || String(err),
-            stack: err.stack
+            message: sanitizeError(err?.message || String(err)),
           }
         }, { status: 500 });
       }
@@ -86,10 +131,10 @@ export async function GET(req: Request) {
     // [실제 KIS API 연동 분석 수행] 거래량순 조회로 후보군 풀 확보 (순차 호출로 큐 동시 점유 방지)
     volumeRank = [];
     try {
-      // 평균거래량 순위 우선 조회
-      const volRank = await getDomesticVolumeRank("0");
+      // 평균거래량 순위 우선 조회 (cold-start rate limit 시 1회 자동 재시도)
+      const volRank = await withRateLimitRetry(() => getDomesticVolumeRank("0"));
       // 거래대금 순위 추가 조회 (큐가 직렬화하므로 순차로 rate limit 안전)
-      const amtRank = await getDomesticVolumeRank("3");
+      const amtRank = await withRateLimitRetry(() => getDomesticVolumeRank("3"));
 
       // 병합 및 중복 제거
       const combined = [...volRank];
@@ -197,63 +242,35 @@ export async function GET(req: Request) {
       let dailyCandles: any[] = [];
       let weeklyCandles: any[] = [];
 
-      // EGW00201(초당 거래건수 초과) 감지 헬퍼
-      const isRateLimitError = (msg: string) =>
-        msg.includes("egw00201") || msg.includes("429") || msg.includes("건수") || msg.includes("초과") || msg.includes("limit");
-
       try {
-        // KisRequestQueue를 통한 callKisApi 호출을 사용하여 수동 setTimeout 없이 전역 rate limit 자동 방어
-        detail = await getDomesticStockDetail(symbol);
-        dailyCandles = await getDomesticStockDaily(symbol);
-        weeklyCandles = await getDomesticStockWeekly(symbol);
+        // withRateLimitRetry로 EGW00201 시 1.5s 백오프 후 1회 자동 재시도 (전역 큐 + 재시도 이중 방어)
+        detail = await withRateLimitRetry(() => getDomesticStockDetail(symbol));
+        dailyCandles = await withRateLimitRetry(() => getDomesticStockDaily(symbol));
+        weeklyCandles = await withRateLimitRetry(() => getDomesticStockWeekly(symbol));
         analyzedSymbols.add(symbol); // 성공적 분석 완료 기록
       } catch (e: any) {
-        const errMsg = String(e.message || e).toLowerCase();
-        if (!firstStockErrorMsg) {
-          firstStockErrorMsg = e.message || String(e);
-        }
+        const errMsg = String(e?.message || e);
+        if (!firstStockErrorMsg) firstStockErrorMsg = errMsg;
 
         if (isRateLimitError(errMsg)) {
-          // EGW00201: 1.5초 백오프 후 1회 재시도
-          console.warn(`[Overnight API] Rate Limit at ${name} (${symbol}). Backing off 1.5s and retrying once...`);
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          try {
-            detail = await getDomesticStockDetail(symbol);
-            dailyCandles = await getDomesticStockDaily(symbol);
-            weeklyCandles = await getDomesticStockWeekly(symbol);
-            analyzedSymbols.add(symbol);
-            firstStockErrorMsg = ""; // 재시도 성공 시 에러 메시지 초기화
-          } catch (retryErr: any) {
-            const retryMsg = String(retryErr.message || retryErr).toLowerCase();
-            firstStockErrorMsg = retryErr.message || String(retryErr);
-            if (isRateLimitError(retryMsg)) {
-              console.warn(`[Overnight API] Retry also hit Rate Limit at ${name} (${symbol}). Stopping loop.`);
-              break; // 재시도도 rate limit이면 루프 종료
-            }
-            // 재시도에서 다른 에러 발생 시 해당 종목만 제외하고 계속
-            console.warn(`[Overnight API] Retry failed for ${name} (${symbol}):`, retryErr.message || retryErr);
-            excludeBucket.push({ symbol, name, price, changeRate, classification: "exclude", reasons: ["시세 재조회 실패"] });
-            continue;
-          }
-        } else {
-          console.warn(`[Overnight API] Failed to fetch historical data for ${name} (${symbol}):`, e.message || e);
-          if (isDebug) {
-            throw e; // 일반적인 치명적 에러일 경우에만 디버그 에러 전파
-          }
-          reasons.push("과거 시세 데이터 조회 실패");
-          excludeBucket.push({
-            symbol,
-            name,
-            price,
-            changeRate,
-            classification: "exclude",
-            reasons: ["KIS API 시세 데이터 조회 지연 또는 실패"],
-          });
-          continue;
+          // 재시도까지 소진한 rate limit → 이후 종목도 막힐 가능성이 크므로 루프 종료(부분 결과 보존)
+          console.warn(`[Overnight API] Rate limit persists at ${name} (${symbol}) after retry. Stopping loop.`);
+          break;
         }
+
+        console.warn(`[Overnight API] Failed to fetch data for ${name} (${symbol}):`, errMsg);
+        if (isDebug) throw e; // 일반적인 치명적 에러는 디버그 모드에서 전파
+        excludeBucket.push({
+          symbol,
+          name,
+          price,
+          changeRate,
+          classification: "exclude",
+          reasons: ["KIS API 시세 데이터 조회 지연 또는 실패"],
+        });
+        continue;
       }
 
-      let isVolumeTnrtSafe = true;
       let detailVolTnrt = 0;
 
       // 1-1. 위험종목 필터 기준 확정 및 2차 회전율 판정
@@ -262,7 +279,6 @@ export async function GET(req: Request) {
         if (detailVolTnrt < 5.0) {
           reasons.push(`회전율 기준 미달 (${detailVolTnrt.toFixed(2)}%, 기준 5.0% 이상)`);
           isExcluded = true;
-          isVolumeTnrtSafe = false;
         }
 
         // mrkt_warn_cls_code: "00"없음 / "01"투자주의 / "02"투자경고 / "03"투자위험
@@ -299,7 +315,6 @@ export async function GET(req: Request) {
       } else {
         reasons.push("현재가 상세 데이터 없음 (회전율 및 위험 필터 검사 불가)");
         isExcluded = true;
-        isVolumeTnrtSafe = false;
       }
 
       if (dailyCandles.length < 120 || weeklyCandles.length < 120) {
@@ -505,7 +520,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // 분석하지 못한 나머지 targetStocks 종목들 및 30위 밖의 순수 주식들은 모두 후발주 제외 처리
+    // 거래대금 상위 12종목 외(미분석) 순수 주식들은 제외 버킷으로 분류
     const unanalyzedStocks = pureStocks.filter(stock => {
       const symbol = stock.mksc_shrn_iscd || stock.stck_shrn_iscd;
       return !analyzedSymbols.has(symbol) && !excludeBucket.some(eb => eb.symbol === symbol);
@@ -518,7 +533,7 @@ export async function GET(req: Request) {
         price: Number(stock.stck_prpr || 0),
         changeRate: Number(stock.prdy_ctrt || 0),
         classification: "exclude",
-        reasons: ["후발주 / 거래대금 밀림으로 인한 스크리닝 제외"],
+        reasons: ["거래대금 상위 12종목 외 미분석"],
       });
     });
 
@@ -534,7 +549,7 @@ export async function GET(req: Request) {
             volumeRankLength: volumeRank.length,
             pureStocksLength: pureStocks.length,
             primaryCandidatesLength: primaryCandidates.length,
-            firstStockError: firstStockErrorMsg || "No stock fetch attempted"
+            firstStockError: sanitizeError(firstStockErrorMsg) || "No stock fetch attempted"
           }
         });
       }
@@ -558,15 +573,15 @@ export async function GET(req: Request) {
     });
 
   } catch (err: any) {
-    console.error("[Overnight API] Critical error:", err);
+    // stack은 서버 로그에만 남기고 응답 본문에는 절대 넣지 않는다.
+    console.error("[Overnight API] Critical error:", err?.stack || err);
     if (isDebug) {
       return NextResponse.json({
         ok: false,
-        error: err.message || String(err),
+        error: sanitizeError(err?.message || String(err)),
         diagnostics: {
-          stack: err.stack,
           volumeRankLength: typeof volumeRank !== "undefined" ? volumeRank.length : undefined,
-          firstStockError: typeof firstStockErrorMsg !== "undefined" ? firstStockErrorMsg : undefined
+          firstStockError: sanitizeError(firstStockErrorMsg)
         }
       }, { status: 500 });
     }
