@@ -50,3 +50,8 @@ fetch_dart.js
 parse_xml.js
 parse_xml.py
 overnight_prod_key_debug*.json
+overnight_debug_res*.json
+overnight_normal_res*.json
+
+# supabase local
+supabase/.temp/
