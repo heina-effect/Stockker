@@ -101,7 +101,7 @@ async function fetchPaginatedCandles(opts: {
         break;
       }
 
-      const rows = (data.output2 as unknown as any[]) || [];
+      const rows = ((data.output2 || data.output) as unknown as any[]) || [];
       if (rows.length === 0) break;
 
       let oldest: string | null = null;
@@ -282,8 +282,8 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
   // 이미 충분히 과거이면 해당 창의 데이터는 불변이므로 30일 장기 캐시.
   const isNearCurrent = futureAnchor > now;
   const cacheKey = isNearCurrent
-    ? `daily_around_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}`
-    : `daily_around_${symbol}_${anchorDateYYYYMMDD}`;
+    ? `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}`
+    : `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}`;
   const cacheTtlMs = isNearCurrent ? ONE_DAY_CACHE_MS : 30 * 24 * 60 * 60 * 1000;
 
   return fetchPaginatedCandles({
@@ -306,6 +306,39 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
       }).toString()}`,
       { method: "GET", trId: "FHKST03010100", useQuoteCreds: true }
     ),
+  });
+}
+
+/**
+ * 국내 주식 특정 일자 단일 원주가(수정주가 미반영) 조회.
+ * KIS 버그(기간 조회 시 강제 수정주가 반환) 우회를 위해,
+ * 단일 날짜(date1 == date2)로 조회하여 HTS 기준 실거래가를 가져온다.
+ */
+export async function getDomesticStockDailyRawPrice(symbol: string, dateYYYYMMDD: string): Promise<any> {
+  const cacheKey = `raw_price_${symbol}_${dateYYYYMMDD}`;
+  return withDedupeAndCache(cacheKey, 30 * 24 * 60 * 60 * 1000, async () => {
+    const res = await callKisApi<KisRawResponse>(
+      `/uapi/domestic-stock/v1/quotations/inquire-daily-price?${new URLSearchParams({
+        FID_COND_MRKT_DIV_CODE: "J",
+        FID_INPUT_ISCD: symbol,
+        FID_INPUT_DATE_1: dateYYYYMMDD,
+        FID_INPUT_DATE_2: dateYYYYMMDD,
+        FID_PERIOD_DIV_CODE: "D",
+        FID_ORG_ADJ_PRC: "1", // 수정주가 미반영
+      }).toString()}`,
+      { method: "GET", trId: "FHKST01010400", useQuoteCreds: true }
+    );
+    
+    if (res.rt_cd !== "0") {
+      throw new Error(`KIS API Error: ${res.msg1}`);
+    }
+    
+    const rows = ((res.output2 || res.output) as unknown as any[]) || [];
+    const target = rows.find(r => r.stck_bsop_date === dateYYYYMMDD);
+    if (!target) {
+      throw new Error(`Raw price not found for ${symbol} on ${dateYYYYMMDD}`);
+    }
+    return target;
   });
 }
 

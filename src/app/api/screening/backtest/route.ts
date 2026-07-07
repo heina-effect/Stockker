@@ -1,9 +1,11 @@
+// Force recompile
 import { NextRequest, NextResponse } from "next/server";
 
-import { getDomesticStockDailyAround } from "@/server/kis/rest-client";
+import { getDomesticStockDailyAround, getDomesticStockDailyRawPrice } from "@/server/kis/rest-client";
 import { evictCacheByPattern } from "@/server/kis/cache";
-import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact } from "@/server/screening/storage";
+import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact, type ResolvedItem, type PendingItem } from "@/server/screening/storage";
 import { findNextTradingDay, iterateDateRange, classifyTrend, type TrendLabel } from "@/server/screening/backtest-utils";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -198,20 +200,33 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // dailyCandles에서 entryDate(스크리닝 당일)의 종가를 찾아 기준 가격으로 삼는다.
-        // 이는 배당락, 액면분할 등으로 과거 가격이 소급 수정되었을 때,
-        // entryClose와 nextOpen/nextClose의 수정주가 기준을 일치시키기 위함이다.
-        const entryCandle = dailyCandles.find((c: any) => String(c.stck_bsop_date) === date);
-        const basePrice = entryCandle ? Number(entryCandle.stck_clpr || 0) : item.entryClose;
-        const entryCloseToUse = basePrice > 0 ? basePrice : item.entryClose;
+        // dailyCandles에서 수정주가를 가져오지만, 실제 수익률 산출은 "원주가(실거래가)" 기준이어야 하므로,
+        // entryDate(진입일)와 nextTrading.nextDate(청산일) 각각에 대해 1일 단독 KIS API를 호출하여 원주가를 확보한다.
+        let rawEntryClose = item.entryClose;
+        let rawNextOpen = nextTrading.nextOpen;
+        let rawNextClose = nextTrading.nextClose;
+        let rawNextLow = nextTrading.nextLow;
 
-        const openReturn = entryCloseToUse > 0 ? ((nextTrading.nextOpen - entryCloseToUse) / entryCloseToUse) * 100 : 0;
+        try {
+          const entryRawCandle = await withRateLimitRetry(() => getDomesticStockDailyRawPrice(item.symbol, date));
+          if (entryRawCandle) rawEntryClose = Number(entryRawCandle.stck_clpr || 0);
 
-        // nextTrading은 findNextTradingDay가 같은 일봉 배열에서 추출한 nextDate 당일의 OHLCV.
-        // anchorDate + 14일 캐시는 anchor > 오늘이면 일 단위로 갱신되므로 stale 없음.
-        const nextClose = nextTrading.nextClose > 0 ? nextTrading.nextClose : null;
-        const closeReturn = nextClose !== null && entryCloseToUse > 0
-          ? ((nextClose - entryCloseToUse) / entryCloseToUse) * 100
+          const nextRawCandle = await withRateLimitRetry(() => getDomesticStockDailyRawPrice(item.symbol, nextTrading.nextDate));
+          if (nextRawCandle) {
+            rawNextOpen = Number(nextRawCandle.stck_oprc || 0);
+            rawNextClose = Number(nextRawCandle.stck_clpr || 0);
+            rawNextLow = Number(nextRawCandle.stck_lwpr || 0);
+          }
+        } catch (e: any) {
+          console.warn(`[Backtest API] Failed to fetch raw price for ${item.name}(${item.symbol}):`, e?.message || e);
+        }
+
+        const entryCloseToUse = rawEntryClose > 0 ? rawEntryClose : item.entryClose;
+        const openReturn = entryCloseToUse > 0 ? ((rawNextOpen - entryCloseToUse) / entryCloseToUse) * 100 : 0;
+
+        const nextCloseToUse = rawNextClose > 0 ? rawNextClose : null;
+        const closeReturn = nextCloseToUse !== null && entryCloseToUse > 0
+          ? ((nextCloseToUse - entryCloseToUse) / entryCloseToUse) * 100
           : null;
 
         const resolved: ResolvedItem = {
@@ -219,13 +234,13 @@ export async function GET(req: NextRequest) {
           name: item.name,
           classification: item.classification,
           entryClose: entryCloseToUse,
-          nextOpen: nextTrading.nextOpen,
-          nextClose,
+          nextOpen: rawNextOpen,
+          nextClose: nextCloseToUse,
           openReturn: Number(openReturn.toFixed(2)),
           closeReturn: closeReturn !== null ? Number(closeReturn.toFixed(2)) : null,
           trend: closeReturn !== null ? classifyTrend(openReturn, closeReturn) : "pending",
           success: openReturn > 0,
-          hardStopHit: entryCloseToUse > 0 && nextTrading.nextLow <= entryCloseToUse * 0.95,
+          hardStopHit: entryCloseToUse > 0 && rawNextLow <= entryCloseToUse * 0.95,
           ...(_debugInfo ? { _debug: _debugInfo } : {}),
         } as ResolvedItem;
         resolvedForDate.push(resolved);

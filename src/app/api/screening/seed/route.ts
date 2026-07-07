@@ -61,6 +61,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const isDebug = new URL(request.url).searchParams.get("debug") === "true";
+  const debugLog: any[] = [];
+
   const master = getSearchMaster();
   const skipped: { date: string; name: string; reason: string }[] = [];
   const byDate = new Map<string, { meta: { kosdaqValue?: number; reduceWeight?: boolean }; items: ScreeningResultItem[] }>();
@@ -95,7 +98,27 @@ export async function POST(request: NextRequest) {
           entryClose = manualEntryClose;
         } else {
           const dailyCandles = await getDomesticStockDailyAround(masterItem.symbol, date);
+          const first10 = (dailyCandles || []).slice(0, 10).map((c: any) => ({
+            date: c.stck_bsop_date,
+            open: c.stck_oprc,
+            close: c.stck_clpr,
+            high: c.stck_hgpr,
+            low: c.stck_lwpr,
+          }));
           const candle = (dailyCandles || []).find((c: any) => String(c.stck_bsop_date) === date);
+          console.log("[RAW DEBUG] symbol:", masterItem.symbol, "targetDate:", date);
+          console.log("[RAW DEBUG] candles count:", dailyCandles?.length);
+          console.log("[RAW DEBUG] first 10 candles:", JSON.stringify(first10));
+          console.log("[RAW DEBUG] matched candle:", JSON.stringify(candle));
+          if (isDebug) {
+            debugLog.push({
+              symbol: masterItem.symbol,
+              targetDate: date,
+              candlesCount: dailyCandles?.length ?? 0,
+              first10,
+              matchedCandle: candle ?? null,
+            });
+          }
           if (!candle) {
             skipped.push({ date, name: symbolName, reason: "해당일 일봉 데이터 없음 (조회 범위 밖이거나 휴장일)" });
             continue;
@@ -128,5 +151,6 @@ export async function POST(request: NextRequest) {
     savedDates,
     savedCount: [...byDate.values()].reduce((acc, b) => acc + b.items.length, 0),
     skipped,
+    ...(isDebug ? { _debug: debugLog } : {}),
   });
 }
