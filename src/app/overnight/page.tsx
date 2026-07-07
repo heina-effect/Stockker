@@ -3,15 +3,16 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardHeader } from "@/components/home/dashboard-header";
-import { 
-  ShieldAlert, 
-  TrendingUp, 
-  Activity, 
-  CheckCircle2, 
-  XCircle, 
-  Flame, 
+import {
+  ShieldAlert,
+  TrendingUp,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Flame,
   Info,
-  Calendar
+  Calendar,
+  Clock
 } from "lucide-react";
 import Link from "next/link";
 
@@ -41,6 +42,13 @@ interface ScreeningStock {
   };
 }
 
+interface ExcludedNoticeItem {
+  symbol: string;
+  name: string;
+  reason: string;
+  entryClose?: number;
+}
+
 interface OvernightResponse {
   ok: boolean;
   kosdaqState: KosdaqState;
@@ -49,6 +57,7 @@ interface OvernightResponse {
     aggressive: ScreeningStock[];
     exclude: ScreeningStock[];
   };
+  excludedNotice?: ExcludedNoticeItem[];
   generatedAt: string;
   disclaimer: string;
 }
@@ -119,7 +128,7 @@ function OvernightScreeningContent() {
     );
   }
 
-  const { kosdaqState, results, generatedAt, disclaimer } = data;
+  const { kosdaqState, results, excludedNotice, generatedAt, disclaimer } = data;
   const currentStocks = results[activeTab];
 
   const dateStr = generatedAt 
@@ -235,7 +244,7 @@ function OvernightScreeningContent() {
         </div>
 
         {/* 종목 리스트 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {currentStocks.length === 0 ? (
             <div className="col-span-full py-16 bg-white dark:bg-zinc-900 rounded-[24px] border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
               <Activity className="w-10 h-10 mb-2 opacity-50" />
@@ -352,6 +361,64 @@ function OvernightScreeningContent() {
             ))
           )}
         </div>
+
+        {/* 분석 보류 — 제외 탭 안 최하단, excludedNotice가 있을 때만 */}
+        {activeTab === "exclude" && excludedNotice && excludedNotice.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center gap-2 my-6">
+              <div className="flex-1 border-t border-dashed border-slate-200 dark:border-zinc-800" />
+              <div className="flex items-center gap-1.5 text-slate-400 dark:text-zinc-500 flex-shrink-0">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-xs font-semibold">분석 보류 (데이터 부족)</span>
+                <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">
+                  ⏳ {excludedNotice.length}건
+                </span>
+              </div>
+              <div className="flex-1 border-t border-dashed border-slate-200 dark:border-zinc-800" />
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-4 text-center">
+              정배열 판정에 필요한 데이터가 부족해 분석하지 못한 종목입니다. 직접 확인 후 참고하세요.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {excludedNotice.map((item) => (
+                <div
+                  key={item.symbol}
+                  className="flex items-start justify-between gap-3 px-4 py-3 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/30 dark:bg-zinc-900/20"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Link
+                        href={`/stocks/${item.symbol}`}
+                        className="font-semibold text-sm text-slate-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline truncate"
+                      >
+                        {item.name}
+                      </Link>
+                      <span className="text-[10px] font-mono text-slate-400 dark:text-zinc-500 bg-slate-100 dark:bg-zinc-800 px-1 py-0.5 rounded flex-shrink-0">
+                        {item.symbol}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-relaxed">
+                      {item.reason}
+                    </p>
+                  </div>
+                  {item.entryClose != null && item.entryClose > 0 && (
+                    <div className="flex-shrink-0 text-right">
+                      <div className="text-[9px] text-slate-400 dark:text-zinc-500">당일 종가</div>
+                      <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                        {item.entryClose.toLocaleString()}원
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 분석 보류가 없는 제외 탭에서 하단 여백 */}
+        {!(activeTab === "exclude" && excludedNotice && excludedNotice.length > 0) && (
+          <div className="mb-12" />
+        )}
 
         {/* Disclaimer */}
         <div className="bg-slate-100/50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-4 rounded-xl text-center">

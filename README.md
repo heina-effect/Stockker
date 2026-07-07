@@ -11,7 +11,8 @@ Stockker는 검색 중심의 한국 주식 리서치 도구입니다. 실시간 
 - **Stale-while-revalidate 스냅샷**: DB 스냅샷을 먼저 반환하고 백그라운드에서 갱신 (빠른 응답 + API 쿼터 절약)
 - **DB-first 검색 + 섹터 추론**: `stock_master`/`sector_master` 우선 조회, KIS 업종코드(`bstp_cls_code`)로 미등록 종목도 섹터 peer 탐색
 - **관심 종목 리서치 허브**: local-first 관심 종목의 현재가·등락률·섹터·AI 요약·이슈·감성·투자의견을 한 화면에 집계
-- **오버나이트 스크리닝**: 주봉·일봉 정배열, 거래량 회전율(`vol_tnrt ≥ 5%`), 윗꼬리 제한(≤3.5%), KIS 현재가 기반 위험종목(경고/정지/과열 등) 정밀 배제. KOSDAQ 거시필터는 지수 일자별시세를 페이지네이션해 120일 정배열을 판정
+- **오버나이트 스크리닝**: 주봉·일봉 정배열(120봉 페이지네이션), 거래량 회전율(`vol_tnrt ≥ 5%`), 윗꼬리 제한(≤3.5%), KIS 현재가 기반 위험종목 정밀 배제. KOSDAQ/KOSPI 거시필터 120일 정배열 병렬 판정. 스크리닝 결과 Redis 영속 저장
+- **백테스트**: 스크리닝 결과 대비 다음 거래일 시가 수익률 집계. 소급 시드 입력(/api/screening/seed) 지원
 - **KIS 시세/주문 격리**: 시세 조회는 실전 도메인·실전 키(`openapi.koreainvestment.com:9443`), 주문은 모의투자로 분리
 - **단일 KIS 요청 큐**: `globalThis` 싱글톤 큐(`350ms` 간격)로 모든 KIS 호출을 직렬화하고, 한도 초과 시 부분 성공 데이터만 서비스하는 Graceful Break 적용
 - **평가 레이어 + 추천 가드레일**: 환각·최신성·출처 충분성·면책 자동 검증, 지시적 매매 언어 차단, disclaimer 필수 노출
@@ -78,7 +79,7 @@ npm run test:evals        # AI 평가 테스트
 - [theme-behavior.md](docs/core/theme-behavior.md) — 테마 동작과 token contract
 - [recommendation-guardrails.md](docs/core/recommendation-guardrails.md) · [evaluation-policy.md](docs/core/evaluation-policy.md) — 추천/평가 정책
 - [known-issues.md](docs/release/known-issues.md) · [ops-playbook.md](docs/ops/ops-playbook.md) — 알려진 이슈/운영
-- Phase 리포트: [phase-37-report.md](docs/phases/phase-37-report.md) (최신) — 이전 리포트는 `docs/phases/` 참고
+- Phase 리포트: [phase-39-report.md](docs/phases/phase-39-report.md) (최신) — 이전 리포트는 `docs/phases/` 참고
 
 ---
 
@@ -95,7 +96,9 @@ npm run test:evals        # AI 평가 테스트
 | 32–33 | Beta RC, 관심 종목 워크플로우, 홈 stale-first, 종목 상세 responsive |
 | 34–35 | 관심 종목 리서치 허브 제품화, KIS 정보성 API 보강, 종목 매핑 버그 해결 |
 | 36 | 오버나이트 스크리닝 제품화, 회전율 유동성 기준, KIS 위험종목 차단, 요청 큐 + Graceful Break |
-| **37 (현재)** | **KIS 시세/주문 이원화, 거시필터 KOSDAQ 지수 페이지네이션(120봉) + 하루 캐시, KIS 요청 큐 단일화(350ms)** |
+| 37 | KIS 시세/주문 이원화, 거시필터 KOSDAQ 지수 페이지네이션(120봉) + 하루 캐시, KIS 요청 큐 단일화(350ms), 자격증명 노출 차단 보안 보강 |
+| 38 | 종목 일봉/주봉 페이지네이션(120봉 정배열 복구), 분석 대상 8종목 cap, 회전율 우선 선정, 비정상/동전주 폐기 필터, excludedNotice 분리, 백테스트/시드 API + Redis 영속 저장, 오버나이트 UI |
+| **39 (현재)** | **ETF 필터 TIME/액티브 추가, 스크리닝 저장 누락(외부 catch 경로) 수정, 백테스트 closeReturn 항상 null 버그 수정** |
 
 ---
 
