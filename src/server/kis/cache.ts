@@ -8,6 +8,19 @@ interface CacheEntry {
 }
 const shortCache = new Map<string, CacheEntry>();
 
+/** 패턴에 매칭되는 캐시 키를 모두 삭제한다 (예: 특정 symbol의 DailyAround 캐시 무효화). */
+export function evictCacheByPattern(pattern: RegExp): number {
+  let count = 0;
+  for (const key of shortCache.keys()) {
+    if (pattern.test(key)) {
+      shortCache.delete(key);
+      inFlightRequests.delete(key);
+      count++;
+    }
+  }
+  return count;
+}
+
 /**
  * Wraps a fetch/API call with both Promise Deduplication (Single-flight)
  * and a short time-to-live (TTL) cache.

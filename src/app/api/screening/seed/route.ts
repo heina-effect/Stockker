@@ -8,10 +8,15 @@ import { upsertScreeningItems, type ScreeningClassification, type ScreeningResul
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+interface SeedSymbol {
+  name: string;
+  entryClose?: number; // HTS 실값 직접 지정 시 KIS API fetch 생략 (수정주가 보정 불일치 우회)
+}
+
 interface SeedEntry {
   date: string; // YYYYMMDD
   classification: ScreeningClassification;
-  symbols: string[]; // 종목명 (search-master로 코드 변환)
+  symbols: (string | SeedSymbol)[]; // string: 기존 동작 (KIS fetch), {name, entryClose}: 직접 지정
   kosdaqValue?: number;
   reduceWeight?: boolean;
 }
@@ -74,21 +79,29 @@ export async function POST(request: NextRequest) {
     if (entry.kosdaqValue !== undefined) bucket.meta.kosdaqValue = entry.kosdaqValue;
     if (entry.reduceWeight !== undefined) bucket.meta.reduceWeight = entry.reduceWeight;
 
-    for (const name of symbols) {
-      const masterItem = master.find((s) => s.name === name);
+    for (const sym of symbols) {
+      const symbolName = typeof sym === "string" ? sym : sym.name;
+      const manualEntryClose = typeof sym === "object" ? sym.entryClose : undefined;
+
+      const masterItem = master.find((s) => s.name === symbolName);
       if (!masterItem) {
-        skipped.push({ date, name, reason: "search-master에서 종목명을 찾을 수 없음" });
+        skipped.push({ date, name: symbolName, reason: "search-master에서 종목명을 찾을 수 없음" });
         continue;
       }
 
       try {
-        const dailyCandles = await getDomesticStockDailyAround(masterItem.symbol, date);
-        const candle = (dailyCandles || []).find((c: any) => String(c.stck_bsop_date) === date);
-        if (!candle) {
-          skipped.push({ date, name, reason: "해당일 일봉 데이터 없음 (조회 범위 밖이거나 휴장일)" });
-          continue;
+        let entryClose: number;
+        if (manualEntryClose !== undefined && manualEntryClose > 0) {
+          entryClose = manualEntryClose;
+        } else {
+          const dailyCandles = await getDomesticStockDailyAround(masterItem.symbol, date);
+          const candle = (dailyCandles || []).find((c: any) => String(c.stck_bsop_date) === date);
+          if (!candle) {
+            skipped.push({ date, name: symbolName, reason: "해당일 일봉 데이터 없음 (조회 범위 밖이거나 휴장일)" });
+            continue;
+          }
+          entryClose = Number(candle.stck_clpr || 0);
         }
-        const entryClose = Number(candle.stck_clpr || 0);
 
         bucket.items.push({
           symbol: masterItem.symbol,
@@ -98,7 +111,7 @@ export async function POST(request: NextRequest) {
           reasons: ["과거 소급 시드 입력"],
         });
       } catch (e: any) {
-        skipped.push({ date, name, reason: sanitizeError(e?.message || String(e)) });
+        skipped.push({ date, name: symbolName, reason: sanitizeError(e?.message || String(e)) });
       }
     }
   }

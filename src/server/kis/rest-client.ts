@@ -271,15 +271,16 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
   const y = Number(anchorDateYYYYMMDD.slice(0, 4));
   const m = Number(anchorDateYYYYMMDD.slice(4, 6)) - 1;
   const d = Number(anchorDateYYYYMMDD.slice(6, 8));
-  // 다음 거래일(주말/공휴일 포함 최대 ~10일 휴장 가정) 확보를 위해 2주 뒤로 앵커 이동.
-  // 미래 날짜가 되어도 KIS는 실제 존재하는 최신 거래일까지만 반환하므로 안전하다.
-  const anchor = new Date(Date.UTC(y, m, d + 14));
-
-  // anchor가 오늘보다 미래이면, 내일 이후에도 새 거래일 봉이 추가될 수 있으므로
-  // 캐시키에 오늘 날짜를 포함해 일 단위로 갱신한다.
-  // anchor가 이미 과거이면 해당 창의 데이터는 불변이므로 장기 캐시(30일)로 API 절약.
+  // 다음 거래일(주말/공휴일 포함 최대 ~10일 휴장 가정) 확보를 위해 2주 뒤로 앵커를 잡되,
+  // KIS에 미래 날짜를 end_date로 넘기면 날짜 태깅이 잘못된 봉을 반환하는 버그가 있으므로
+  // anchor를 오늘 자정(KST)으로 cap한다.
   const now = new Date();
-  const isNearCurrent = anchor > now;
+  const futureAnchor = new Date(Date.UTC(y, m, d + 14));
+  const anchor = futureAnchor < now ? futureAnchor : now;
+
+  // anchorDate + 14가 오늘보다 미래이면(= 최근 날짜 조회) 일 단위 캐시 갱신.
+  // 이미 충분히 과거이면 해당 창의 데이터는 불변이므로 30일 장기 캐시.
+  const isNearCurrent = futureAnchor > now;
   const cacheKey = isNearCurrent
     ? `daily_around_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}`
     : `daily_around_${symbol}_${anchorDateYYYYMMDD}`;
@@ -301,7 +302,7 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
         FID_INPUT_DATE_1: date1,
         FID_INPUT_DATE_2: date2,
         FID_PERIOD_DIV_CODE: "D",
-        FID_ORG_ADJ_PRC: "0",
+        FID_ORG_ADJ_PRC: "1", // 비수정주가 — 실제 거래가(백테스트 entryClose/nextOpen 정확도용)
       }).toString()}`,
       { method: "GET", trId: "FHKST03010100", useQuoteCreds: true }
     ),

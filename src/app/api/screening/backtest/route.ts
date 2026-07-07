@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getDomesticStockDailyAround } from "@/server/kis/rest-client";
-import { getScreeningResult, formatKSTDateCompact } from "@/server/screening/storage";
+import { evictCacheByPattern } from "@/server/kis/cache";
+import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact } from "@/server/screening/storage";
 import { findNextTradingDay, iterateDateRange, classifyTrend, type TrendLabel } from "@/server/screening/backtest-utils";
 
 export const runtime = "nodejs";
@@ -115,9 +116,17 @@ function computeExcludeStats(items: ResolvedItem[]) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const isDebug = searchParams.get("debug") === "true";
+  const purgeDate = searchParams.get("purge"); // ?purge=YYYYMMDD → 해당 날짜 캐시+레코드 삭제 후 즉시 반환
   const singleDate = searchParams.get("date");
   const from = singleDate || searchParams.get("from");
   const to = singleDate || searchParams.get("to") || from;
+
+  // ?purge=20260703 — 오염된 캐시 + 저장된 레코드를 한번에 무효화
+  if (purgeDate) {
+    const evicted = evictCacheByPattern(new RegExp(`daily_around_.*_${purgeDate}`));
+    await deleteScreeningResult(purgeDate);
+    return NextResponse.json({ ok: true, purged: purgeDate, cacheEvicted: evicted });
+  }
 
   if (!from || !to) {
     return NextResponse.json(
@@ -153,13 +162,30 @@ export async function GET(req: NextRequest) {
         if (item.classification === "excludedNotice") continue;
 
         let nextTrading: { nextOpen: number; nextClose: number; nextLow: number; nextDate: string } | null = null;
+        let _rawCandlesForDebug: any[] = [];
+        let dailyCandles: any[] = [];
         try {
-          const dailyCandles = await fetchDailyAround(item.symbol, date);
+          dailyCandles = await fetchDailyAround(item.symbol, date);
+          _rawCandlesForDebug = dailyCandles;
           nextTrading = findNextTradingDay(dailyCandles, date);
         } catch (e: any) {
           console.warn(`[Backtest API] Failed to fetch daily for ${item.name}(${item.symbol}):`, e?.message || e);
           if (isDebug) throw e;
         }
+
+        const _debugInfo = isDebug ? (() => {
+          const entryIdx = _rawCandlesForDebug.findIndex((c: any) => String(c.stck_bsop_date) === date);
+          return {
+            totalCandles: _rawCandlesForDebug.length,
+            entryIdx,
+            recentDates: _rawCandlesForDebug.slice(0, 6).map((c: any) => c.stck_bsop_date),
+            surrounding: _rawCandlesForDebug.slice(Math.max(0, entryIdx - 1), entryIdx + 3).map((c: any) => ({
+              date: c.stck_bsop_date,
+              open: c.stck_oprc,
+              close: c.stck_clpr,
+            })),
+          };
+        })() : undefined;
 
         if (!nextTrading) {
           pending.push({
@@ -172,28 +198,36 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        const openReturn = item.entryClose > 0 ? ((nextTrading.nextOpen - item.entryClose) / item.entryClose) * 100 : 0;
+        // dailyCandles에서 entryDate(스크리닝 당일)의 종가를 찾아 기준 가격으로 삼는다.
+        // 이는 배당락, 액면분할 등으로 과거 가격이 소급 수정되었을 때,
+        // entryClose와 nextOpen/nextClose의 수정주가 기준을 일치시키기 위함이다.
+        const entryCandle = dailyCandles.find((c: any) => String(c.stck_bsop_date) === date);
+        const basePrice = entryCandle ? Number(entryCandle.stck_clpr || 0) : item.entryClose;
+        const entryCloseToUse = basePrice > 0 ? basePrice : item.entryClose;
+
+        const openReturn = entryCloseToUse > 0 ? ((nextTrading.nextOpen - entryCloseToUse) / entryCloseToUse) * 100 : 0;
 
         // nextTrading은 findNextTradingDay가 같은 일봉 배열에서 추출한 nextDate 당일의 OHLCV.
         // anchorDate + 14일 캐시는 anchor > 오늘이면 일 단위로 갱신되므로 stale 없음.
         const nextClose = nextTrading.nextClose > 0 ? nextTrading.nextClose : null;
-        const closeReturn = nextClose !== null && item.entryClose > 0
-          ? ((nextClose - item.entryClose) / item.entryClose) * 100
+        const closeReturn = nextClose !== null && entryCloseToUse > 0
+          ? ((nextClose - entryCloseToUse) / entryCloseToUse) * 100
           : null;
 
         const resolved: ResolvedItem = {
           symbol: item.symbol,
           name: item.name,
           classification: item.classification,
-          entryClose: item.entryClose,
+          entryClose: entryCloseToUse,
           nextOpen: nextTrading.nextOpen,
           nextClose,
           openReturn: Number(openReturn.toFixed(2)),
           closeReturn: closeReturn !== null ? Number(closeReturn.toFixed(2)) : null,
           trend: closeReturn !== null ? classifyTrend(openReturn, closeReturn) : "pending",
           success: openReturn > 0,
-          hardStopHit: item.entryClose > 0 && nextTrading.nextLow <= item.entryClose * 0.95,
-        };
+          hardStopHit: entryCloseToUse > 0 && nextTrading.nextLow <= entryCloseToUse * 0.95,
+          ...(_debugInfo ? { _debug: _debugInfo } : {}),
+        } as ResolvedItem;
         resolvedForDate.push(resolved);
         allResolved.push({ item: resolved });
       }

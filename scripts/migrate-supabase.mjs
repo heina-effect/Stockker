@@ -16,11 +16,12 @@ async function checkTables() {
   console.log("\n🔍 Checking existing tables...");
   const tables = [
     "news_sources", "source_embeddings", "issue_clusters", "embedding_centroids",
-    "stock_research_snapshots", "sector_research_snapshots"
+    "stock_research_snapshots", "sector_research_snapshots",
+    "overnight_screening_records", "overnight_screening_items"
   ];
   const results = {};
   for (const t of tables) {
-    const { error } = await client.from(t).select("id").limit(0);
+    const { error } = await client.from(t).select("*").limit(0);
     results[t] = error ? `❌ MISSING (${error.code})` : "✅ EXISTS";
     console.log(`  ${t}: ${results[t]}`);
   }
@@ -31,7 +32,7 @@ checkTables().then(results => {
   const missing = Object.entries(results).filter(([, v]) => v.includes("❌"));
   if (missing.length > 0) {
     console.log("\n⚠️  Missing tables:", missing.map(([k]) => k).join(", "));
-    console.log("\n📋 Please run the SQL in supabase/migrations/001_pgvector_schema.sql and 002_research_snapshots.sql");
+    console.log("\n📋 Please run the SQL in supabase/migrations/001_pgvector_schema.sql, 002_research_snapshots.sql, and 003_overnight_screening.sql");
     console.log("   → Supabase Dashboard > SQL Editor:");
     console.log("   → https://supabase.com/dashboard/project/unuzvliqvwzjmjgzlgwy/sql/new");
   } else {
