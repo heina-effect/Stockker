@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getDomesticStockDailyAround, getDomesticStockDailyRawPrice } from "@/server/kis/rest-client";
 import { evictCacheByPattern } from "@/server/kis/cache";
-import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact, type ResolvedItem, type PendingItem } from "@/server/screening/storage";
+import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact, updateScreeningItemBacktest } from "@/server/screening/storage";
 import { findNextTradingDay, iterateDateRange, classifyTrend, type TrendLabel } from "@/server/screening/backtest-utils";
 
 
@@ -163,6 +163,32 @@ export async function GET(req: NextRequest) {
         // excludedNotice(신규상장 등 구조적 분석 불가)는 백테스트 집계에서 제외
         if (item.classification === "excludedNotice") continue;
 
+        // 이미 확정값(다음 거래일 시가/종가/수익률)이 DB에 저장돼 있으면 재계산 없이 그대로 재사용
+        // → KIS 재조회를 생략하고 저장된 확정값을 우선한다.
+        if (
+          item.nextOpen != null && item.nextClose != null &&
+          item.openReturn != null && item.closeReturn != null
+        ) {
+          const reused: ResolvedItem = {
+            symbol: item.symbol,
+            name: item.name,
+            classification: item.classification,
+            entryClose: item.entryClose,
+            nextOpen: item.nextOpen,
+            nextClose: item.nextClose,
+            openReturn: item.openReturn,
+            closeReturn: item.closeReturn,
+            trend: (item.trend as TrendLabel) ?? classifyTrend(item.openReturn, item.closeReturn),
+            success: item.openReturn > 0,
+            // nextLow는 별도 컬럼으로 저장하지 않으므로 재사용 경로에선 하드스톱 재판정 불가.
+            // (표시용 플래그이며 승률/수익률 집계에는 사용되지 않음)
+            hardStopHit: false,
+          };
+          resolvedForDate.push(reused);
+          allResolved.push({ item: reused });
+          continue;
+        }
+
         let nextTrading: { nextOpen: number; nextClose: number; nextLow: number; nextDate: string } | null = null;
         let _rawCandlesForDebug: any[] = [];
         let dailyCandles: any[] = [];
@@ -245,6 +271,19 @@ export async function GET(req: NextRequest) {
         } as ResolvedItem;
         resolvedForDate.push(resolved);
         allResolved.push({ item: resolved });
+
+        // 다음 거래일 종가가 확정된 경우에만 DB에 확정값을 채운다.
+        // updateScreeningItemBacktest는 next_close가 비어있는(NULL) 행만 갱신하므로
+        // 이미 채워진 확정값은 덮어쓰지 않는다.
+        if (resolved.nextClose !== null && resolved.closeReturn !== null) {
+          await updateScreeningItemBacktest(date, item.symbol, {
+            nextOpen: resolved.nextOpen,
+            nextClose: resolved.nextClose,
+            openReturn: resolved.openReturn,
+            closeReturn: resolved.closeReturn,
+            trend: resolved.trend as string,
+          });
+        }
       }
 
       if (resolvedForDate.length > 0) {

@@ -424,12 +424,21 @@ export async function GET(req: Request) {
         reasons.push(`거래량 비율 미달 (20일 평균 대비 ${volumeRatio.toFixed(1)}%, 기준 200% 이상)`);
       }
 
-      // 1-5. 윗꼬리 제한: (고가 - 종가) / 고가 <= 3.5%
-      const high = Number(stock.stck_hgpr || price);
-      const tailRatio = high > 0 ? ((high - price) / high) * 100 : 0;
-      const isTailSafe = tailRatio <= 3.5;
+      // 1-5. 윗꼬리 제한: (당일 고가 - 당일 종가) / 당일 고가 <= 3.5%
+      //   ※ volume-rank API(stock)는 고가(stck_hgpr)를 반환하지 않으므로 당일 확정
+      //     일봉(dailyCandles[0]) 기준으로 계산한다. 분자/분모 모두 일봉으로 통일하며
+      //     실시간 현재가(price)는 tailRatio 계산에 사용하지 않는다.
+      const dailyHigh = Number(dailyCandles?.[0]?.stck_hgpr || 0);
+      const dailyClose = Number(dailyCandles?.[0]?.stck_clpr || price);
+      const tailDataMissing = dailyHigh <= 0;
+      const tailRatio = tailDataMissing ? 0 : ((dailyHigh - dailyClose) / dailyHigh) * 100;
+      // 데이터 부족(고가 누락)은 "진짜 윗꼬리 0%"가 아니므로 안전 통과로 취급하지 않는다.
+      const isTailSafe = !tailDataMissing && tailRatio <= 3.5;
 
-      if (!isTailSafe) {
+      if (tailDataMissing) {
+        console.warn(`[Overnight API] Tail data missing for ${name} (${symbol}) — dailyCandles[0].stck_hgpr 누락, tailRatio 계산 불가`);
+        reasons.push("윗꼬리 계산 불가 (당일 일봉 고가 데이터 부족)");
+      } else if (!isTailSafe) {
         reasons.push(`윗꼬리 비율 초과 (${tailRatio.toFixed(1)}%, 기준 3.5% 이하)`);
       }
 
@@ -566,9 +575,9 @@ export async function GET(req: Request) {
           foreignBuyLimit,
           entryClose,
           reasons: normalReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
         });
-      } else if (!isExcluded && (isDailyAligned && isWeeklyAligned) && (freshnessCount <= 2 || (volumeRatio >= 150 && volumeRatio < 200))) {
+      } else if (!isExcluded && isTailSafe && (isDailyAligned && isWeeklyAligned) && (freshnessCount <= 2 || (volumeRatio >= 150 && volumeRatio < 200))) {
         aggressiveBucket.push({
           symbol,
           name,
@@ -579,7 +588,7 @@ export async function GET(req: Request) {
           foreignBuyLimit,
           entryClose,
           reasons: aggressiveReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
         });
       } else {
         const finalExclReasons = reasons.length > 0 ? reasons : ["1단계 또는 2단계 테마 신선도 조건 미달"];
@@ -591,7 +600,7 @@ export async function GET(req: Request) {
           classification: "exclude",
           entryClose,
           reasons: finalExclReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
         });
       }
     }
@@ -632,9 +641,9 @@ export async function GET(req: Request) {
     try {
       const todayKey = formatKSTDateCompact(new Date());
       const persistedItems: ScreeningResultItem[] = [
-        ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons })),
-        ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons })),
-        ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons })),
+        ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+        ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+        ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
         ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
       ];
       await saveScreeningResult({
@@ -685,9 +694,9 @@ export async function GET(req: Request) {
       try {
         const todayKey = formatKSTDateCompact(new Date());
         const partialItems: ScreeningResultItem[] = [
-          ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons })),
-          ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons })),
-          ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons })),
+          ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+          ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+          ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
           ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
         ];
         await saveScreeningResult({ date: todayKey, reduceWeight, kosdaqValue: kosdaqClose, items: partialItems });

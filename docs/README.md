@@ -18,7 +18,7 @@
 - [로컬 설정](core/setup.md)
 - [테마 동작](core/theme-behavior.md)
 - [리서치 워크플로우](core/research-workflows.md)
-- [최신 Phase 리포트](phases/phase-35-report.md)
+- [최신 Phase 리포트](phases/phase-40-report.md)
 - [Beta RC Gate](release/beta-rc-gate.md)
 - [베타 릴리즈 체크리스트](release/beta-release-checklist.md)
 - [운영 플레이북](ops/ops-playbook.md)

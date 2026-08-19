@@ -22,6 +22,26 @@ export interface ScreeningResultItem {
   classification: ScreeningClassification;
   entryClose: number;
   reasons: string[];
+  // 스크리닝 시점 계산 지표 (분석용 숫자 컬럼). 미측정 항목은 null/undefined.
+  tailRatio?: number | null;
+  volumeRatio?: number | null;
+  turnoverRate?: number | null;
+  freshnessCount?: number | null;
+  // 백테스트 확정값 (다음 거래일 시가/종가 및 수익률). 한 번 채워지면 불변.
+  nextOpen?: number | null;
+  nextClose?: number | null;
+  openReturn?: number | null;
+  closeReturn?: number | null;
+  trend?: string | null;
+}
+
+/** 백테스트가 확정한 다음 거래일 성과 필드 (한 번 채워지면 덮어쓰지 않음). */
+export interface ScreeningBacktestFields {
+  nextOpen: number;
+  nextClose: number;
+  openReturn: number;
+  closeReturn: number;
+  trend: string;
 }
 
 export interface ScreeningResultRecord {
@@ -90,6 +110,15 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
           classification: item.classification,
           entry_close: item.entryClose,
           reasons: item.reasons,
+          tail_ratio: item.tailRatio ?? null,
+          volume_ratio: item.volumeRatio ?? null,
+          turnover_rate: item.turnoverRate ?? null,
+          freshness_count: item.freshnessCount ?? null,
+          next_open: item.nextOpen ?? null,
+          next_close: item.nextClose ?? null,
+          open_return: item.openReturn ?? null,
+          close_return: item.closeReturn ?? null,
+          trend: item.trend ?? null,
         }));
 
         const { error: itemsErr } = await supabase
@@ -176,7 +205,16 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
             name,
             classification,
             entry_close,
-            reasons
+            reasons,
+            tail_ratio,
+            volume_ratio,
+            turnover_rate,
+            freshness_count,
+            next_open,
+            next_close,
+            open_return,
+            close_return,
+            trend
           )
         `)
         .eq("date", date)
@@ -185,12 +223,22 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
       if (recordErr) throw recordErr;
 
       if (recordData) {
+        const toNum = (v: any): number | null => (v === null || v === undefined ? null : Number(v));
         const items = ((recordData.items || []) as any[]).map((i) => ({
           symbol: i.symbol,
           name: i.name,
           classification: i.classification as ScreeningClassification,
           entryClose: Number(i.entry_close || 0),
           reasons: i.reasons || [],
+          tailRatio: toNum(i.tail_ratio),
+          volumeRatio: toNum(i.volume_ratio),
+          turnoverRate: toNum(i.turnover_rate),
+          freshnessCount: toNum(i.freshness_count),
+          nextOpen: toNum(i.next_open),
+          nextClose: toNum(i.next_close),
+          openReturn: toNum(i.open_return),
+          closeReturn: toNum(i.close_return),
+          trend: i.trend ?? null,
         }));
 
         return {
@@ -257,6 +305,40 @@ export async function upsertScreeningItems(
 
   await saveScreeningResult(merged);
   return merged;
+}
+
+/**
+ * 백테스트가 산출한 다음 거래일 확정값(시가/종가/수익률/추세)을 해당 (date, symbol)
+ * 종목 행에 채운다. Supabase 전용(분석 쿼리는 Supabase SQL로 수행) — 폴백 저장소는 갱신하지 않는다.
+ *
+ * "확정값은 한 번 채워지면 덮어쓰지 않는다" 정책: next_close가 아직 비어있는(NULL) 행만
+ * 갱신 대상으로 삼는다. 이미 확정값이 있으면 no-op이 되어 재조회 시 기존값이 그대로 유지된다.
+ */
+export async function updateScreeningItemBacktest(
+  date: string,
+  symbol: string,
+  fields: ScreeningBacktestFields
+): Promise<void> {
+  try {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("overnight_screening_items")
+      .update({
+        next_open: fields.nextOpen,
+        next_close: fields.nextClose,
+        open_return: fields.openReturn,
+        close_return: fields.closeReturn,
+        trend: fields.trend,
+      })
+      .eq("date", date)
+      .eq("symbol", symbol)
+      .is("next_close", null); // 미확정 행만 갱신 → 기존 확정값 보존
+    if (error) throw error;
+  } catch (e) {
+    // 확정값 저장 실패는 백테스트 응답을 막지 않는다 (다음 조회 시 재계산되어 다시 시도됨)
+    console.error("[Screening Storage] Backtest field update failed:", (e as Error)?.message || e);
+  }
 }
 
 // KST YYYYMMDD 포맷 (rest-client.ts의 동명 헬퍼와 동일 로직)
