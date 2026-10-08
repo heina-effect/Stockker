@@ -9,6 +9,11 @@ import {
 import { kisConfig } from "@/server/kis/config";
 import { getSearchMaster } from "@/lib/stocks/search-master";
 import { saveScreeningResult, formatKSTDateCompact, type ScreeningResultItem } from "@/server/screening/storage";
+import { runDailyTrajectoryUpdate } from "@/server/screening/trajectory-update";
+import { computeIndicatorSeries } from "@/server/screening/indicators";
+import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
+import { getSupabaseAdmin } from "@/lib/supabase/client";
+import { isRateLimitError, withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 
 // 헬퍼: 이동평균선(MA) 계산 (최신 데이터가 0번 인덱스임)
 function calculateMA(candles: any[], period: number, key: string = "stck_clpr"): number {
@@ -24,33 +29,6 @@ function calculateAvgVolume(candles: any[], period: number = 20): number {
   const slice = candles.slice(0, period);
   const sum = slice.reduce((acc, c) => acc + Number(c.acml_vol || 0), 0);
   return sum / period;
-}
-
-// 헬퍼: EGW00201(초당 거래건수 초과) 등 rate limit 에러 감지
-function isRateLimitError(msg: string): boolean {
-  const m = String(msg).toLowerCase();
-  return m.includes("egw00201") || m.includes("429") || m.includes("건수") || m.includes("초과") || m.includes("limit");
-}
-
-// 헬퍼: rate limit 시 backoff 후 1회 재시도하는 공통 래퍼.
-// 지수/순위(루프 이전)와 종목 루프 호출 모두에 적용해 cold-start 첫 호출을 자동 복구한다.
-// (전역 큐 + 재시도 이중 방어. rate limit이 아닌 에러는 재시도 없이 즉시 전파)
-async function withRateLimitRetry<T>(fn: () => Promise<T>, retries = 1, backoffMs = 1500): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      const msg = String((e as Error)?.message || e);
-      if (attempt < retries && isRateLimitError(msg)) {
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr;
 }
 
 // 헬퍼: 디버그 응답에 들어가는 에러 문자열에서 자격증명류 토큰을 마스킹한다.
@@ -75,6 +53,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const isDebug = searchParams.get("debug") === "true";
   const timestamp = new Date().toISOString();
+
+  // Vercel Cron은 CRON_SECRET이 설정되어 있으면 Authorization: Bearer <CRON_SECRET>
+  // 헤더를 자동으로 붙여 호출한다. 이 헤더가 "있는데" 값이 틀리면 스푸핑으로 간주해 거부하고,
+  // 헤더 자체가 없으면(기존 수동 실행 버튼 등) 기존 동작을 그대로 유지한다.
+  const authHeader = req.headers.get("authorization");
+  if (kisConfig.cronSecret && authHeader && authHeader !== `Bearer ${kisConfig.cronSecret}`) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   let volumeRank: any[] = [];
   let firstStockErrorMsg = "";
   // 분석 결과 버킷을 외부 스코프에 선언 — 외부 catch에서도 저장 가능하도록
@@ -85,6 +72,7 @@ export async function GET(req: Request) {
   let analyzedSymbols = new Set<string>();
   let reduceWeight = false;
   let kosdaqClose = 0;
+  let latestTradingDate = "";
 
   try {
     // [0단계] 거시 필터 - 코스닥(1001) + 코스피(0001) 정배열/역배열 판정 (병렬 조회)
@@ -101,6 +89,10 @@ export async function GET(req: Request) {
           return [] as any[];
         }),
       ]);
+
+      if (kosdaqIndexDaily && kosdaqIndexDaily.length > 0) {
+        latestTradingDate = kosdaqIndexDaily[0].stck_bsop_date || "";
+      }
 
       if (kosdaqIndexDaily && kosdaqIndexDaily.length >= 120) {
         kosdaqClose = Number(kosdaqIndexDaily[0].bstp_nmix_prpr || 0);
@@ -135,6 +127,24 @@ export async function GET(req: Request) {
           diagnostics: { message: sanitizeError(err?.message || String(err)) },
         }, { status: 500 });
       }
+    }
+
+    // 거래일 가드: 코스닥 지수 일봉의 최신 영업일(stck_bsop_date)이 오늘(KST)과 다르면
+    // 주말/공휴일로 휴장인 날이다. 매년 바뀌는 공휴일 달력을 별도로 관리하는 대신,
+    // 실제 시장이 오늘 거래됐는지를 지수 데이터로 직접 확인해 스킵한다.
+    // (Vercel Cron은 평일에만 호출하도록 설정하지만, 그래도 공휴일은 걸러야 함)
+    const todayKST = formatKSTDateCompact(new Date());
+    if (!isDebug && latestTradingDate && latestTradingDate !== todayKST) {
+      console.log(
+        `[Overnight API] Not a trading day (latest index trade date: ${latestTradingDate}, today: ${todayKST}). Skipping scan.`
+      );
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "not_a_trading_day",
+        latestTradingDate,
+        today: todayKST,
+      });
     }
 
     // mock gate: 실전 시세 자격증명(KIS_APP_KEY_PROD)이 없는 경우에만 mock 반환
@@ -540,6 +550,37 @@ export async function GET(req: Request) {
         }
       }
 
+      // ── 퀀트 진입 조건 (RSI 50~60 + 거래량 200~400%) ──
+      // 진입 조건 근거는 비공개 문서 참조. 현행 조건은 quant-signal.ts
+      let rsi14: number | null = null;
+      let quantSignal = false;
+      let latestIndicator: any = null;
+      if (dailyCandles.length >= 15) {
+        // computeIndicatorSeries는 오름차순(과거→현재) 기준이므로 뒤집어서 전달
+        const ascending = [...dailyCandles].reverse();
+        const series = computeIndicatorSeries(
+          ascending.map((c) => ({
+            tradeDate: c.stck_bsop_date || "",
+            close: Number(c.stck_clpr || 0),
+            volume: Number(c.acml_vol || 0),
+          }))
+        );
+        // 시계열 마지막 = 최신(포착일) RSI
+        latestIndicator = series[series.length - 1];
+        rsi14 = latestIndicator?.rsi14 ?? null;
+      }
+      
+      const day0Open = dailyCandles.length > 0 ? Number(dailyCandles[0].stck_oprc || 0) : 0;
+      const day0High = dailyCandles.length > 0 ? Number(dailyCandles[0].stck_hgpr || 0) : 0;
+      const day0Low = dailyCandles.length > 0 ? Number(dailyCandles[0].stck_lwpr || 0) : 0;
+      if (rsi14 !== null) {
+        quantSignal =
+          rsi14 >= QUANT_SIGNAL_CRITERIA.rsiMin &&
+          rsi14 <= QUANT_SIGNAL_CRITERIA.rsiMax &&
+          volumeRatio >= QUANT_SIGNAL_CRITERIA.volumeRatioMin &&
+          volumeRatio <= QUANT_SIGNAL_CRITERIA.volumeRatioMax;
+      }
+
       // 3버킷 분류 판단
       const is1stStagePass = isDailyAligned && isWeeklyAligned && isVolumeSpike && isTailSafe && !isExcluded;
       const isFreshnessPass = freshnessCount >= 3;
@@ -575,7 +616,7 @@ export async function GET(req: Request) {
           foreignBuyLimit,
           entryClose,
           reasons: normalReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt, rsi14, quantSignal, latestIndicator, day0Open, day0High, day0Low, day0Close: entryClose, currentVolume }
         });
       } else if (!isExcluded && isTailSafe && (isDailyAligned && isWeeklyAligned) && (freshnessCount <= 2 || (volumeRatio >= 150 && volumeRatio < 200))) {
         aggressiveBucket.push({
@@ -588,7 +629,7 @@ export async function GET(req: Request) {
           foreignBuyLimit,
           entryClose,
           reasons: aggressiveReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt, rsi14, quantSignal, latestIndicator, day0Open, day0High, day0Low, day0Close: entryClose, currentVolume }
         });
       } else {
         const finalExclReasons = reasons.length > 0 ? reasons : ["1단계 또는 2단계 테마 신선도 조건 미달"];
@@ -600,7 +641,7 @@ export async function GET(req: Request) {
           classification: "exclude",
           entryClose,
           reasons: finalExclReasons,
-          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt }
+          metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt, rsi14, quantSignal, latestIndicator, day0Open, day0High, day0Low, day0Close: entryClose, currentVolume }
         });
       }
     }
@@ -641,9 +682,9 @@ export async function GET(req: Request) {
     try {
       const todayKey = formatKSTDateCompact(new Date());
       const persistedItems: ScreeningResultItem[] = [
-        ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
-        ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
-        ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+        ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
+        ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
+        ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
         ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
       ];
       await saveScreeningResult({
@@ -655,6 +696,72 @@ export async function GET(req: Request) {
     } catch (e) {
       // 저장 실패는 스크리닝 응답 자체를 막지 않는다 (백테스트는 부가 기능)
       console.error("[Overnight API] Screening result persist failed:", (e as Error)?.message || e);
+    }
+
+    // [핵심 로직 변경] 당일 스크리닝 분석 대상 종목들의 days_after=0 궤적을 지표와 함께 DB에 직행 저장한다.
+    // 기존에는 runDailyTrajectoryUpdate가 이를 수행 후 backfill-indicators가 지표를 채웠으나,
+    // 이제 스크리닝 과정에서 계산된 일봉(최대 130봉)을 재사용해 지표 공백을 완전히 원천 차단한다.
+    try {
+      const todayKey = formatKSTDateCompact(new Date());
+      const supabase = getSupabaseAdmin();
+      if (supabase) {
+        const trajectoryPayloads: any[] = [];
+        const allBuckets = [...normalBucket, ...aggressiveBucket, ...excludeBucket];
+        for (const item of allBuckets) {
+          const m = item.metrics;
+          if (!m || m.day0Close === undefined) continue;
+          
+          trajectoryPayloads.push({
+            symbol: item.symbol,
+            name: item.name,
+            discovery_date: todayKey,
+            trade_date: todayKey,
+            days_after: 0,
+            open: m.day0Open,
+            high: m.day0High,
+            low: m.day0Low,
+            close: m.day0Close,
+            volume: m.currentVolume,
+            return_from_entry: 0,
+            is_pre_discovery: false,
+            rsi14: m.latestIndicator?.rsi14 ?? null,
+            macd: m.latestIndicator?.macd ?? null,
+            macd_signal: m.latestIndicator?.macdSignal ?? null,
+            macd_hist: m.latestIndicator?.macdHist ?? null,
+            bb_upper: m.latestIndicator?.bbUpper ?? null,
+            bb_mid: m.latestIndicator?.bbMid ?? null,
+            bb_lower: m.latestIndicator?.bbLower ?? null,
+            bb_pct_b: m.latestIndicator?.bbPctB ?? null,
+            ma5: m.latestIndicator?.ma5 ?? null,
+            ma20: m.latestIndicator?.ma20 ?? null,
+            ma60: m.latestIndicator?.ma60 ?? null,
+            vol_ratio_5: m.latestIndicator?.volRatio5 ?? null,
+            vol_ratio_20: m.latestIndicator?.volRatio20 ?? null,
+            stoch_slow_k: m.latestIndicator?.stochSlowK ?? null,
+            stoch_slow_d: m.latestIndicator?.stochSlowD ?? null,
+            williams_r: m.latestIndicator?.williamsR ?? null,
+            is_halted: m.latestIndicator?.isHalted ?? false,
+          });
+        }
+        
+        if (trajectoryPayloads.length > 0) {
+          const { error } = await supabase.from("stock_trajectory").upsert(trajectoryPayloads, { onConflict: "symbol,discovery_date,trade_date" });
+          if (error) {
+            console.error("[Overnight API] Failed to upsert day0 trajectories:", error);
+          } else {
+            console.log(`[Overnight API] Successfully upserted ${trajectoryPayloads.length} day0 trajectories with indicators`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[Overnight API] Day0 trajectory persist failed:", (e as Error)?.message || e);
+    }
+
+    // 발굴 종목 궤적(stock_trajectory) 일일 갱신 — 실패해도 스크리닝 응답을 막지 않는다
+    try {
+      await runDailyTrajectoryUpdate();
+    } catch (e) {
+      console.error("[Overnight API] Trajectory update failed:", (e as Error)?.message || e);
     }
 
     return NextResponse.json({
@@ -694,9 +801,9 @@ export async function GET(req: Request) {
       try {
         const todayKey = formatKSTDateCompact(new Date());
         const partialItems: ScreeningResultItem[] = [
-          ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
-          ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
-          ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null })),
+          ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
+          ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
+          ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
           ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
         ];
         await saveScreeningResult({ date: todayKey, reduceWeight, kosdaqValue: kosdaqClose, items: partialItems });
@@ -751,7 +858,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
             "변동성 수렴 완료",
             "외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)"
           ],
-          metrics: { volumeRatio: 245.2, tailRatio: 0.8, freshnessCount: 3 }
+          metrics: { volumeRatio: 245.2, tailRatio: 0.8, freshnessCount: 3, rsi14: 58.7, quantSignal: true }
         },
         {
           symbol: "005930",
@@ -770,7 +877,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
             "장대양봉 중간값 지지",
             "조정기 거래량 50% 이하 감소"
           ],
-          metrics: { volumeRatio: 210.5, tailRatio: 1.2, freshnessCount: 3 }
+          metrics: { volumeRatio: 210.5, tailRatio: 1.2, freshnessCount: 3, rsi14: 72.3, quantSignal: false }
         }
       ],
       aggressive: [
@@ -783,7 +890,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           weightSuggestion,
           foreignBuyLimit: false,
           reasons: ["정배열 만족", "거래량 증가폭 다소 완화(20일 평균 대비 175%)", "테마 신선도 조건 일부 미달(공격형 추세 지속)"],
-          metrics: { volumeRatio: 175.4, tailRatio: 2.1, freshnessCount: 2 }
+          metrics: { volumeRatio: 175.4, tailRatio: 2.1, freshnessCount: 2, rsi14: 48.2, quantSignal: false }
         },
         {
           symbol: "068270",
@@ -799,7 +906,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
             "테마 신선도 2개 요건 만족(공격형 매매)",
             "외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)"
           ],
-          metrics: { volumeRatio: 205.1, tailRatio: 0.5, freshnessCount: 2 }
+          metrics: { volumeRatio: 205.1, tailRatio: 0.5, freshnessCount: 2, rsi14: 61.4, quantSignal: true }
         }
       ],
       exclude: [
@@ -810,7 +917,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: 0.2,
           classification: "exclude",
           reasons: ["정배열 미달 (일봉 MA5 < MA20 역배열 상태)"],
-          metrics: { volumeRatio: 85.2, tailRatio: 0.1, freshnessCount: 0 }
+          metrics: { volumeRatio: 85.2, tailRatio: 0.1, freshnessCount: 0, rsi14: 33.1, quantSignal: false }
         },
         {
           symbol: "035720",
@@ -819,7 +926,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: -2.3,
           classification: "exclude",
           reasons: ["정배열 미달 (주봉/일봉 모두 역배열 상태)", "거래량 기준 미달(82%)"],
-          metrics: { volumeRatio: 82.4, tailRatio: 0.0, freshnessCount: 0 }
+          metrics: { volumeRatio: 82.4, tailRatio: 0.0, freshnessCount: 0, rsi14: 29.8, quantSignal: false }
         },
         {
           symbol: "005380",
@@ -828,7 +935,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: 23.5,
           classification: "exclude",
           reasons: ["당일 등락률 +20% 이상 급등주 제외", "상한가 근접 제외"],
-          metrics: { volumeRatio: 310.2, tailRatio: 4.8, freshnessCount: 4 }
+          metrics: { volumeRatio: 310.2, tailRatio: 4.8, freshnessCount: 4, rsi14: 88.5, quantSignal: false }
         },
         {
           symbol: "999999",
@@ -837,7 +944,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: 12.4,
           classification: "exclude",
           reasons: ["투자경고 종목 제외"],
-          metrics: { volumeRatio: 450.2, tailRatio: 1.2, freshnessCount: 3 }
+          metrics: { volumeRatio: 450.2, tailRatio: 1.2, freshnessCount: 3, rsi14: 77.2, quantSignal: false }
         },
         {
           symbol: "999998",
@@ -846,7 +953,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: 0.0,
           classification: "exclude",
           reasons: ["거래정지 종목 제외"],
-          metrics: { volumeRatio: 0.0, tailRatio: 0.0, freshnessCount: 0 }
+          metrics: { volumeRatio: 0.0, tailRatio: 0.0, freshnessCount: 0, rsi14: null, quantSignal: false }
         },
         {
           symbol: "999997",
@@ -855,7 +962,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           changeRate: 4.5,
           classification: "exclude",
           reasons: ["단기과열 종목 제외 (공격형 이하 강등)"],
-          metrics: { volumeRatio: 220.5, tailRatio: 1.0, freshnessCount: 3 }
+          metrics: { volumeRatio: 220.5, tailRatio: 1.0, freshnessCount: 3, rsi14: 63.2, quantSignal: true }
         }
       ]
     },

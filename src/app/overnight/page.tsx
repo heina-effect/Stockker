@@ -12,7 +12,8 @@ import {
   Flame,
   Info,
   Calendar,
-  Clock
+  Clock,
+  Zap
 } from "lucide-react";
 import Link from "next/link";
 
@@ -39,6 +40,8 @@ interface ScreeningStock {
     volumeRatio: number;
     tailRatio: number;
     freshnessCount: number;
+    rsi14?: number | null;
+    quantSignal?: boolean;
   };
 }
 
@@ -62,14 +65,22 @@ interface OvernightResponse {
   disclaimer: string;
 }
 
+interface TrackingSummary {
+  total: number;
+  stopLoss: number;
+  hold: number;
+  watching: number;
+}
+
 function OvernightScreeningContent() {
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") as "normal" | "aggressive" | "exclude" || "normal";
-  
+
   const [activeTab, setActiveTab] = useState<"normal" | "aggressive" | "exclude">(defaultTab);
   const [data, setData] = useState<OvernightResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null);
 
   useEffect(() => {
     async function fetchScreening() {
@@ -86,6 +97,22 @@ function OvernightScreeningContent() {
       }
     }
     fetchScreening();
+  }, []);
+
+  // tracking 진입 배지용 — summary만 가볍게 조회(§2). 실패해도 화면 전체에 영향 없도록
+  // 조용히 무시한다(배지 자체가 안 뜰 뿐).
+  useEffect(() => {
+    async function fetchTrackingSummary() {
+      try {
+        const res = await fetch("/api/screening/tracking");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json?.ok && json.summary) setTrackingSummary(json.summary);
+      } catch {
+        // 배지 없이 조용히 무시
+      }
+    }
+    fetchTrackingSummary();
   }, []);
 
   if (loading) {
@@ -131,6 +158,10 @@ function OvernightScreeningContent() {
   const { kosdaqState, results, excludedNotice, generatedAt, disclaimer } = data;
   const currentStocks = results[activeTab];
 
+  // 전체 버킷에서 quantSignal 건수 집계
+  const allStocks = [...results.normal, ...results.aggressive, ...results.exclude];
+  const quantSignalCount = allStocks.filter(s => s.metrics?.quantSignal === true).length;
+
   const dateStr = generatedAt 
     ? new Date(generatedAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })
     : "";
@@ -153,8 +184,23 @@ function OvernightScreeningContent() {
               <Calendar className="w-4 h-4" />
               {dateStr} {timeStr} 분석 기준
             </p>
+            {trackingSummary && (
+              <Link
+                href="/overnight/tracking"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline mt-2"
+              >
+                추적 중 {trackingSummary.total}
+                {trackingSummary.stopLoss > 0 && (
+                  <span className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    {trackingSummary.stopLoss}
+                  </span>
+                )}
+                <span aria-hidden>→</span>
+              </Link>
+            )}
           </div>
-          
+
           {/* 청산 가이드 팝오버/정보 */}
           <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 p-3 rounded-xl max-w-md">
             <h4 className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1 mb-1">
@@ -241,6 +287,15 @@ function OvernightScreeningContent() {
               {results.exclude.length}
             </span>
           </button>
+          {/* 퀀트신호 요약 — 탭이 아닌 정보 배지 */}
+          {quantSignalCount > 0 && (
+            <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg self-center"
+              title="RSI 50~60 + 거래량 200~400% 충족 종목 수 (참고용 지표, 매수 추천 아님)"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400">퀀트신호 {quantSignalCount}</span>
+            </div>
+          )}
         </div>
 
         {/* 종목 리스트 */}
@@ -290,6 +345,14 @@ function OvernightScreeningContent() {
                         }`}>
                           {stock.classification === "normal" ? "정석 통과" : stock.classification === "aggressive" ? "공격형 추세" : "제외"}
                         </span>
+                        {stock.metrics?.quantSignal && (
+                          <span
+                            className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700/40"
+                            title="RSI 50~60 + 거래량 200~400% 충족 (참고용 지표, 매수 추천 아님)"
+                          >
+                            ⚡ 퀀트신호
+                          </span>
+                        )}
                         {stock.weightSuggestion && stock.weightSuggestion < 1.0 && (
                           <span className="inline-block text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-md">
                             비중 50% 축소 제안
@@ -301,7 +364,7 @@ function OvernightScreeningContent() {
 
                   {/* 세부 메트릭 (제외 탭이 아닐 때만 렌더링) */}
                   {stock.metrics && (
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl mb-4 text-center">
+                    <div className="grid grid-cols-4 gap-2 bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl mb-4 text-center">
                       <div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500">거래량 비율</div>
                         <div className={`text-xs font-bold ${stock.metrics.volumeRatio >= 200 ? "text-emerald-500" : "text-amber-500"}`}>
@@ -318,6 +381,17 @@ function OvernightScreeningContent() {
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500">테마 신선도</div>
                         <div className={`text-xs font-bold ${stock.metrics.freshnessCount >= 3 ? "text-emerald-500" : "text-indigo-400"}`}>
                           {stock.metrics.freshnessCount}/4 개
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">RSI(14)</div>
+                        <div className={`text-xs font-bold ${
+                          stock.metrics.rsi14 == null ? "text-slate-300 dark:text-zinc-600"
+                            : stock.metrics.rsi14 >= 55 && stock.metrics.rsi14 <= 65 ? "text-amber-500"
+                            : stock.metrics.rsi14 > 70 ? "text-rose-500"
+                            : "text-slate-500 dark:text-zinc-400"
+                        }`}>
+                          {stock.metrics.rsi14 != null ? stock.metrics.rsi14.toFixed(1) : "—"}
                         </div>
                       </div>
                     </div>
