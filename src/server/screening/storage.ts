@@ -27,6 +27,10 @@ export interface ScreeningResultItem {
   volumeRatio?: number | null;
   turnoverRate?: number | null;
   freshnessCount?: number | null;
+  // 퀀트 진입 조건 지표
+  // 진입 조건 근거는 비공개 문서 참조. 현행 조건은 quant-signal.ts
+  rsi14?: number | null;
+  quantSignal?: boolean | null;
   // 백테스트 확정값 (다음 거래일 시가/종가 및 수익률). 한 번 채워지면 불변.
   nextOpen?: number | null;
   nextClose?: number | null;
@@ -103,6 +107,28 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
           .delete()
           .eq("date", record.date);
 
+        // [고아 궤적 데이터 정리]
+        // 스크리닝 재실행 시, 이전엔 포함됐지만 이번엔 탈락한 종목의 궤적이 
+        // stock_trajectory에 영원히 남는 이슈 방지
+        const validSymbols = new Set(record.items.map((i) => i.symbol));
+        const { data: existingTraj } = await supabase
+          .from("stock_trajectory")
+          .select("symbol")
+          .eq("discovery_date", record.date);
+        
+        if (existingTraj) {
+          const orphanSymbols = [...new Set(existingTraj.map((r: any) => r.symbol))]
+            .filter(s => !validSymbols.has(s));
+            
+          if (orphanSymbols.length > 0) {
+            await supabase
+              .from("stock_trajectory")
+              .delete()
+              .eq("discovery_date", record.date)
+              .in("symbol", orphanSymbols);
+          }
+        }
+
         const itemsToInsert = record.items.map((item) => ({
           date: record.date,
           symbol: item.symbol,
@@ -114,6 +140,8 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
           volume_ratio: item.volumeRatio ?? null,
           turnover_rate: item.turnoverRate ?? null,
           freshness_count: item.freshnessCount ?? null,
+          rsi14: item.rsi14 ?? null,
+          quant_signal: item.quantSignal ?? false,
           next_open: item.nextOpen ?? null,
           next_close: item.nextClose ?? null,
           open_return: item.openReturn ?? null,
@@ -210,6 +238,8 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
             volume_ratio,
             turnover_rate,
             freshness_count,
+            rsi14,
+            quant_signal,
             next_open,
             next_close,
             open_return,
@@ -234,6 +264,8 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
           volumeRatio: toNum(i.volume_ratio),
           turnoverRate: toNum(i.turnover_rate),
           freshnessCount: toNum(i.freshness_count),
+          rsi14: toNum(i.rsi14),
+          quantSignal: i.quant_signal === true,
           nextOpen: toNum(i.next_open),
           nextClose: toNum(i.next_close),
           openReturn: toNum(i.open_return),
