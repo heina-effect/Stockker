@@ -106,10 +106,6 @@ export async function POST(request: NextRequest) {
             low: c.stck_lwpr,
           }));
           const candle = (dailyCandles || []).find((c: any) => String(c.stck_bsop_date) === date);
-          console.log("[RAW DEBUG] symbol:", masterItem.symbol, "targetDate:", date);
-          console.log("[RAW DEBUG] candles count:", dailyCandles?.length);
-          console.log("[RAW DEBUG] first 10 candles:", JSON.stringify(first10));
-          console.log("[RAW DEBUG] matched candle:", JSON.stringify(candle));
           if (isDebug) {
             debugLog.push({
               symbol: masterItem.symbol,
