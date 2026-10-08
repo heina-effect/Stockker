@@ -4,11 +4,36 @@
  * Run: node scripts/migrate-supabase.mjs
  */
 
+import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://unuzvliqvwzjmjgzlgwy.supabase.co";
+const ENV_PATH = ".env.local";
+
+function loadEnvFile() {
+  if (!fs.existsSync(ENV_PATH)) return;
+  const raw = fs.readFileSync(ENV_PATH, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvFile();
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 // anon key used for connection test; service role used for DDL via Management API
-const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVudXp2bGlxdnd6am1qZ3psZ3d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjI2MjMsImV4cCI6MjA5MzY5ODYyM30.HaQWnzq67U9Bxj7y_DXCSb8nZhAXzV47E-i9XoZ1t0M";
+const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !ANON_KEY) {
+  console.error(
+    "NEXT_PUBLIC_SUPABASE_URL 또는 NEXT_PUBLIC_SUPABASE_ANON_KEY가 설정되지 않았습니다. .env.local을 확인하세요."
+  );
+  process.exit(1);
+}
 
 const client = createClient(SUPABASE_URL, ANON_KEY);
 
