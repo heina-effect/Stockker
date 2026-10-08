@@ -55,3 +55,14 @@ overnight_normal_res*.json
 
 # supabase local
 supabase/.temp/
+backup_*.sql
+backup_*.json
+backup_*.csv
+supabase/.temp/
+scratch/
+docs/quant-hypothesis.md
+docs/phases/phase-41-report.md
+docs/phases/phase-42-report.md
+docs/quant-hypothesis.md
+docs/phases/phase-41-report.md
+docs/phases/phase-42-report.md
