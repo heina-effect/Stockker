@@ -574,11 +574,13 @@ export async function GET(req: Request) {
       const day0High = dailyCandles.length > 0 ? Number(dailyCandles[0].stck_hgpr || 0) : 0;
       const day0Low = dailyCandles.length > 0 ? Number(dailyCandles[0].stck_lwpr || 0) : 0;
       if (rsi14 !== null) {
+        const volRatio20 = latestIndicator?.volRatio20 ?? null;
         quantSignal =
+          volRatio20 !== null &&
           rsi14 >= QUANT_SIGNAL_CRITERIA.rsiMin &&
           rsi14 <= QUANT_SIGNAL_CRITERIA.rsiMax &&
-          volumeRatio >= QUANT_SIGNAL_CRITERIA.volumeRatioMin &&
-          volumeRatio <= QUANT_SIGNAL_CRITERIA.volumeRatioMax;
+          volRatio20 >= QUANT_SIGNAL_CRITERIA.volumeRatioMin &&
+          volRatio20 <= QUANT_SIGNAL_CRITERIA.volumeRatioMax;
       }
 
       // 3버킷 분류 판단

@@ -19,7 +19,11 @@ interface BackfillQuantSignalBody {
  *   1. overnight_screening_items의 rsi14이 NULL인 행을 찾는다(recalculate=true면 전체 행 대상).
  *   2. stock_trajectory에서 같은 (symbol, discovery_date=screening date, days_after=0)의
  *      rsi14를 가져와 overnight_screening_items.rsi14에 채운다.
- *   3. volume_ratio는 overnight_screening_items에 이미 있는 값을 사용한다.
+ *   3. quant_signal 판정의 거래량 비율도 stock_trajectory의 vol_ratio_20(당일 포함 20일 평균
+ *      기준, indicators.ts 산출)을 쓴다 — overnight_screening_items.volume_ratio(당일 제외
+ *      기준, 화면 표시용)는 궤적 추적 화면(tracking/route.ts)의 퀀트 신호 판정 기준과 정의가
+ *      달라 여기서는 사용하지 않는다(overnight_screening_items.volume_ratio 컬럼 자체는 변경
+ *      없이 화면 표시용으로만 유지).
  *   4. quant_signal 판정은 `@/server/screening/quant-signal`의 `isQuantSignal`(=
  *      overnight/route.ts의 일일 스크리닝과 동일한 QUANT_SIGNAL_CRITERIA)을 그대로 재사용한다.
  *      과거 이 라우트가 자체적으로 하드코딩했던 RSI 55~65 임계값(2026-09-01, EMA 평활 기준
@@ -56,12 +60,12 @@ export async function POST(request: NextRequest) {
   }
 
   // 1. 대상 조회: 기본은 rsi14이 NULL인 행만, recalculate=true면 전체 행
-  let items: { date: string; symbol: string; volume_ratio: number | null }[];
+  let items: { date: string; symbol: string }[];
   try {
-    items = await fetchAllRows<{ date: string; symbol: string; volume_ratio: number | null }>((from, to) => {
+    items = await fetchAllRows<{ date: string; symbol: string }>((from, to) => {
       let q = supabase
         .from("overnight_screening_items")
-        .select("date,symbol,volume_ratio")
+        .select("date,symbol")
         .order("date", { ascending: true })
         .order("symbol", { ascending: true });
       if (!recalculate) q = q.is("rsi14", null);
@@ -87,13 +91,13 @@ export async function POST(request: NextRequest) {
   //    - overnight_screening_items의 date는 YYYYMMDD 형식 → 변환 필요
   const symbolSet = [...new Set(items.map((i) => i.symbol))];
 
-  let trajectoryRows: { symbol: string; discovery_date: string; rsi14: number | null }[];
+  let trajectoryRows: { symbol: string; discovery_date: string; rsi14: number | null; vol_ratio_20: number | null }[];
   try {
-    trajectoryRows = await fetchAllRows<{ symbol: string; discovery_date: string; rsi14: number | null }>(
+    trajectoryRows = await fetchAllRows<{ symbol: string; discovery_date: string; rsi14: number | null; vol_ratio_20: number | null }>(
       (from, to) =>
         supabase
           .from("stock_trajectory")
-          .select("symbol,discovery_date,rsi14")
+          .select("symbol,discovery_date,rsi14,vol_ratio_20")
           .eq("days_after", 0)
           .in("symbol", symbolSet)
           .order("symbol", { ascending: true })
@@ -104,11 +108,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }
 
-  // 빠른 조회를 위한 Map: "symbol::YYYYMMDD" -> rsi14
-  const trajectoryMap = new Map<string, number | null>();
+  // 빠른 조회를 위한 Map: "symbol::YYYYMMDD" -> { rsi14, vol_ratio_20 }
+  const trajectoryMap = new Map<string, { rsi14: number | null; vol_ratio_20: number | null }>();
   for (const row of trajectoryRows) {
     const dateCompact = row.discovery_date.replace(/-/g, "");
-    trajectoryMap.set(`${row.symbol}::${dateCompact}`, row.rsi14);
+    trajectoryMap.set(`${row.symbol}::${dateCompact}`, { rsi14: row.rsi14, vol_ratio_20: row.vol_ratio_20 });
   }
 
   // 3. 소급 업데이트
@@ -118,16 +122,16 @@ export async function POST(request: NextRequest) {
 
   for (const item of items) {
     const key = `${item.symbol}::${item.date}`;
-    const rsi14 = trajectoryMap.get(key);
+    const traj = trajectoryMap.get(key);
 
-    if (rsi14 === undefined) {
+    if (traj === undefined) {
       // stock_trajectory에 해당 (symbol, discovery_date, days_after=0) 행이 없음
       skipped++;
       continue;
     }
 
-    const volumeRatio = item.volume_ratio != null ? Number(item.volume_ratio) : null;
-    const quantSignal = isQuantSignal(rsi14, volumeRatio);
+    const { rsi14, vol_ratio_20: volRatio20 } = traj;
+    const quantSignal = isQuantSignal(rsi14, volRatio20);
 
     try {
       const { error } = await supabase
