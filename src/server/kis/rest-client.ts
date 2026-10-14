@@ -225,7 +225,7 @@ export async function getDomesticIndex(code: string): Promise<MarketIndex> {
   const output1 = data.output1 || data.output || {};
   const output2 = Array.isArray(data.output2) && data.output2.length > 0 ? data.output2[0] : {};
   const merged = { ...output1, ...output2 };
-  
+
   return normalizeKisDomesticIndex(merged);
 }
 
@@ -474,21 +474,40 @@ export async function getDomesticStockWeekly(symbol: string): Promise<any[]> {
   });
 }
 
+// YYYYMMDD → UTC 자정 Date (rest-client 내부 전용)
+function parseYYYYMMDDToUTCDate(dateStr: string): Date {
+  return new Date(Date.UTC(
+    Number(dateStr.slice(0, 4)),
+    Number(dateStr.slice(4, 6)) - 1,
+    Number(dateStr.slice(6, 8))
+  ));
+}
+
 /**
  * 국내 지수 기간별 시세 조회 (FHKUP03500100)
  *
  * KIS 지수 기간별시세는 단일 호출당 약 50봉만 반환하므로, 거시필터의 120일
  * 정배열(5>20>60>120) 판정을 위해 페이지네이션해 120봉 이상을 확보한다.
  * (일/주봉과 동일한 fetchPaginatedCandles 공통 헬퍼 사용, 하루 단위 캐시)
+ *
+ * opts는 거래일 캘린더(trading-calendar.ts) 용도로 추가됐다 — anchorDate로 특정 날짜 기준
+ * 과거 조회를(기본은 "오늘" 기준), targetCount/maxPages로 조회량을 조절할 수 있다. 기존
+ * 호출부(거시필터)는 opts 없이 그대로 호출하므로 기본값(130/4)에 영향이 없다.
  */
-export async function getDomesticIndexDaily(code: string): Promise<any[]> {
+export async function getDomesticIndexDaily(
+  code: string,
+  opts: { anchorDate?: string; targetCount?: number; maxPages?: number } = {}
+): Promise<any[]> {
+  const { anchorDate, targetCount = 130, maxPages = 4 } = opts;
+  const anchorEndDate = anchorDate ? parseYYYYMMDDToUTCDate(anchorDate) : undefined;
   return fetchPaginatedCandles({
-    cacheKey: `index_daily_${code}_${formatKSTDate(new Date())}`,
-    targetCount: 130,   // 120 MA + 여유분
-    maxPages: 4,        // ~50봉/페이지 × 4 = 최대 ~200봉
+    cacheKey: `index_daily_${code}_${anchorDate ?? formatKSTDate(new Date())}_${targetCount}_${maxPages}`,
+    targetCount,   // 120 MA + 여유분(기본값)
+    maxPages,      // ~50봉/페이지(기본 4 = 최대 ~200봉)
     windowDays: 90,     // 페이지당 약 90 캘린더일(≈ 60거래일) 요청
     dateField: "stck_bsop_date",
     label: "Index",
+    anchorEndDate,
     buildPageFetch: (date1, date2) => callKisApi<KisRawResponse>(
       `/uapi/domestic-stock/v1/quotations/inquire-index-price?${new URLSearchParams({
         FID_COND_MRKT_DIV_CODE: "U",

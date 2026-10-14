@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { formatKSTDateCompact } from "@/server/screening/storage";
 import { fetchAllRows } from "@/server/screening/paginate";
+import { getTradingDaysBetween } from "@/server/screening/trading-calendar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,8 +129,8 @@ export async function GET() {
     string,
     Map<string, { close: number; isHalted: boolean; volRatio20: number | null }>
   >();
+  const quantSymbols = [...new Set(quantSignalRows.map((r) => r.symbol))];
   if (quantSignalRows.length > 0) {
-    const quantSymbols = [...new Set(quantSignalRows.map((r) => r.symbol))];
     let quantMinDate = todayKey;
     for (const r of quantSignalRows) if (r.discovery_date < quantMinDate) quantMinDate = r.discovery_date;
 
@@ -176,6 +177,59 @@ export async function GET() {
     }
   }
 
+  // "최근 재포착" 표시용(§UI 개선) — quant_signal=true로 독립 추적 중인 symbol이 신호일 이후
+  // 다시 스크리닝에 포착됐지만 조건을 재충족하지 못한 이력이 있는지 확인한다. 신호 판정/통계
+  // 계산에는 전혀 영향을 주지 않는 순수 표시용 부가 정보다. KIS 호출 없이 기존 조회(allHistory,
+  // historyBySymbol)와 아래 추가 Supabase 조회(days_after=0 전체, 범위 필터 없음)만으로 계산한다.
+  const recentRecaptureBySymbol = new Map<string, { date: string; status: "notMet" | "unknown" } | null>();
+  if (quantSymbols.length > 0) {
+    let allQuantDiscoveryRows: { symbol: string; discovery_date: string; rsi14: number | null; vol_ratio_20: number | null }[];
+    try {
+      allQuantDiscoveryRows = await fetchAllRows<{
+        symbol: string; discovery_date: string; rsi14: number | null; vol_ratio_20: number | null;
+      }>((from, to) =>
+        supabase
+          .from("stock_trajectory")
+          .select("symbol,discovery_date,rsi14,vol_ratio_20")
+          .eq("days_after", 0)
+          .in("symbol", quantSymbols)
+          .range(from, to)
+      );
+    } catch (e: any) {
+      return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
+    }
+    const indicatorsByKey = new Map<string, { rsi14: number | null; vol_ratio_20: number | null }>();
+    for (const row of allQuantDiscoveryRows) {
+      indicatorsByKey.set(`${row.symbol}::${row.discovery_date}`, { rsi14: row.rsi14, vol_ratio_20: row.vol_ratio_20 });
+    }
+
+    const qualifyingDatesBySymbol = new Map<string, Set<string>>();
+    for (const row of quantSignalRows) {
+      const set = qualifyingDatesBySymbol.get(row.symbol) ?? new Set<string>();
+      set.add(row.discovery_date);
+      qualifyingDatesBySymbol.set(row.symbol, set);
+    }
+
+    for (const symbol of quantSymbols) {
+      const qualifyingDates = qualifyingDatesBySymbol.get(symbol) ?? new Set<string>();
+      const latestSignalDate = [...qualifyingDates].sort().pop();
+      if (!latestSignalDate) continue;
+      const allDates = (historyBySymbol.get(symbol) ?? []).map((h) => h.date);
+      const recaptureCandidates = [...new Set(allDates)]
+        .filter((d) => d > latestSignalDate && !qualifyingDates.has(d))
+        .sort();
+      const recaptureDate = recaptureCandidates.pop();
+      if (!recaptureDate) {
+        recentRecaptureBySymbol.set(symbol, null);
+        continue;
+      }
+      const indicators = indicatorsByKey.get(`${symbol}::${recaptureDate}`);
+      const status: "notMet" | "unknown" =
+        indicators && indicators.rsi14 != null && indicators.vol_ratio_20 != null ? "notMet" : "unknown";
+      recentRecaptureBySymbol.set(symbol, { date: recaptureDate, status });
+    }
+  }
+
   interface QuantSignalItem {
     symbol: string;
     name: string;
@@ -195,6 +249,7 @@ export async function GET() {
     haltStartDaysAfter: number | null;
     isValidForStats: boolean; // 3일차 규칙 평가가 가능한지 여부 (haltStartDaysAfter > 3 또는 null)
     isRecentlyActive: boolean; // 관찰 지속성 보조표시(§1, 참고용 — 규칙 아님). daysAfter<30이면 항상 false.
+    recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
   }
 
   const quantSignalItems: QuantSignalItem[] = [];
@@ -308,6 +363,7 @@ export async function GET() {
       haltStartDaysAfter,
       isValidForStats,
       isRecentlyActive,
+      recentRecapture: recentRecaptureBySymbol.get(row.symbol) ?? null,
     });
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
@@ -380,6 +436,11 @@ export async function GET() {
     if (first.date < globalMinFirstDate) globalMinFirstDate = first.date;
   }
 
+  // 거래일 캘린더(Phase 42 5단계) — 사이클 분리(gapDaysAfter)와 대표 daysAfter 계산을
+  // stock_trajectory에 실제로 저장된 행 수가 아니라 실제 거래일 수 기준으로 하기 위해,
+  // 관련 구간 전체를 한 번만 조회해 이후 전부 재사용한다(심볼/사이클 전환마다 재조회 없음).
+  const calendarDays = await getTradingDaysBetween(globalMinFirstDate, todayKey);
+
   // 3단계: 추적 대상 symbol의 stock_trajectory를 discovery_date 구분 없이 전부 모아, symbol별
   // trade_date → close 맵을 만든다. 한 symbol의 여러 발굴 건(discovery_date)이 서로 다른 -60~+30일
   // 구간을 겹쳐 쌓아왔으므로, 이를 합치면 최초 등장일부터 오늘까지의 실제 거래일 가격이 빈틈없이
@@ -435,7 +496,7 @@ export async function GET() {
     captures: CycleCapture[];
   }
 
-  function splitIntoCycles(sortedHistory: CycleCapture[], tradeDateMap: Map<string, number> | undefined): Cycle[] {
+  function splitIntoCycles(sortedHistory: CycleCapture[], calendarDays: string[]): Cycle[] {
     const cycles: Cycle[] = [];
     let current: Cycle | null = null;
     for (const capture of sortedHistory) {
@@ -450,14 +511,13 @@ export async function GET() {
         cycles.push(current);
         continue;
       }
-      // 현재 사이클 시작일부터 이 재등장까지의 실제 거래일 경과(daysAfter)를 계산한다.
-      // trade_date 맵에 아직 반영되지 않은 극히 드문 경우(당일 갱신 전)는 gap=0으로 보아
-      // 안전하게 같은 사이클로 유지한다(오탐으로 사이클을 조기 리셋하지 않도록).
-      let gapDaysAfter = 0;
-      if (tradeDateMap) {
-        const inRange = [...tradeDateMap.keys()].filter((d) => d >= current!.entryDate && d <= capture.date).sort();
-        if (inRange.length > 0) gapDaysAfter = inRange.length - 1;
-      }
+      // 현재 사이클 시작일부터 이 재등장까지의 실제 거래일 경과(gapDaysAfter)를 거래일
+      // 캘린더 기준으로 계산한다(Phase 42 5단계 — 기존에는 stock_trajectory에 실제로 저장된
+      // 행 수로 셌는데, 데이터 공백이 있으면 실제보다 적게 계산돼 재등장이 새 사이클로
+      // 인식되지 못하는 문제가 있었다). 캘린더가 아직 이 구간을 못 채웠으면(극히 드문 경우)
+      // gap=0으로 보아 안전하게 같은 사이클로 유지한다(오탐으로 사이클을 조기 리셋하지 않도록).
+      const inRange = calendarDays.filter((d) => d >= current!.entryDate && d <= capture.date);
+      const gapDaysAfter = inRange.length > 0 ? inRange.length - 1 : 0;
       if (gapDaysAfter > CYCLE_RESET_DAYS_AFTER) {
         current = {
           cycleNumber: current.cycleNumber + 1,
@@ -495,6 +555,7 @@ export async function GET() {
     stage: "primary" | "secondary" | "ended";
     cycleNumber: number;
     priorCycleCount: number;
+    priorCycleEntryDates: string[];
   }[] = [];
 
   for (const symbol of trackedSymbols) {
@@ -503,7 +564,7 @@ export async function GET() {
     const sortedHistory = [...history].sort((a, b) => a.date.localeCompare(b.date));
 
     const tradeDateMap = closeByTradeDateBySymbol.get(symbol);
-    const cycles = splitIntoCycles(sortedHistory, tradeDateMap);
+    const cycles = splitIntoCycles(sortedHistory, calendarDays);
     const latestCycle = cycles[cycles.length - 1];
     const entryClose = latestCycle.entryClose;
     if (entryClose <= 0) continue;
@@ -513,8 +574,13 @@ export async function GET() {
     const sortedTradeDates = [...tradeDateMap.keys()].filter((d) => d >= latestCycle.entryDate).sort();
     if (sortedTradeDates.length === 0) continue;
 
-    const daysAfter = sortedTradeDates.length - 1; // 현재 사이클 entryDate 자체가 0일차
-    const currentClose = Number(tradeDateMap.get(sortedTradeDates[sortedTradeDates.length - 1]) || 0);
+    // daysAfter(경과 거래일수)는 "실제 가격 데이터가 있는 마지막 날짜"까지 거래일 캘린더로
+    // 센다(Phase 42 5단계) — currentClose 등 가격 계산은 그대로 실제 저장된 행(sortedTradeDates)
+    // 기준이되, 라벨인 daysAfter만 중간 공백을 반영해 정확히 계산한다.
+    const lastAvailableDate = sortedTradeDates[sortedTradeDates.length - 1];
+    const daysAfterRange = calendarDays.filter((d) => d >= latestCycle.entryDate && d <= lastAvailableDate);
+    const daysAfter = daysAfterRange.length > 0 ? daysAfterRange.length - 1 : sortedTradeDates.length - 1;
+    const currentClose = Number(tradeDateMap.get(lastAvailableDate) || 0);
     const returnPct = Number((((currentClose - entryClose) / entryClose) * 100).toFixed(2));
 
     let verdict: Verdict;
@@ -558,6 +624,7 @@ export async function GET() {
       stage,
       cycleNumber: latestCycle.cycleNumber,
       priorCycleCount: cycles.length - 1,
+      priorCycleEntryDates: cycles.slice(0, -1).map((c) => c.entryDate),
     });
   }
 
