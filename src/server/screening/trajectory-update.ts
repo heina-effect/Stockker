@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getDomesticStockDailyAround } from "@/server/kis/rest-client";
+import { getDomesticStockDailyAround, isAfterKSTMarketClose } from "@/server/kis/rest-client";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { formatKSTDateCompact } from "@/server/screening/storage";
 import { recalculateIndicatorsForDiscovery } from "@/server/screening/indicators";
@@ -47,15 +47,6 @@ function addDaysToYYYYMMDD(dateStr: string, days: number): string {
   const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(dt.getUTCDate()).padStart(2, "0");
   return `${yyyy}${mm}${dd}`;
-}
-
-// KST 15:30(정규장 마감) 이후인지 — 장중 실행 시 당일 종가가 미확정 값으로 저장되는 문제의
-// 재발 방지 가드(Phase 42 10/8 실험으로 확인된 사실 기반).
-function isAfterKSTMarketClose(): boolean {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  const h = kst.getUTCHours();
-  const m = kst.getUTCMinutes();
-  return h > 15 || (h === 15 && m >= 30);
 }
 
 interface TargetCandidate {

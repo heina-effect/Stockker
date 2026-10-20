@@ -32,6 +32,16 @@ function formatKSTDate(d: Date): string {
   return kst.toISOString().split("T")[0].replace(/-/g, "");
 }
 
+// KST 15:30(정규장 마감) 이후인지 — 장중 캐시된 미확정 종가가 마감 후까지 재사용되는 문제의
+// 재발 방지 가드(Phase 42 10/8 실험으로 확인된 사실 기반). trajectory-update.ts의 동일 함수를
+// 여기로 승격 — 동작은 한 글자도 바꾸지 않았다(KIS 호출 캐시 키 구성에도 재사용하기 위함).
+export function isAfterKSTMarketClose(): boolean {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const h = kst.getUTCHours();
+  const m = kst.getUTCMinutes();
+  return h > 15 || (h === 15 && m >= 30);
+}
+
 // EGW00201(초당 거래건수 초과) 등 rate limit 에러 감지
 function isPaginationRateLimit(msg: string): boolean {
   const m = String(msg).toLowerCase();
@@ -238,7 +248,11 @@ export async function getDomesticIndex(code: string): Promise<MarketIndex> {
  */
 export async function getDomesticStockDaily(symbol: string): Promise<any> {
   return fetchPaginatedCandles({
-    cacheKey: `daily_${symbol}_${formatKSTDate(new Date())}`,
+    // 날짜만 키로 쓰면 마감 전(장중 미확정 종가) 캐시가 마감 후 재호출까지 26시간 그대로
+    // 재사용돼, 마감 후 재실행해도 종가가 안 갱신되는 문제가 있었다(Phase 42 10/19 사례:
+    // 삼성SDI 11:15 KST 조회값이 15:46 KST 재실행에도 그대로 남음). pre/post 구간을 키에
+    // 포함해, 마감 후 첫 호출은 반드시 새로 조회하도록 한다.
+    cacheKey: `daily_${symbol}_${formatKSTDate(new Date())}_${isAfterKSTMarketClose() ? "post" : "pre"}`,
     targetCount: 130,   // 120 MA + 여유분
     maxPages: 3,        // ~100봉/페이지 → 2페이지로 130봉 확보
     windowDays: 150,    // 페이지당 약 150 캘린더일(≈ 100거래일) 요청
@@ -280,9 +294,12 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
 
   // anchorDate + 14가 오늘보다 미래이면(= 최근 날짜 조회) 일 단위 캐시 갱신.
   // 이미 충분히 과거이면 해당 창의 데이터는 불변이므로 30일 장기 캐시.
+  // near-current 쪽은 "오늘" 몫이 마감 전후로 값이 바뀌는 데이터라, 날짜 키에 마감 전후
+  // 구분(pre/post)을 더해 마감 후 재조회가 장중 캐시를 재사용하지 않도록 한다(getDomesticStockDaily와
+  // 동일 이유). 과거 전용(30일 장기 캐시) 쪽은 그대로 둔다 — 고정된 과거 값이라 필요 없음.
   const isNearCurrent = futureAnchor > now;
   const cacheKey = isNearCurrent
-    ? `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}`
+    ? `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}_${isAfterKSTMarketClose() ? "post" : "pre"}`
     : `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}`;
   const cacheTtlMs = isNearCurrent ? ONE_DAY_CACHE_MS : 30 * 24 * 60 * 60 * 1000;
 
@@ -315,7 +332,10 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
  * 단일 날짜(date1 == date2)로 조회하여 HTS 기준 실거래가를 가져온다.
  */
 export async function getDomesticStockDailyRawPrice(symbol: string, dateYYYYMMDD: string): Promise<any> {
-  const cacheKey = `raw_price_${symbol}_${dateYYYYMMDD}`;
+  // 조회 대상이 "오늘"이면(백테스트가 당일 발굴 건의 다음거래일=오늘 가격을 조회하는 경우)
+  // 마감 전후로 값이 바뀌므로 구분을 더한다. 과거 날짜는 고정값이라 그대로 둔다(30일 캐시 유지).
+  const isToday = dateYYYYMMDD === formatKSTDate(new Date());
+  const cacheKey = `raw_price_${symbol}_${dateYYYYMMDD}${isToday ? `_${isAfterKSTMarketClose() ? "post" : "pre"}` : ""}`;
   return withDedupeAndCache(cacheKey, 30 * 24 * 60 * 60 * 1000, async () => {
     const res = await callKisApi<KisRawResponse>(
       `/uapi/domestic-stock/v1/quotations/inquire-daily-price?${new URLSearchParams({
@@ -454,7 +474,9 @@ export async function getDomesticVolumeRank(belongClassCode: string = "0"): Prom
  */
 export async function getDomesticStockWeekly(symbol: string): Promise<any[]> {
   return fetchPaginatedCandles({
-    cacheKey: `weekly_${symbol}_${formatKSTDate(new Date())}`,
+    // 진행 중인 이번 주 봉의 종가는 장중/마감 후 값이 바뀌므로(daily와 동일 이유) 마감 전후
+    // 구분을 키에 더한다.
+    cacheKey: `weekly_${symbol}_${formatKSTDate(new Date())}_${isAfterKSTMarketClose() ? "post" : "pre"}`,
     targetCount: 130,   // 120주 MA + 여유분
     maxPages: 3,        // ~100주/페이지 → 2페이지로 130주(약 2.5년) 확보
     windowDays: 760,    // 페이지당 약 760 캘린더일(≈ 108주) 요청
@@ -500,8 +522,14 @@ export async function getDomesticIndexDaily(
 ): Promise<any[]> {
   const { anchorDate, targetCount = 130, maxPages = 4 } = opts;
   const anchorEndDate = anchorDate ? parseYYYYMMDDToUTCDate(anchorDate) : undefined;
+  const resolvedDateKey = anchorDate ?? formatKSTDate(new Date());
+  // 조회 기준일이 "오늘"이면(거시필터의 묵시적 anchorDate 미지정 호출, 또는 캘린더 갱신의
+  // 명시적 anchorDate=오늘 호출) 그날 종가가 마감 전후로 바뀌므로 키에 구분을 더한다.
+  // anchorDate가 과거 날짜로 명시된 소급 조회는 고정값이라 영향 없음(그대로 유지).
+  const isToday = resolvedDateKey === formatKSTDate(new Date());
+  const cacheKey = `index_daily_${code}_${resolvedDateKey}_${targetCount}_${maxPages}${isToday ? `_${isAfterKSTMarketClose() ? "post" : "pre"}` : ""}`;
   return fetchPaginatedCandles({
-    cacheKey: `index_daily_${code}_${anchorDate ?? formatKSTDate(new Date())}_${targetCount}_${maxPages}`,
+    cacheKey,
     targetCount,   // 120 MA + 여유분(기본값)
     maxPages,      // ~50봉/페이지(기본 4 = 최대 ~200봉)
     windowDays: 90,     // 페이지당 약 90 캘린더일(≈ 60거래일) 요청
