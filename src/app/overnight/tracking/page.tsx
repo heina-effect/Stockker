@@ -30,6 +30,7 @@ interface TrackingItem {
   stage: TrackingStage;
   cycleNumber: number; // 이 종목의 몇 번째 관찰 사이클인지(1부터)
   priorCycleCount: number; // 이전에 완전 종료된(30일 초과 후 리셋된) 사이클 수
+  priorCycleEntryDates: string[]; // 이전 사이클들의 시작일(entryDate) 목록, 오름차순
 }
 
 // 퀀트 신호 트래커 전용 항목 — 전체 관찰 칸반(TrackingItem/verdict)과 완전히 분리된 별도 체계.
@@ -48,11 +49,15 @@ interface QuantSignalItem {
   group: "pending" | "result";
   day3ReturnPct: number | null;
   maxReturnSoFarPct: number | null; // 참고용(낙관적) — 실현 아님. 계산 창 0~10일(2026-09-18 축소)
+  minReturnSoFarPct: number | null; // maxReturnSoFarPct와 동일 창의 최저(표시 전용, 판정 무관)
   realizedReturnPct: number | null; // 3일차 규칙 실현손익 시뮬레이션 — 헤드라인 승률의 기준(변경 없음)
   endDate: string | null; // daysAfter>=10 도달 시: day10 시점 거래일(종료일자, 고정값)
   endClose: number | null; // daysAfter>=10 도달 시: day10 시점 종가(종료가, 고정값)
   endReturnPct: number | null; // (endClose-entryClose)/entryClose — 카드에 표시하는 "실현수익률"
+  haltStartDaysAfter: number | null; // 거래정지 시작 시점(표시 전용 — "거래정지 구간 제외 후 관찰 중" 문구에 사용)
+  isValidForStats: boolean;
   isRecentlyActive: boolean; // 관찰 지속성 보조표시(참고용) — daysAfter<30이면 항상 false(변경 없음)
+  recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
 }
 
 interface QuantSignalStats {
@@ -60,11 +65,14 @@ interface QuantSignalStats {
   resultCount: number;
   avgDay3ReturnPct: number | null;
   avgMaxReturnSoFarPct: number | null;
-  realizedWinCount: number; // 헤드라인 승률의 승 건수(3일차 규칙 실현손익 기준)
+  realizedWinCount: number; // 2026-10-20: exitAtDay3Pct(=day3ReturnPct, 3일차 종가 청산) 기준 승 건수로 교체
   realizedLossCount: number;
   realizedWinRatePct: number | null;
-  profitFactor: number;
-  expectancy: number;
+  profitFactor: number; // exitAtDay3Pct 기준
+  expectancy: number; // exitAtDay3Pct 기준
+  theoreticalMaxWinRatePct: number | null; // 참고(달성 불가능한 상한) — 종전 realizedReturnPct(Math.max) 기준
+  theoreticalMaxProfitFactor: number;
+  theoreticalMaxExpectancy: number;
   sampleSymbolCount: number; // 신뢰도 배지용 — 이벤트(건) 수가 아니라 unique symbol 수
 }
 
@@ -196,6 +204,36 @@ function maxReturnColorClass(value: number | null): string {
   if (rounded > 0) return "text-rose-500";
   if (rounded < 0) return "text-blue-500";
   return "text-slate-500 dark:text-zinc-400";
+}
+
+// A트랙 "3일차 판정" 표시 라벨(§UI 개선) — 3일차 규칙 실현손익 계산(백엔드 realizedReturnPct)에
+// 이미 쓰이고 있는 ±10% 기준(day3ReturnPct>=10→보유 분기, B트랙 Verdict의 동일 ±10% 관례)을
+// 그대로 재사용한 "표시 전용" 라벨이다. 새 판정 규칙이 아니라 기존 3일차 규칙의 결과를 세
+// 구간으로 이름 붙인 것뿐 — day3ReturnPct>=10이면 realizedReturnPct 계산도 "보유(최고점까지
+// 추적)" 분기를 타므로 라벨과 실제 계산 분기가 항상 일치한다.
+type QuantDay3Verdict = "hold" | "stopLoss" | "neutral";
+const QUANT_DAY3_VERDICT_META: Record<QuantDay3Verdict, { label: string; text: string; bg: string }> = {
+  hold: { label: "보유", text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/30" },
+  stopLoss: { label: "손절", text: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50 dark:bg-rose-950/30" },
+  neutral: { label: "중립", text: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/30" },
+};
+function quantDay3Verdict(day3ReturnPct: number | null): QuantDay3Verdict | null {
+  if (day3ReturnPct == null) return null;
+  if (day3ReturnPct >= 10) return "hold";
+  if (day3ReturnPct <= -10) return "stopLoss";
+  return "neutral";
+}
+
+// 고점 대비 낙폭 — maxReturnSoFarPct(최고 수익률) 대비 기준값(basisReturnPct)이 얼마나
+// 빠졌는지(항상 0 이상). 신규 판정이 아니라 두 기존 수치의 단순 차이를 보여주는 표시 전용 값.
+function drawdownFromPeak(maxReturnSoFarPct: number | null, basisReturnPct: number | null): number | null {
+  if (maxReturnSoFarPct == null || basisReturnPct == null) return null;
+  return Number((maxReturnSoFarPct - basisReturnPct).toFixed(2));
+}
+
+function formatPct(value: number | null): string {
+  if (value == null) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
 // 포착(재등장) 횟수 표시. 재등장 날짜(+그날 진입가) 전체 목록은 기본 숨김, 클릭 시 펼침.
@@ -400,27 +438,12 @@ function CompactCard({
 // 집계 통계(승률/손익비 등)의 "3일차 규칙" 계산 로직(QUANT_SIGNAL_FRESH_DAYS 등)은 이 라벨
 // 교체와 무관하게 그대로 유지된다.
 const QUANT_SIGNAL_FRESH_DAYS_CLIENT = 3;
-// 2026-09-18 수정: "관찰 종료" 기준을 30영업일→10영업일로 축소(9/9 확정 실전 관리 규칙 —
-// 3일차 판정 후 +10%면 최대 2주(약 10영업일) 보유 — 와 정합). B트랙(4컬럼 칸반) 값과 우연히
-// 같은 10이지만 완전히 별개 상수다. "관찰 종료" 여부는 (raw daysAfter가 아니라) 백엔드가 day10
-// halt-safe 데이터로 실제 계산해준 item.endDate 존재 여부로 판단한다 — halt로 day10 전에 끊긴
-// 극히 드문 경우 무리하게 종료 처리하지 않고 "관찰 중"으로 안전하게 폴백하기 위함.
-const QUANT_OBSERVATION_END_DAYS_AFTER_CLIENT = 10;
 // 2026-09-18 — "관찰 종료"가 매도 신호로 오인되지 않도록 명시하는 문구. 트레일링 스탑 등 3일차
 // 판정 이후의 청산 규칙은 검증 시도(9/17)했으나 "보유 지속" 표본이 작아 결론을 낼 수
-// 없었다 — 즉 아직 존재하지 않는 규칙. 배지 툴팁과 참고 통계 토글 양쪽에서 동일 문구를 재사용한다.
+// 없었다 — 즉 아직 존재하지 않는 규칙. 참고 통계 토글에서 재사용한다.
 const QUANT_OBSERVATION_END_DISCLAIMER =
   "참고: 이 시점은 관찰을 멈추는 기준일 뿐, 매도 시점을 의미하지 않습니다. 청산 규칙은 아직 검증되지 않았습니다.";
 
-// 관찰 종료(endDate 존재) 카드의 상단 배지/가격 표시값 — "실현수익률"(endClose 기준)로 전환.
-// 아직 종료 전(또는 halt로 day10 데이터를 못 얻은 경우)이면 기존처럼 현재가/실시간 수익률 사용.
-function quantDisplayClose(item: QuantSignalItem): number {
-  return item.endClose ?? item.currentClose;
-}
-function quantDisplayReturnPct(item: QuantSignalItem): number {
-  const close = quantDisplayClose(item);
-  return ((close - item.entryClose) / item.entryClose) * 100;
-}
 // 종목(symbol) 단위 카드 통합(2026-09-18 재작업) — 동일 종목이 서로 다른 발굴일에 여러 번
 // 독립적으로 퀀트 신호 조건을 만족해도(예: 대원전선 7/3·7/14) 별개 카드로 쪼개지 않고 한 카드
 // 안에 이력을 세로로 나열한다. "퀀트신호 1/2, 2/2" 배지 방식은 폐기.
@@ -468,56 +491,55 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
     );
   }
 
-  const isEnded = item.endDate != null;
-  const displayClose = quantDisplayClose(item);
-  const displayReturnPct = quantDisplayReturnPct(item);
-  const priceColor = priceColorClass(displayClose, item.entryClose);
-  const mrColor = maxReturnColorClass(item.maxReturnSoFarPct);
+  // 이 시점부터는 항상 "관찰 중"(endDate===null) — 관찰 종료 건은 QuantEndedTable로 분리돼
+  // 여기까지 오지 않는다(§UI 개선, 아래 그룹핑 단계에서 미리 걸러짐).
+  const displayReturnPct = ((item.currentClose - item.entryClose) / item.entryClose) * 100;
+  const priceColor = priceColorClass(item.currentClose, item.entryClose);
+  const verdict = quantDay3Verdict(item.day3ReturnPct);
+  const verdictMeta = verdict ? QUANT_DAY3_VERDICT_META[verdict] : null;
+  const peakDrawdown = drawdownFromPeak(item.maxReturnSoFarPct, displayReturnPct);
 
   return (
-    <div className="text-xs py-1.5 border-t border-slate-100 dark:border-zinc-800/80 first:border-t-0 first:pt-0 flex items-center justify-between gap-2 flex-wrap">
-      <span className="text-slate-500 dark:text-zinc-400">
-        {isEnded ? (
-          <>
-            {formatDiscoveryDate(item.discoveryDate)} → {formatDiscoveryDate(item.endDate!)} (
-            {QUANT_OBSERVATION_END_DAYS_AFTER_CLIENT}영업일)
-          </>
-        ) : (
-          <>
-            {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter})
-          </>
-        )}{" "}
-        · {item.entryClose.toLocaleString()} → <span className={priceColor}>{displayClose.toLocaleString()}</span>
-      </span>
-      <span className="flex items-center gap-1.5 flex-shrink-0">
-        <span className={`font-bold ${priceColor}`}>
-          {displayReturnPct >= 0 ? "+" : ""}
-          {displayReturnPct.toFixed(1)}%
+    <div className="py-2 border-t border-slate-100 dark:border-zinc-800/80 first:border-t-0 first:pt-0">
+      {/* 1행: 3일차 판정 — 가장 크게 */}
+      {verdictMeta && (
+        <span className={`inline-block text-sm font-extrabold px-2 py-0.5 rounded-lg ${verdictMeta.bg} ${verdictMeta.text}`}>
+          {verdictMeta.label}
         </span>
-        <span className="text-slate-400 dark:text-zinc-500">
-          (최고{" "}
-          <span className={mrColor}>
-            {item.maxReturnSoFarPct != null
-              ? `${item.maxReturnSoFarPct >= 0 ? "+" : ""}${item.maxReturnSoFarPct.toFixed(1)}%`
-              : "—"}
-          </span>
-          )
+      )}
+      {/* 2행: 신호일·진입가 → 최신 종가, 실현 수익률 */}
+      <div className="flex items-center justify-between gap-2 flex-wrap mt-1">
+        <span className="text-xs text-slate-500 dark:text-zinc-400">
+          {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter}) · {item.entryClose.toLocaleString()} →{" "}
+          <span className={priceColor}>{item.currentClose.toLocaleString()}</span>
         </span>
-      </span>
+        <span className={`text-sm font-bold ${priceColor}`}>
+          실현 {formatPct(item.realizedReturnPct)}
+        </span>
+      </div>
+      {/* 3행: 참고 — 최고/최저/고점 대비 낙폭 */}
+      <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+        참고: 최고{" "}
+        <span className={maxReturnColorClass(item.maxReturnSoFarPct)}>{formatPct(item.maxReturnSoFarPct)}</span>
+        {" · 최저 "}
+        <span className={maxReturnColorClass(item.minReturnSoFarPct)}>{formatPct(item.minReturnSoFarPct)}</span>
+        {" · 고점 대비 낙폭 "}
+        {peakDrawdown != null ? `-${peakDrawdown.toFixed(1)}%p` : "—"}
+      </p>
+      {/* 거래정지 예외 표시(§UI 개선) — 판정 로직 변경 없음, 참고 문구만 추가 */}
+      {item.haltStartDaysAfter != null && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">거래정지 구간 제외 후 관찰 중</p>
+      )}
     </div>
   );
 }
 
 function QuantGroupedCard({ group }: { group: QuantSymbolGroup }) {
   const { symbol, name, events } = group;
+  // 관찰 종료(endDate!=null) 건은 이 카드까지 오지 않고 QuantEndedTable로 분리된다(§UI 개선,
+  // 호출부에서 미리 필터링) — 그래서 여기서는 판단 대기/관찰 중 두 상태만 구분하면 된다.
   const allPending = events.every((e) => e.group === "pending");
-  const allEnded = events.every((e) => e.group === "result" && e.endDate != null);
-  const headerStateLabel = allPending ? "판단 대기" : allEnded ? "관찰 종료" : "관찰 중";
-
-  // 관찰 지속성 보조표시(참고용 — 규칙 아님, daysAfter>=30 기준 변경 없음). 2026-09-18 재배치 —
-  // 이전엔 이력 행마다 따로 붙었으나, 모든 카드가 동일한 요소 순서를 갖도록 카드 맨 아래 한
-  // 곳으로 모은다. 신호가 여러 번이라 해당 건이 2개 이상이면 각각 날짜를 명시해 구분한다.
-  const recentlyActiveEvents = events.filter((e) => e.endDate != null && e.isRecentlyActive);
+  const headerStateLabel = allPending ? "판단 대기" : "관찰 중";
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-transparent shadow-sm">
@@ -530,7 +552,10 @@ function QuantGroupedCard({ group }: { group: QuantSymbolGroup }) {
           {name}
         </Link>
         <span className="text-xs font-mono text-slate-400 dark:text-zinc-500 flex-shrink-0">({symbol})</span>
-        <span className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400">
+        <span
+          className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"
+          title="실험 신호 · 매수 추천 아님 · 추세 필터 미반영"
+        >
           퀀트신호
         </span>
         <span
@@ -539,7 +564,6 @@ function QuantGroupedCard({ group }: { group: QuantSymbolGroup }) {
               ? "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400"
               : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400"
           }`}
-          title={headerStateLabel === "관찰 종료" ? QUANT_OBSERVATION_END_DISCLAIMER : undefined}
         >
           {headerStateLabel}
         </span>
@@ -552,16 +576,124 @@ function QuantGroupedCard({ group }: { group: QuantSymbolGroup }) {
           <QuantHistoryRow key={item.discoveryDate} item={item} />
         ))}
       </div>
-      {recentlyActiveEvents.length > 0 && (
-        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800/80">
-          {recentlyActiveEvents.map((item) => (
-            <p key={item.discoveryDate} className="text-[11px] text-slate-400 dark:text-zinc-500">
-              ⚡ 최근에도 변동성 지속 중 (참고)
-              {events.length > 1 && ` — ${formatDiscoveryDate(item.discoveryDate)} 신호`}
-            </p>
-          ))}
-        </div>
+      {events[0]?.recentRecapture && (
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800/80">
+          최근 재포착 {formatDiscoveryDate(events[0].recentRecapture.date)}
+        </p>
       )}
+    </div>
+  );
+}
+
+// 관찰 종료(endDate!=null) 표본 전용 표(§UI 개선) — 카드 대신 정렬 가능한 표로 전환. 종목 단위
+// 그룹핑 없이 발굴 건(신호) 단위로 한 행씩 전부 나열한다(같은 종목이 여러 번 신호를 냈으면
+// 여러 행으로 보임 — 카드와 달리 표에서는 종목별로 묶지 않는 편이 비교에 유리하다).
+// "10일차(%)" 열은 day10 종료가 기준 확정값(endReturnPct, 사후 확정값이 아니라 고정 보유기간
+// 규칙의 결과 — 2026-10-20 "실현"이라는 이름이 317행 Math.max 방식(사후적으로만 알 수 있는 값)과
+// 혼동돼 개명), "승패" 열은 2026-10-20부터 헤드라인 집계 통계와 동일한 기준(day3ReturnPct=
+// exitAtDay3Pct, 항상 3일차 종가로 청산)을 쓴다 — 종전에는 realizedReturnPct(Math.max 방식)를
+// 썼는데, 헤드라인이 exitAtDay3Pct로 교체되며 표의 승패도 같은 기준으로 통일했다.
+type QuantEndedSortKey = "discoveryDate" | "day3ReturnPct" | "endReturnPct" | "maxReturnSoFarPct" | "minReturnSoFarPct" | "drawdown";
+
+const QUANT_ENDED_COLUMNS: { key: QuantEndedSortKey; label: string }[] = [
+  { key: "discoveryDate", label: "신호일" },
+  { key: "day3ReturnPct", label: "3일차(%)" },
+  { key: "endReturnPct", label: "10일차(%)" },
+  { key: "maxReturnSoFarPct", label: "최고(%)" },
+  { key: "minReturnSoFarPct", label: "최저(%)" },
+  { key: "drawdown", label: "고점대비낙폭(%)" },
+];
+
+function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
+  const [sortKey, setSortKey] = useState<QuantEndedSortKey>("discoveryDate");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const rows = useMemo(() => {
+    const withComputed = items.map((item) => {
+      const endReturnPct = item.endReturnPct ?? item.realizedReturnPct;
+      const drawdown = drawdownFromPeak(item.maxReturnSoFarPct, endReturnPct);
+      const win = item.isValidForStats ? (item.day3ReturnPct ?? 0) > 0 : null; // null=통계 제외(거래정지), 기준: exitAtDay3Pct
+      return { item, endReturnPct, drawdown, win };
+    });
+    const valueOf = (r: (typeof withComputed)[number]): number | string => {
+      if (sortKey === "discoveryDate") return r.item.discoveryDate;
+      if (sortKey === "drawdown") return r.drawdown ?? -Infinity;
+      if (sortKey === "endReturnPct") return r.endReturnPct ?? -Infinity;
+      return r.item[sortKey] ?? -Infinity;
+    };
+    return withComputed.sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      const cmp = typeof va === "string" ? va.localeCompare(vb as string) : (va as number) - (vb as number);
+      return sortDesc ? -cmp : cmp;
+    });
+  }, [items, sortKey, sortDesc]);
+
+  function toggleSort(key: QuantEndedSortKey) {
+    if (key === sortKey) setSortDesc((v) => !v);
+    else {
+      setSortKey(key);
+      setSortDesc(true);
+    }
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400">
+            <th
+              onClick={() => toggleSort("discoveryDate")}
+              className="text-left px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
+            >
+              신호일{sortKey === "discoveryDate" && (sortDesc ? " ▼" : " ▲")}
+            </th>
+            <th className="text-left px-2 py-1.5 font-semibold">종목</th>
+            {QUANT_ENDED_COLUMNS.filter((col) => col.key !== "discoveryDate").map((col) => (
+              <th
+                key={col.key}
+                onClick={() => toggleSort(col.key)}
+                className="text-right px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
+              >
+                {col.label}
+                {sortKey === col.key && (sortDesc ? " ▼" : " ▲")}
+              </th>
+            ))}
+            <th className="text-center px-2 py-1.5 font-semibold" title="승패 기준: 3일차 종가 청산(exitAtDay3Pct=day3ReturnPct) — 10일차(%) 열과 다른 필드">
+              승패
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ item, endReturnPct, drawdown, win }) => (
+            <tr key={`${item.symbol}::${item.discoveryDate}`} className="border-b border-slate-100 dark:border-zinc-800/60">
+              <td className="px-2 py-1.5 text-left text-slate-500 dark:text-zinc-400">{formatDiscoveryDate(item.discoveryDate)}</td>
+              <td className="px-2 py-1.5 text-left">
+                <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
+                  {item.name}
+                </Link>
+                {item.haltStartDaysAfter != null && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400" title="거래정지 구간 제외 후 관찰">⏸</span>
+                )}
+              </td>
+              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.day3ReturnPct)}`}>{formatPct(item.day3ReturnPct)}</td>
+              <td className={`px-2 py-1.5 text-right font-bold ${priceColorClass(endReturnPct ?? 0, 0)}`}>{formatPct(endReturnPct)}</td>
+              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.maxReturnSoFarPct)}`}>{formatPct(item.maxReturnSoFarPct)}</td>
+              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.minReturnSoFarPct)}`}>{formatPct(item.minReturnSoFarPct)}</td>
+              <td className="px-2 py-1.5 text-right text-slate-500 dark:text-zinc-400">{drawdown != null ? `-${drawdown.toFixed(1)}%p` : "—"}</td>
+              <td className="px-2 py-1.5 text-center">
+                {win == null ? (
+                  <span className="text-slate-400 dark:text-zinc-500" title="거래정지로 3일차 판정 불가 — 통계 제외">제외</span>
+                ) : win ? (
+                  <span className="text-rose-500 font-bold">승</span>
+                ) : (
+                  <span className="text-blue-500 font-bold">패</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -599,10 +731,20 @@ function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
       </p>
       {stats.resultCount > 0 && (
         <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
-          참고 지표: 거래당 기대값{" "}
-          <span className={stats.expectancy > 0 ? "text-rose-500" : stats.expectancy < 0 ? "text-blue-500" : ""}>
-            {stats.expectancy > 0 ? "+" : ""}
-            {stats.expectancy}%
+          참고(달성 불가능한 상한 — 최고점 매도 가정, 실제 체결 불가): 승률{" "}
+          {stats.theoreticalMaxWinRatePct != null ? `${stats.theoreticalMaxWinRatePct.toFixed(1)}%` : "—"}
+          , 손익비 {stats.theoreticalMaxProfitFactor}, 거래당 기대값{" "}
+          <span
+            className={
+              stats.theoreticalMaxExpectancy > 0
+                ? "text-rose-500"
+                : stats.theoreticalMaxExpectancy < 0
+                  ? "text-blue-500"
+                  : ""
+            }
+          >
+            {stats.theoreticalMaxExpectancy > 0 ? "+" : ""}
+            {stats.theoreticalMaxExpectancy}%
           </span>
           , 평균 최고수익률{" "}
           <span className={stats.avgMaxReturnSoFarPct && stats.avgMaxReturnSoFarPct > 0 ? "text-rose-500" : stats.avgMaxReturnSoFarPct && stats.avgMaxReturnSoFarPct < 0 ? "text-blue-500" : ""}>
@@ -808,22 +950,70 @@ export default function TrackingPage() {
     quantSearchQuery.length === 0 ||
     item.name.toLowerCase().includes(quantSearchQuery) ||
     item.symbol.toLowerCase().includes(quantSearchQuery);
-  const quantPendingItems = quantPendingItemsBase.filter(matchesQuantSearch);
   const quantResultItems = quantResultItemsBase.filter(matchesQuantSearch);
+  // §UI 개선 — "완료 표본은 표로": group==='result' 안에서 관찰 종료(endDate!=null)는 카드에서
+  // 완전히 빼서 QuantEndedTable로, 아직 관찰 중(endDate===null)인 것만 카드 그룹핑 대상으로 남긴다.
+  const quantPendingItems = quantPendingItemsBase.filter(matchesQuantSearch);
+  const quantObservingItems = quantResultItems.filter((i) => i.endDate == null);
+  const quantEndedItems = quantResultItems.filter((i) => i.endDate != null);
 
   // 동일 symbol이 서로 다른 발굴일에 여러 번 독립적으로 퀀트 신호 조건을 만족한 경우(정상 설계,
   // 2026-09-17 검증됨 — 예: 대원전선 7/3·7/14), 카드를 이벤트별로 따로 그리지 않고 종목(symbol)
   // 단위로 1장에 합친다(2026-09-18 재작업 — 이전 "퀀트신호 1/2" 배지 방식은 폐기). discoveryDate
   // 오름차순으로 정렬된 이력 목록을 한 카드 안에 세로로 나열한다.
   const quantPendingGroups = groupQuantItemsBySymbol(quantPendingItems);
-  const quantResultGroups = groupQuantItemsBySymbol(quantResultItems);
+  const quantObservingGroups = groupQuantItemsBySymbol(quantObservingItems);
 
-  // §2: "결과 확인 중" 카드는 최근 20개 종목(그룹)만 기본 노출 + 토글로 전체 펼침. 검색 중일 때는
+  // §2: "관찰 중" 카드는 최근 20개 종목(그룹)만 기본 노출 + 토글로 전체 펼침. 검색 중일 때는
   // 페이지네이션을 무시하고 매칭되는 전체를 보여준다(검색 결과가 페이지네이션에 가려지면 안 됨).
-  // 2026-09-18 재작업으로 카드 단위가 "이벤트"에서 "종목"으로 바뀌어 페이지 크기도 종목 수 기준.
   const QUANT_RESULT_PAGE_SIZE = 20;
-  const quantResultGroupsVisible =
-    isSearching || showAllQuantResults ? quantResultGroups : quantResultGroups.slice(0, QUANT_RESULT_PAGE_SIZE);
+  const quantObservingGroupsVisible =
+    isSearching || showAllQuantResults ? quantObservingGroups : quantObservingGroups.slice(0, QUANT_RESULT_PAGE_SIZE);
+
+  // 비용 가정(왕복 수수료+세액 근사치) — 2026-10-20 추가, 명시적 가정값. 실제 계좌·종목별
+  // 수수료율/세율과 다를 수 있다. 헤드라인 기대값(exitAtDay3Pct 기준)에서 단순 차감만 한다.
+  const QUANT_FEE_TAX_ROUNDTRIP_PCT = 0.2;
+
+  // §통계 패널 추가(표시만, 기존 수치 정의는 변경하지 않음) — 백엔드 헤드라인 통계와 동일한
+  // resultItems 필터(group==='result' && isValidForStats)를 그대로 재사용해, "그 집합 안에서"
+  // 추가로 계산한다. 즐겨찾기 필터와 무관하게 항상 전체 표본 기준(기존 헤드라인 통계와 동일 관례).
+  const quantStatsResultItems = data.quantSignalItems.filter((i) => i.group === "result" && i.isValidForStats);
+  const quantExtraStats = (() => {
+    if (quantStatsResultItems.length === 0) return null;
+    // (a) 최대 수익 1건 제외 손익비·기대값 — 2026-10-20: 헤드라인이 day3ReturnPct(exitAtDay3Pct)
+    // 기준으로 교체됨에 따라, 이 "1건 제외" 통계도 같은 기준으로 통일한다(종전엔 realizedReturnPct
+    // 기준이었음). 합산식 자체는 기존과 동일, 적용 대상 필드만 바뀜.
+    const sorted = [...quantStatsResultItems].sort(
+      (a, b) => (b.day3ReturnPct ?? -Infinity) - (a.day3ReturnPct ?? -Infinity)
+    );
+    const excludedTop1 = sorted.slice(1);
+    let grossProfit = 0;
+    let grossLoss = 0;
+    for (const it of excludedTop1) {
+      const r = it.day3ReturnPct ?? 0;
+      if (r > 0) grossProfit += r;
+      else if (r < 0) grossLoss += Math.abs(r);
+    }
+    const n = excludedTop1.length;
+    const profitFactorExTop1 = n > 0 ? (grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : grossProfit > 0 ? 99.99 : 0) : null;
+    const expectancyExTop1 = n > 0 ? Number(((grossProfit - grossLoss) / n).toFixed(2)) : null;
+
+    // (b) 평균/최악 고점 대비 낙폭 — maxReturnSoFarPct 대비 realizedReturnPct(종전 헤드라인,
+    // 참고용 상한) 차이는 그대로 유지한다. 이 낙폭은 승패 판정이 아니라 "최고점에서 얼마나
+    // 반납했는지"를 보여주는 참고 수치라 교체 대상이 아니다. 카드의 "참고" 낙폭(대비 현재가)과는
+    // 기준이 다르다(위 주석 참고).
+    const drawdowns = quantStatsResultItems
+      .map((it) => drawdownFromPeak(it.maxReturnSoFarPct, it.realizedReturnPct))
+      .filter((d): d is number => d != null);
+    const avgDrawdown = drawdowns.length > 0 ? Number((drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length).toFixed(2)) : null;
+    const worstDrawdown = drawdowns.length > 0 ? Number(Math.max(...drawdowns).toFixed(2)) : null;
+
+    // (c) 비용 반영 후 기대값 — 헤드라인 기대값(day3ReturnPct 기준, 백엔드 quantSignalStats.expectancy)에서
+    // 왕복 비용 가정치를 단순 차감.
+    const costAdjustedExpectancy = Number((data.quantSignalStats.expectancy - QUANT_FEE_TAX_ROUNDTRIP_PCT).toFixed(2));
+
+    return { profitFactorExTop1, expectancyExTop1, avgDrawdown, worstDrawdown, costAdjustedExpectancy, excludedCount: sorted.length > 0 ? 1 : 0 };
+  })();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -899,9 +1089,10 @@ export default function TrackingPage() {
               </p>
             )}
 
-            {/* 헤드라인 승률(§2-2) — 화면에 노출하는 유일한 "승률" 숫자. 3일차 규칙 실현손익
-                시뮬레이션 기준(백엔드 realizedReturnPct)이며, 과거 통계상 참고 수치·최고점 기준
-                낙관적 시나리오와는 절대 섞이지 않는다(그것들은 아래 토글에서만 노출). */}
+            {/* 헤드라인 승률(§2-2) — 화면에 노출하는 유일한 "승률" 숫자. 2026-10-20부터 실행
+                가능한 청산 규칙(exitAtDay3Pct=항상 3일차 종가 청산) 기준으로 교체(백엔드
+                day3ReturnPct). 종전 방식(최고점 매도 가정, 실제로는 불가능한 상한)은 아래 토글에
+                "참고(달성 불가능한 상한)"로만 노출하고 헤드라인과는 절대 섞이지 않는다. */}
             <p className="text-sm text-slate-700 dark:text-zinc-300 mt-1">
               {quantSignalStats.resultCount > 0 ? (
                 <>
@@ -915,7 +1106,7 @@ export default function TrackingPage() {
                   </span>{" "}
                   · 손익비{" "}
                   <span className="font-bold">{quantSignalStats.profitFactor}</span>{" "}
-                  <span className="text-slate-400 dark:text-zinc-500">(3일차 규칙 적용, 거래정지 종목 제외, 전체 이력 기준)</span>
+                  <span className="text-slate-400 dark:text-zinc-500">(3일차 종가 청산 기준, 거래정지 종목 제외, 전체 이력 기준)</span>
                 </>
               ) : (
                 <span className="text-slate-400 dark:text-zinc-500">실전 검증 대기 중 (3일차 판정 필요)</span>
@@ -962,33 +1153,44 @@ export default function TrackingPage() {
               </div>
             )}
 
-            {quantResultItemsBase.length > 0 && (
-              <div>
+            {quantObservingItems.length > 0 && (
+              <div className="mb-5">
                 <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300 mb-2">
-                  결과 확인 중 {quantResultItems.length}건({quantResultGroups.length}종목)
+                  관찰 중 {quantObservingItems.length}건({quantObservingGroups.length}종목)
                 </h3>
-                {quantResultGroups.length === 0 ? (
+                {quantObservingGroups.length === 0 ? (
                   <p className="text-sm text-slate-400 dark:text-zinc-500">일치하는 종목 없음</p>
                 ) : (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
-                      {quantResultGroupsVisible.map((group) => (
+                      {quantObservingGroupsVisible.map((group) => (
                         <QuantGroupedCard key={group.symbol} group={group} />
                       ))}
                     </div>
                     {/* §2 페이지네이션 — 검색 중에는 숨김(전체 매칭 결과를 이미 그대로 보여주는 중) */}
-                    {!isSearching && quantResultGroups.length > QUANT_RESULT_PAGE_SIZE && (
+                    {!isSearching && quantObservingGroups.length > QUANT_RESULT_PAGE_SIZE && (
                       <button
                         onClick={() => setShowAllQuantResults((v) => !v)}
                         className="mt-3 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
                         {showAllQuantResults
                           ? "최근 20종목만 보기"
-                          : `전체 이력 보기 (${quantResultGroups.length}종목)`}
+                          : `전체 이력 보기 (${quantObservingGroups.length}종목)`}
                       </button>
                     )}
                   </>
                 )}
+              </div>
+            )}
+
+            {/* §UI 개선 — "완료 표본은 표로": 관찰 종료(endDate!=null) 건은 카드 대신 정렬 가능한
+                표로 전환. 통계 계산 대상(전체 건)은 변경 없음 — 표는 순수 표시용. */}
+            {quantEndedItems.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold text-slate-700 dark:text-zinc-300 mb-2">
+                  관찰 종료 {quantEndedItems.length}건
+                </h3>
+                <QuantEndedTable items={quantEndedItems} />
               </div>
             )}
 
@@ -1020,6 +1222,49 @@ export default function TrackingPage() {
                       : "—"}
                   </span>{" "}
                   <span className="text-slate-400 dark:text-zinc-500">(참고 수치, 승률 아님)</span>
+                </p>
+              </div>
+            )}
+
+            {/* §통계 패널 추가 — 기존 승률/손익비/기대값 정의는 그대로 두고, 같은 표본(resultItems)
+                위에서 참고용으로 추가 계산한다. 표본 신뢰 배지는 위에서 그대로 유지(변경 없음). */}
+            {quantExtraStats && (
+              <div className="mt-2 bg-slate-50 dark:bg-zinc-950 rounded-2xl p-3 text-center">
+                <p className="text-xs text-slate-600 dark:text-zinc-300">
+                  최대 수익 1건 제외 시 손익비{" "}
+                  <span className="font-bold">
+                    {quantExtraStats.profitFactorExTop1 != null ? quantExtraStats.profitFactorExTop1 : "—"}
+                  </span>
+                  , 기대값{" "}
+                  <span
+                    className={
+                      quantExtraStats.expectancyExTop1 != null ? priceColorClass(quantExtraStats.expectancyExTop1, 0) : ""
+                    }
+                  >
+                    {quantExtraStats.expectancyExTop1 != null
+                      ? `${quantExtraStats.expectancyExTop1 >= 0 ? "+" : ""}${quantExtraStats.expectancyExTop1}%`
+                      : "—"}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1">
+                  평균 고점 대비 낙폭{" "}
+                  <span className="font-bold">
+                    {quantExtraStats.avgDrawdown != null ? `-${quantExtraStats.avgDrawdown.toFixed(1)}%p` : "—"}
+                  </span>
+                  , 최악 고점 대비 낙폭{" "}
+                  <span className="font-bold text-rose-500">
+                    {quantExtraStats.worstDrawdown != null ? `-${quantExtraStats.worstDrawdown.toFixed(1)}%p` : "—"}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1">
+                  비용 반영 후 기대값{" "}
+                  <span className={priceColorClass(quantExtraStats.costAdjustedExpectancy, 0)}>
+                    {quantExtraStats.costAdjustedExpectancy >= 0 ? "+" : ""}
+                    {quantExtraStats.costAdjustedExpectancy}%
+                  </span>{" "}
+                  <span className="text-slate-400 dark:text-zinc-500">
+                    (왕복 수수료+세액 {QUANT_FEE_TAX_ROUNDTRIP_PCT}% 가정 차감, 가정값)
+                  </span>
                 </p>
               </div>
             )}
@@ -1098,7 +1343,7 @@ export default function TrackingPage() {
                               symbol={item.symbol}
                               name={item.name}
                               returnPct={item.returnPct}
-                              dateLabel="최초 포착"
+                              dateLabel="현재 사이클 시작"
                               discoveryDate={item.discoveryDate}
                               daysAfter={item.daysAfter}
                               entryClose={item.entryClose}
@@ -1111,14 +1356,21 @@ export default function TrackingPage() {
                               stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
                               trackTone="kanban"
                               footer={
-                                <CaptureInfo
-                                  captureCount={item.captureCount}
-                                  captureHistory={item.captureHistory}
-                                  maxReturnPct={item.maxReturnPct}
-                                  minReturnPct={item.minReturnPct}
-                                  expanded={expandedSymbols.has(item.symbol)}
-                                  onToggleExpand={() => toggleExpand(item.symbol)}
-                                />
+                                <>
+                                  <CaptureInfo
+                                    captureCount={item.captureCount}
+                                    captureHistory={item.captureHistory}
+                                    maxReturnPct={item.maxReturnPct}
+                                    minReturnPct={item.minReturnPct}
+                                    expanded={expandedSymbols.has(item.symbol)}
+                                    onToggleExpand={() => toggleExpand(item.symbol)}
+                                  />
+                                  {item.priorCycleEntryDates.length > 0 && (
+                                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                                      이전 사이클 시작: {item.priorCycleEntryDates.map(formatDiscoveryDate).join(", ")}
+                                    </p>
+                                  )}
+                                </>
                               }
                             />
                           ))
@@ -1161,7 +1413,7 @@ export default function TrackingPage() {
                           symbol={item.symbol}
                           name={item.name}
                           returnPct={item.returnPct}
-                          dateLabel="최초 포착"
+                          dateLabel="현재 사이클 시작"
                           discoveryDate={item.discoveryDate}
                           daysAfter={item.daysAfter}
                           entryClose={item.entryClose}
@@ -1174,14 +1426,21 @@ export default function TrackingPage() {
                           stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
                           trackTone="kanban"
                           footer={
-                            <CaptureInfo
-                              captureCount={item.captureCount}
-                              captureHistory={item.captureHistory}
-                              maxReturnPct={item.maxReturnPct}
-                              minReturnPct={item.minReturnPct}
-                              expanded={expandedSymbols.has(item.symbol)}
-                              onToggleExpand={() => toggleExpand(item.symbol)}
-                            />
+                            <>
+                              <CaptureInfo
+                                captureCount={item.captureCount}
+                                captureHistory={item.captureHistory}
+                                maxReturnPct={item.maxReturnPct}
+                                minReturnPct={item.minReturnPct}
+                                expanded={expandedSymbols.has(item.symbol)}
+                                onToggleExpand={() => toggleExpand(item.symbol)}
+                              />
+                              {item.priorCycleEntryDates.length > 0 && (
+                                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                                  이전 사이클 시작: {item.priorCycleEntryDates.map(formatDiscoveryDate).join(", ")}
+                                </p>
+                              )}
+                            </>
                           }
                         />
                       ))}

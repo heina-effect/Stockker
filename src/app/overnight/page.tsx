@@ -290,7 +290,7 @@ function OvernightScreeningContent() {
           {/* 퀀트신호 요약 — 탭이 아닌 정보 배지 */}
           {quantSignalCount > 0 && (
             <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg self-center"
-              title="RSI 50~60 + 거래량 200~400% 충족 종목 수 (참고용 지표, 매수 추천 아님)"
+              title="RSI 50~60 + 거래량 200~400% 충족 종목 수 (참고용 지표, 매수 추천 아님) · 실험 신호 · 추세 필터 미반영"
             >
               <Zap className="w-3.5 h-3.5 text-amber-500" />
               <span className="text-xs font-bold text-amber-700 dark:text-amber-400">퀀트신호 {quantSignalCount}</span>
@@ -348,7 +348,7 @@ function OvernightScreeningContent() {
                         {stock.metrics?.quantSignal && (
                           <span
                             className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700/40"
-                            title="RSI 50~60 + 거래량 200~400% 충족 (참고용 지표, 매수 추천 아님)"
+                            title="RSI 50~60 + 거래량 200~400% 충족 (참고용 지표, 매수 추천 아님) · 실험 신호 · 추세 필터 미반영"
                           >
                             ⚡ 퀀트신호
                           </span>
@@ -413,6 +413,12 @@ function OvernightScreeningContent() {
                           {reason}
                         </li>
                       ))}
+                      {stock.classification === "exclude" && stock.metrics?.quantSignal && (
+                        <li className="text-xs text-slate-600 dark:text-zinc-300 flex items-start gap-1.5 leading-relaxed">
+                          <span className="text-rose-500 flex-shrink-0 mt-0.5">•</span>
+                          RSI·거래량 조건만 충족 (추세 조건 미달)
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </div>

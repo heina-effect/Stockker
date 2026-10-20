@@ -242,7 +242,9 @@ export async function GET() {
     group: "pending" | "result"; // pending: daysAfter < 3(판단 대기), result: >= 3(결과 확인 중)
     day3ReturnPct: number | null;
     maxReturnSoFarPct: number | null; // 2026-09-18: 계산 창을 0~QUANT_OBSERVATION_END_DAYS_AFTER(10)일로 축소
-    realizedReturnPct: number | null; // 3일차 규칙(승률용) — 이번 변경과 무관, 그대로 유지
+    minReturnSoFarPct: number | null; // maxReturnSoFarPct와 동일 창의 최솟값(표시 전용, 판정 무관)
+    realizedReturnPct: number | null; // Math.max 방식(사후적 상한) — 2026-10-20부터 헤드라인 승률/손익비/
+    // 기대값 산출 기준에서 제외되고 참고(theoreticalMax*)용으로만 쓰인다. 필드 자체는 삭제하지 않음.
     endDate: string | null; // daysAfter>=10 도달 시: day10 시점 거래일(종료일자, 고정값)
     endClose: number | null; // daysAfter>=10 도달 시: day10 시점 종가(종료가, 고정값)
     endReturnPct: number | null; // (endClose-entryClose)/entryClose — 카드에 표시하는 "실현수익률"
@@ -284,6 +286,7 @@ export async function GET() {
 
     let day3ReturnPct: number | null = null;
     let maxReturnSoFarPct: number | null = null;
+    let minReturnSoFarPct: number | null = null;
     let realizedReturnPct: number | null = null;
     let endDate: string | null = null;
     let endClose: number | null = null;
@@ -303,6 +306,9 @@ export async function GET() {
         return ((c - entryClose) / entryClose) * 100;
       });
       maxReturnSoFarPct = Number(Math.max(...returnSeries).toFixed(2));
+      // 최저수익률(MAE) — A트랙 카드/표 "참고" 영역 표시용(§UI 개선). maxReturnSoFarPct와 완전히
+      // 동일한 창(returnSeries)에서 최솟값만 추가로 뽑는다 — 3일차 규칙/승률 계산에는 쓰이지 않음.
+      minReturnSoFarPct = Number(Math.min(...returnSeries).toFixed(2));
 
       if (day3ReturnPct >= 10) {
         const afterDay3Series = validDatesForReturn.slice(QUANT_SIGNAL_FRESH_DAYS).map((d) => {
@@ -356,6 +362,7 @@ export async function GET() {
       group,
       day3ReturnPct,
       maxReturnSoFarPct,
+      minReturnSoFarPct,
       realizedReturnPct,
       endDate,
       endClose,
@@ -383,23 +390,49 @@ export async function GET() {
         )
       : null;
 
-  // 헤드라인 승률 — 3일차 규칙 실현손익 시뮬레이션(realizedReturnPct) 기준.
-  const realizedWinCount = resultItems.filter((i) => (i.realizedReturnPct as number) > 0).length;
-  const realizedLossCount = resultItems.length - realizedWinCount;
-  const realizedWinRatePct =
-    resultItems.length > 0 ? Number(((realizedWinCount / resultItems.length) * 100).toFixed(1)) : null;
+  // 헤드라인 승률 — 2026-10-20 변경: realizedReturnPct(Math.max 방식, 사후적으로만 알 수 있는
+  // "달성 불가능한 상한")에서 day3ReturnPct(=exitAtDay3Pct, 항상 3일차 종가로 청산하는 실행
+  // 가능한 규칙) 기준으로 교체. 3일 규칙의 ±10% 임계값 자체는 변경하지 않음 — day3ReturnPct는
+  // 그 임계값 판정에 이미 쓰이던 필드를 그대로 재사용할 뿐이다.
+  const day3WinCount = resultItems.filter((i) => (i.day3ReturnPct as number) > 0).length;
+  const day3LossCount = resultItems.length - day3WinCount;
+  const day3WinRatePct =
+    resultItems.length > 0 ? Number(((day3WinCount / resultItems.length) * 100).toFixed(1)) : null;
 
-  // 손익비 (Profit Factor) 및 기대값 (Expectancy)
+  // 손익비 (Profit Factor) 및 기대값 (Expectancy) — day3ReturnPct 기준
   let grossProfit = 0;
   let grossLoss = 0;
   for (const item of resultItems) {
-    const r = item.realizedReturnPct as number;
+    const r = item.day3ReturnPct as number;
     if (r > 0) grossProfit += r;
     else if (r < 0) grossLoss += Math.abs(r);
   }
-  
+
   const profitFactor = grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : (grossProfit > 0 ? 99.99 : 0);
   const expectancy = resultItems.length > 0 ? Number(((grossProfit - grossLoss) / resultItems.length).toFixed(2)) : 0;
+
+  // 참고용 — "달성 불가능한 상한"(종전 헤드라인, realizedReturnPct=Math.max 방식) 그대로 보존.
+  // 화면에는 헤드라인과 절대 섞이지 않는 별도 참고 토글에서만 "상한(참고)"로 명시해 노출한다.
+  const theoreticalMaxWinCount = resultItems.filter((i) => (i.realizedReturnPct as number) > 0).length;
+  const theoreticalMaxWinRatePct =
+    resultItems.length > 0 ? Number(((theoreticalMaxWinCount / resultItems.length) * 100).toFixed(1)) : null;
+  let theoreticalMaxGrossProfit = 0;
+  let theoreticalMaxGrossLoss = 0;
+  for (const item of resultItems) {
+    const r = item.realizedReturnPct as number;
+    if (r > 0) theoreticalMaxGrossProfit += r;
+    else if (r < 0) theoreticalMaxGrossLoss += Math.abs(r);
+  }
+  const theoreticalMaxProfitFactor =
+    theoreticalMaxGrossLoss > 0
+      ? Number((theoreticalMaxGrossProfit / theoreticalMaxGrossLoss).toFixed(2))
+      : theoreticalMaxGrossProfit > 0
+        ? 99.99
+        : 0;
+  const theoreticalMaxExpectancy =
+    resultItems.length > 0
+      ? Number(((theoreticalMaxGrossProfit - theoreticalMaxGrossLoss) / resultItems.length).toFixed(2))
+      : 0;
 
   // 신뢰도 배지용 표본 크기 (승패 검증이 가능한 종목만)
   const quantSignalSampleSymbolCount = new Set(resultItems.map((r) => r.symbol)).size;
@@ -409,11 +442,14 @@ export async function GET() {
     resultCount: resultItems.length,
     avgDay3ReturnPct,
     avgMaxReturnSoFarPct,
-    realizedWinCount,
-    realizedLossCount,
-    realizedWinRatePct,
+    realizedWinCount: day3WinCount,
+    realizedLossCount: day3LossCount,
+    realizedWinRatePct: day3WinRatePct,
     profitFactor,
     expectancy,
+    theoreticalMaxWinRatePct,
+    theoreticalMaxProfitFactor,
+    theoreticalMaxExpectancy,
     sampleSymbolCount: quantSignalSampleSymbolCount,
   };
 
