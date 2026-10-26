@@ -50,6 +50,9 @@
     "ws": "^8.22.0",
     "zod": "^4.6.7"
   },
+  "overrides": {
+    "protobufjs": "^7.6.6"
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
