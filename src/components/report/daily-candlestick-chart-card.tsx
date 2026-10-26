@@ -214,7 +214,9 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
   const ma20Label = chartMode === "daily" ? "MA20" : "10분봉 MA20";
   const timeLabel = chartMode === "daily" ? "일자" : "시각";
   const freshnessState = state?.source === "live" ? "live" : state?.source === "mock-fallback" ? "error" : state ? "stale" : "loading";
-  const freshnessTimestamp = new Date(state?.lastUpdated || Date.now()).toISOString();
+  // 갱신 시각을 모르면(로딩 중) 넘기지 않는다 — 현재 시각으로 폴백하면 로딩 중에도
+  // "가격 방금 전"으로 보여 신선도 표시가 거짓이 된다. 렌더 중 Date.now() 호출도 제거(react-hooks/purity).
+  const freshnessTimestamp = state?.lastUpdated ? new Date(state.lastUpdated).toISOString() : null;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[280px]">

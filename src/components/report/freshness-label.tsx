@@ -4,16 +4,21 @@ import type { FreshnessState } from "@/types/research";
 interface FreshnessLabelProps {
   type: "price" | "news" | "report" | "sentiment";
   state: FreshnessState;
-  timestamp: string;
+  // 갱신 시각을 아직 모르는 상태(로딩 등)에서는 비워 둘 수 있다. 호출부가 "모르는 시각"을
+  // 현재 시각으로 대체하면 로딩 중에도 "방금 전"으로 보여 신선도 표시가 거짓이 된다.
+  timestamp?: string | null;
 }
 
 export function FreshnessLabel({ type, state, timestamp }: FreshnessLabelProps) {
   // Simple time ago calculator
   // eslint-disable-next-line
-  const diffMinutes = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000);
+  const now = Date.now();
+  const parsed = timestamp ? new Date(timestamp).getTime() : NaN;
+  const diffMinutes = Number.isFinite(parsed) ? Math.floor((now - parsed) / 60000) : null;
   let timeStr = "";
-  
-  if (diffMinutes < 1) timeStr = "방금 전";
+
+  if (diffMinutes === null) timeStr = "";
+  else if (diffMinutes < 1) timeStr = "방금 전";
   else if (diffMinutes < 60) timeStr = `${diffMinutes}분 전`;
   else if (diffMinutes < 1440) timeStr = `${Math.floor(diffMinutes / 60)}시간 전`;
   else timeStr = "하루 이상 지남";
@@ -25,9 +30,12 @@ export function FreshnessLabel({ type, state, timestamp }: FreshnessLabelProps) 
     sentiment: "감성점수"
   }[type];
 
+  // 시각을 모르면 경과시간 대신 중립 문구를 쓴다(빈 문자열로 "가격 "처럼 끊기는 것 방지).
+  const typeWithTime = timeStr ? `${typeName} ${timeStr}` : `${typeName} 확인 중`;
+
   let config = {
     color: "text-slate-500 bg-slate-100 dark:bg-zinc-800",
-    text: type === "report" ? "생성 중" : `${typeName} ${timeStr}`,
+    text: type === "report" ? "생성 중" : typeWithTime,
     icon: Clock
   };
 
@@ -40,7 +48,7 @@ export function FreshnessLabel({ type, state, timestamp }: FreshnessLabelProps) 
   } else if (state === "recent") {
     config = {
       color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900",
-      text: type === "report" ? "근거 보통" : `${typeName} ${timeStr}`,
+      text: type === "report" ? "근거 보통" : typeWithTime,
       icon: Clock
     };
   } else if (state === "live") {

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getDomesticStockDailyAround, getDomesticStockDailyRawPrice } from "@/server/kis/rest-client";
 import { evictCacheByPattern } from "@/server/kis/cache";
-import { getScreeningResult, deleteScreeningResult, formatKSTDateCompact, updateScreeningItemBacktest } from "@/server/screening/storage";
+import { getScreeningResult, deleteScreeningResult, updateScreeningItemBacktest } from "@/server/screening/storage";
 import { findNextTradingDay, iterateDateRange, classifyTrend, type TrendLabel } from "@/server/screening/backtest-utils";
 
 
