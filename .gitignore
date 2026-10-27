@@ -53,6 +53,16 @@ overnight_prod_key_debug*.json
 overnight_debug_res*.json
 overnight_normal_res*.json
 
+# 백테스트 캐시 — 일봉/DART 원본은 저장소 밖(~/stockker-bt-cache/)에 보관한다.
+# 스크래치패드에 두면 세션 정리로 날아가고(실제로 2회 소실), 저장소에 두면 수백 MB가 커밋된다.
+# 아래는 혹시 저장소 안에 생성됐을 때를 막는 안전망 + 분석 산출물 제외.
+/stockker-bt-cache/
+analysis/out/
+analysis/build/
+analysis/*.log
+analysis/*.json
+!analysis/package.json
+
 # supabase local
 supabase/.temp/
 backup_*.sql
