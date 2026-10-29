@@ -4,8 +4,12 @@
 //   이벤트일 D = 정기보고서 접수일(rcept_dt). 접수일이 비거래일이면 그 이후 첫 거래일을 D로 본다.
 //   반응 = D~D+1 누적(= close[D+1]/close[D-1] - 1). 공시가 장마감 후 접수되는 경우가 많아
 //          D 하루만 보면 반응을 놓친다.
-//   표류 = D+2부터 h일(= close[D+1+h]/close[D+1] - 1), h ∈ {5, 10, 20(주), 60(보조)}.
-//          D+1까지를 소트 변수로 쓰고 바로 이어 재면 단기 반전·호가 반동이 섞인다.
+//   진입 = close[D+BASE_OFF]. 사전 등록 사양은 D+2(= BASE_OFF 2)다. 반응 창 끝(D+1)의
+//          종가로 바로 진입하면 소트 변수와 진입가가 같은 봉을 공유해 호가 반동·단기 반전이
+//          수익률에 섞인다. 초기 구현이 base 를 close[D+1] 로 잡아 사양에서 이탈했고,
+//          PEAD_BASE_OFF=1 로 그 버전을 그대로 재현할 수 있게 남겨 둔다.
+//   표류 = close[D+BASE_OFF+h]/close[D+BASE_OFF] - 1, h ∈ {5, 10, 20(주), 60(보조)}.
+//          진입일(D+BASE_OFF)이 거래정지·가격 결측이면 그 이벤트를 제외한다.
 //   분위 = 같은 분기 안에서 반응 수익률 5분위.
 //   비교 = 롱-숏(Q5-Q1) / 롱온리(Q5 - 같은 창 유니버스 동일가중). 판정은 롱온리.
 //
@@ -22,10 +26,12 @@ L.quietKisDebug();
 const SEAL = "20251231";
 const HORIZONS = [5, 10, 20, 60];
 const MAIN_H = 20;
+const BASE_OFF = Number(process.env.PEAD_BASE_OFF || 2);   // 진입 = close[D+BASE_OFF] (사양 2, 이탈판 1)
 const COST = 0.3;            // 왕복 비용 가정(%)
 const NQ = 5;                // 반응 5분위
 const Z80 = 2.8016;          // z(0.975)+z(0.80)
 const norm = (c) => String(c).trim().toUpperCase().padStart(6, "0");
+const UNI_START = "20200101";   // 레벨 대조용 유니버스 구간 시작
 const quarterOf = (d) => `${d.slice(0, 4)}Q${Math.floor((+d.slice(4, 6) - 1) / 3) + 1}`;
 
 // ── DART 공시 로드 + 종목별 그룹 ──
@@ -58,7 +64,8 @@ function loadFilings() {
 function extract(bySymbol) {
   const events = [];
   const mktByDate = new Map();   // date → [수익률 합, 종목 수]
-  const excl = { noCandles: 0, noDart: 0, dateNotFound: 0, tooEarly: 0, haltWindow: 0, badPrice: 0, sealed: 0 };
+  const uni = [0, 0];            // 같은 기간 전 거래일 20일 선행수익률 합·건수 (레벨 대조용)
+  const excl = { noCandles: 0, noDart: 0, dateNotFound: 0, tooEarly: 0, haltWindow: 0, baseMissing: 0, badPrice: 0, sealed: 0 };
   let symbolsUsed = 0, barsUsed = 0;
 
   for (const symbol of L.listCachedSymbols()) {
@@ -72,7 +79,8 @@ function extract(bySymbol) {
     const dt = cs.map((c) => String(c.stck_bsop_date));
     const cl = cs.map((c) => Number(c.stck_clpr || 0));
     const vo = cs.map((c) => Number(c.acml_vol || 0));
-    const halted = L.indicatorsFor(cs).map((v) => v.isHalted);
+    const H = L.haltedDateSet(cs);
+    const halted = dt.map((d) => H.has(d));
     const idxOfDate = new Map(dt.map((d, i) => [d, i]));
 
     // 시장 동일가중 일별 수익률 누적(거래정지일 제외)
@@ -82,6 +90,15 @@ function extract(bySymbol) {
       let a = mktByDate.get(dt[i]);
       if (!a) { a = [0, 0]; mktByDate.set(dt[i], a); }
       a[0] += r; a[1]++;
+    }
+
+    // 유니버스 20일 선행수익률 — 이벤트와 무관하게 같은 기간 모든 거래일에서
+    for (let i = 0; i + MAIN_H < cs.length; i++) {
+      const e = i + MAIN_H;
+      if (dt[i] < UNI_START || dt[e] > SEAL) continue;
+      let ok = cl[i] > 0 && cl[e] > 0;
+      if (ok) for (let k = i; k <= e; k++) if (halted[k]) { ok = false; break; }
+      if (ok) { uni[0] += (cl[e] / cl[i] - 1) * 100; uni[1]++; }
     }
 
     const filings = bySymbol.get(norm(symbol));
@@ -94,7 +111,7 @@ function extract(bySymbol) {
         i0 = dt.findIndex((d) => d >= rd);
         if (i0 < 0) { excl.dateNotFound++; continue; }
       }
-      if (i0 < 1 || i0 + 1 >= cs.length) { excl.tooEarly++; continue; }
+      if (i0 < 1 || i0 + BASE_OFF >= cs.length) { excl.tooEarly++; continue; }
 
       // 반응 창(D-1 ~ D+1)에 정지·가격 결측이 있으면 제외
       let bad = false;
@@ -102,14 +119,18 @@ function extract(bySymbol) {
       if (bad) { excl.haltWindow++; continue; }
 
       const reaction = (cl[i0 + 1] / cl[i0 - 1] - 1) * 100;
-      const base = cl[i0 + 1], baseDate = dt[i0 + 1];
+
+      // 진입 = close[D+BASE_OFF]. 진입일이 정지·결측이면 체결이 불가능하므로 이벤트에서 뺀다.
+      const ib = i0 + BASE_OFF;
+      if (halted[ib] || !(cl[ib] > 0)) { excl.baseMissing++; continue; }
+      const base = cl[ib], baseDate = dt[ib];
       const drift = {}, endDate = {};
       for (const h of HORIZONS) {
-        const e = i0 + 1 + h;
+        const e = ib + h;
         if (e >= cs.length) continue;                       // 창 부족
         if (dt[e] > SEAL) { excl.sealed++; continue; }        // 2026 침범
         let bad2 = false;
-        for (let k = i0 + 2; k <= e; k++) if (halted[k]) { bad2 = true; break; }
+        for (let k = ib + 1; k <= e; k++) if (halted[k]) { bad2 = true; break; }
         if (bad2 || !(cl[e] > 0)) continue;
         drift[h] = (cl[e] / base - 1) * 100;
         endDate[h] = dt[e];
@@ -118,7 +139,7 @@ function extract(bySymbol) {
       events.push({ symbol, rd, quarter: quarterOf(rd), reaction, baseDate, drift, endDate });
     }
   }
-  return { events, mktByDate, excl, symbolsUsed, barsUsed };
+  return { events, mktByDate, excl, symbolsUsed, barsUsed, uni };
 }
 
 // ── 시장 동일가중 누적지수 ──
@@ -172,6 +193,7 @@ function clusterTest(ds, ws, blockLen = 1, iters = 10000, seed = 8080) {
 
 function main() {
   console.log("=== #8 PEAD — 실적 공시 후 주가 표류 ===");
+  console.log(`진입 시점: close[D+${BASE_OFF}] ${BASE_OFF === 2 ? "(사전 등록 사양)" : "(사양 이탈 버전 재현)"}`);
   console.log("독립 관측은 분기 수다. 공시가 분기 경계(3월말·5월·8월·11월)에 몰리므로");
   console.log("종목-일 관측치를 독립으로 취급하면 표준오차가 크게 과소추정된다. 아래 모든 검정은");
   console.log("분기를 클러스터로 묶고 분기 블록 부트스트랩으로 신뢰구간을 구한다.\n");
@@ -179,11 +201,11 @@ function main() {
   const { bySymbol, used, mappedCount } = loadFilings();
   console.log(`[입력] DART 상장 매핑 ${mappedCount.toLocaleString()}건 | 2025-12-31 이하 공시 ${used.toLocaleString()}건 / ${bySymbol.size.toLocaleString()}종목`);
 
-  const { events, mktByDate, excl, symbolsUsed, barsUsed } = extract(bySymbol);
+  const { events, mktByDate, excl, symbolsUsed, barsUsed, uni } = extract(bySymbol);
   const mkt = buildMarketIndex(mktByDate);
   console.log(`[캔들] 종목 ${symbolsUsed.toLocaleString()} / 봉 ${barsUsed.toLocaleString()} (2026 봉인 적용)`);
   console.log(`[이벤트] 유효 ${events.length.toLocaleString()}건`);
-  console.log(`  제외: 캔들없음 ${excl.noCandles} / DART없음 ${excl.noDart} / 날짜범위밖 ${excl.dateNotFound} / 창부족 ${excl.tooEarly} / 반응창정지 ${excl.haltWindow} / 2026침범 ${excl.sealed}`);
+  console.log(`  제외: 캔들없음 ${excl.noCandles} / DART없음 ${excl.noDart} / 날짜범위밖 ${excl.dateNotFound} / 창부족 ${excl.tooEarly} / 반응창정지 ${excl.haltWindow} / 진입일정지·결측 ${excl.baseMissing} / 2026침범 ${excl.sealed}`);
 
   // 분기 내 반응 5분위
   const byQuarter = new Map();
@@ -203,6 +225,22 @@ function main() {
     const a = mkt.get(from), b = mkt.get(to);
     return a && b ? (b / a - 1) * 100 : null;
   };
+
+  // ── 레벨 대조 (필수 게이트) ──
+  // drift 와 benchmark 를 같은 이벤트 집합에서 짝지어 비교한다. 유니버스 평균은
+  // 같은 기간 모든 거래일의 20일 선행수익률로, 공시일 캘린더 집중 효과를 가늠하는 기준이다.
+  const pairs = events
+    .map((e) => ({ d: e.drift[MAIN_H], b: mktRet(e.baseDate, e.endDate[MAIN_H]) }))
+    .filter((x) => x.b !== null);
+  const mD = mean(pairs.map((x) => x.d));
+  const mB = mean(pairs.map((x) => x.b));
+  const mU = uni[1] ? uni[0] / uni[1] : NaN;
+  console.log(`\n${"=".repeat(78)}\n=== 레벨 대조 (${MAIN_H}일) ===`);
+  console.log(`  평균 drift_${MAIN_H}      ${mD >= 0 ? "+" : ""}${mD.toFixed(4)}%  | 이벤트 ${pairs.length.toLocaleString()}건`);
+  console.log(`  평균 benchmark_${MAIN_H}  ${mB >= 0 ? "+" : ""}${mB.toFixed(4)}%  | 이벤트별 유니버스 동일가중 연쇄지수`);
+  console.log(`  차이(초과)          ${mD - mB >= 0 ? "+" : ""}${(mD - mB).toFixed(4)}%p`);
+  console.log(`  같은 기간 유니버스 20일 평균 ${mU >= 0 ? "+" : ""}${mU.toFixed(4)}%  | 종목-일 ${uni[1].toLocaleString()}개 (${UNI_START}~${SEAL}, 전 거래일)`);
+  console.log(`  benchmark − 유니버스 평균   ${mB - mU >= 0 ? "+" : ""}${(mB - mU).toFixed(4)}%p  ← 공시일 캘린더 집중 효과`);
 
   // ── 분기별 시계열 산출 ──
   const series = {};   // h → { q, spread, longonly, top, bottom, market, nTop }
@@ -287,11 +325,12 @@ function main() {
     : "2차 — 판별 불가(기록하고 #9로)";
   console.log(`\n  → 판정: ${verdict}`);
 
-  fs.writeFileSync(path.join(L.CACHE_ROOT, "pead-result.json"), JSON.stringify({
-    generatedAt: new Date().toISOString(), events: events.length, quarters: quarters.length,
+  const OUT_PATH = path.join(L.CACHE_ROOT, `pead-result-base${BASE_OFF}.json`);
+  fs.writeFileSync(OUT_PATH, JSON.stringify({
+    generatedAt: new Date().toISOString(), baseOffset: BASE_OFF, events: events.length, quarters: quarters.length,
     series, result: Object.fromEntries(Object.entries(result).map(([h, v]) => [h, { longonlyAlpha: v.regLo.alpha, longonlyBeta: v.regLo.beta, spreadAlpha: v.regSp.alpha, posQ: v.posQ, nQ: v.nQ, loP: v.tLo.p, loCI: v.tLo.ci }])),
     verdict,
   }, null, 2));
-  console.log(`\n저장: ${path.join(L.CACHE_ROOT, "pead-result.json")}`);
+  console.log(`\n저장: ${OUT_PATH}`);
 }
 main();

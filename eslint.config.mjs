@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "*.js",
+    // 백테스트 하네스 — 앱 번들 밖의 Node CJS 스크립트
+    "analysis/**",
   ]),
   {
     rules: {

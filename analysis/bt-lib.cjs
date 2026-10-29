@@ -165,6 +165,20 @@ function indicatorsFor(candlesAsc) {
   })));
 }
 
+// 거래정지일 집합 — #10 부터 모든 검증의 공용 규칙(#8 pead.cjs 방식).
+// 판정은 indicators.ts isHaltedSeries(종가 5일 이상 연속 동일)를 그대로 쓴다. 이 정지는 봉이
+// 존재하고 종가 > 0 이라 '유효 종가 없는 날' 결측 규칙에 걸리지 않으므로 별도로 빼야 한다.
+// 입력은 봉인(SEAL)만 적용한 전체 일봉. 시작일 자르기·종가>0 필터 전에 넘겨야 #8 과 같은
+// 연속 구간이 나온다(필터 후 계산하면 경계에 걸친 정지 구간 길이가 달라진다).
+// 날짜 집합으로 돌려주므로 호출 측 배열 정렬·필터와 무관하게 날짜로 맞춰 쓴다.
+function haltedDateSet(candles) {
+  const asc = [...candles].sort((a, b) => String(a.stck_bsop_date).localeCompare(String(b.stck_bsop_date)));
+  const flags = indicatorsFor(asc).map((v) => v.isHalted);
+  const out = new Set();
+  asc.forEach((c, i) => { if (flags[i]) out.add(String(c.stck_bsop_date)); });
+  return out;
+}
+
 function loadCandles(symbol) {
   const f = path.join(CANDLE_DIR, `${symbol}.json`);
   if (!fs.existsSync(f)) return null;
@@ -182,6 +196,6 @@ const quietKisDebug = () => {
 
 module.exports = {
   PROJECT, CACHE_ROOT, CANDLE_DIR, DART_DIR, BUILD_DIR,
-  fetchDailyCandles, indicatorsFor, computeIndicatorSeries, callKisApi,
+  fetchDailyCandles, indicatorsFor, haltedDateSet, computeIndicatorSeries, callKisApi,
   formatKSTDate, kstNow, waitIfBlackout, loadCandles, listCachedSymbols, quietKisDebug,
 };
