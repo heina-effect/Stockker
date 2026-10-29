@@ -37,7 +37,7 @@ curl -s "http://localhost:3000/api/screening/backtest?from=YYYYMMDD&to=YYYYMMDD"
 - 장중 실행과 같은 날 반복 실행은 피합니다. DB에 미확정 값이 저장될 수 있습니다.
 - 며칠 실행하지 못했다면 [알려진 이슈](#알려진-이슈--운영-주의)의 `days_after` 항목을 먼저 확인하세요.
 - 휴장일(공휴일·대체공휴일)을 확인하고 실행합니다.
-- 자동 실행(Vercel Cron)은 아직 구현되지 않았습니다.
+- 평일 15:40 로컬 launchd(`com.hyuna.stockker.screening`)가 자동 실행합니다. 배포하지 않으므로 dev 서버(`localhost:3000`)가 떠 있어야 하며, 로그는 `~/stockker-logs/screening.log`에 남습니다.
 
 ---
 
@@ -85,7 +85,7 @@ curl -s "http://localhost:3000/api/screening/backtest?from=YYYYMMDD&to=YYYYMMDD"
 | 스크리닝 공백 시 `days_after` 어긋남 | 수정 전 (재발 방지 설계 승인 대기) | `trajectory-update.ts`의 `days_after`가 "직전 최대값 + 1" 카운터라, 미실행일만큼 실제 거래일보다 작게 기록됨 |
 | 종가 재조회 값 불일치 | 원인 일부 미확인 | 복구 후 일부 행의 종가가 변경됨(외부 시세 대조 시 새 값이 일치). 조회 시점 영향 여부 조사 중 |
 | 퀀트 통계 사용 제한 | 재산출 전까지 유지 | 오염 구간 입력이 섞였을 가능성, 표본도 목표 미달. **매매 근거로 사용하지 않음** |
-| 백업 테이블 유지 | 후속 검증 완료 시까지 | `stock_trajectory_backup_20261007`, `snap_20261008_1023` 삭제 금지 |
+| 백업 테이블 유지 | 후속 검증 완료 시까지 | `stock_trajectory_backup_20261007`, `stock_trajectory_backup_001210_20261012`, `overnight_screening_items_backup_20261014`, `stock_trajectory_backup_20261015`, `snap_20261008_1023` 삭제 금지 |
 
 자세한 내용은 `docs/phases/`와 [known-issues.md](docs/release/known-issues.md)를 참고하세요.
 

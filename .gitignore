@@ -41,7 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 # local test files
-test-*
+/test-*
 
 # Phase 12 Data & Scripts
 CORPCODE.xml
