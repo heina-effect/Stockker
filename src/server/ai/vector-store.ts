@@ -6,7 +6,6 @@
  *
  * 키 정책:
  * - 서버 쓰기/관리: SUPABASE_SERVICE_ROLE_KEY (server-only)
- * - 클라이언트 읽기: NEXT_PUBLIC_SUPABASE_ANON_KEY
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/client";

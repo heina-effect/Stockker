@@ -42,7 +42,7 @@ NEWSAPI_KEY="your_newsapi_key"
 
 # ── Supabase (DB + pgvector) ─────────────────────────────────────────
 NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="sb_publishable_..."
 SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 
 # ── Upstash Redis (홈 인텔리전스 캐시, 선택) ──────────────────────────

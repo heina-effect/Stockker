@@ -25,17 +25,17 @@ function loadEnvFile() {
 loadEnvFile();
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-// anon key used for connection test; service role used for DDL via Management API
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// publishable key used for connection test; service role used for DDL via Management API
+const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-if (!SUPABASE_URL || !ANON_KEY) {
+if (!SUPABASE_URL || !PUBLISHABLE_KEY) {
   console.error(
-    "NEXT_PUBLIC_SUPABASE_URL 또는 NEXT_PUBLIC_SUPABASE_ANON_KEY가 설정되지 않았습니다. .env.local을 확인하세요."
+    "NEXT_PUBLIC_SUPABASE_URL 또는 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY가 설정되지 않았습니다. .env.local을 확인하세요."
   );
   process.exit(1);
 }
 
-const client = createClient(SUPABASE_URL, ANON_KEY);
+const client = createClient(SUPABASE_URL, PUBLISHABLE_KEY);
 
 async function checkTables() {
   console.log("\n🔍 Checking existing tables...");
