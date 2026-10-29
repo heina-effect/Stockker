@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, ArrowRight, Loader2, Clock, Plus, Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,18 @@ export function SearchHeroCard() {
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const router = useRouter();
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const state = LocalStorageAdapter.getAll();
     setRecentSearches(state.recentSearches);
     setWatchlist(state.watchlist);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
   }, []);
 
   const addWatchlist = (item: StockSearchItem) => {
@@ -105,7 +112,10 @@ export function SearchHeroCard() {
             onChange={handleSearch}
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+            onBlur={() => {
+              if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+              blurTimeoutRef.current = setTimeout(() => setIsFocused(false), 200);
+            }}
           />
           <div className="absolute right-2">
             <Button 

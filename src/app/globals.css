@@ -73,3 +73,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 스크롤바를 시각적으로만 숨김 — 스크롤 동작(휠/트랙패드/드래그)은 그대로 유지된다.
+   /overnight/tracking 칸반 컬럼 내부 스크롤 및 칸반 전체 가로 스크롤에 사용. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

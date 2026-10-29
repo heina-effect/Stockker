@@ -42,6 +42,15 @@ const QUANT_SIGNAL_FRESH_DAYS = 3;
 // 스크리닝 재노출 관리용)와는 완전히 별개 상수이며 절대 공유하지 않는다.
 const QUANT_OBSERVATION_END_DAYS_AFTER = 10;
 
+// 왕복 거래비용 추정(매수·매도 수수료 + 증권거래세). 응답(quantSignalStats.roundTripCostPct)으로
+// 그대로 내려보내 화면에 노출하고, 감사 가능하게 한다.
+// TODO: 실제 적용 요율 확인 필요
+const ROUND_TRIP_COST_PCT = 0.20;
+
+// 손절 가정 규칙(exitStop10Pct)의 손절선. 종가 기준으로만 판정한다 — 장중 저가 기준은 체결
+// 가정이 불확실해 쓰지 않는다(작업지시 2026-10-20).
+const STOP_LOSS_THRESHOLD_PCT = -10;
+
 type Verdict = "stopLoss" | "hold" | "neutral" | "watching";
 
 export async function GET() {
@@ -240,14 +249,18 @@ export async function GET() {
     entryClose: number;
     currentClose: number;
     group: "pending" | "result"; // pending: daysAfter < 3(판단 대기), result: >= 3(결과 확인 중)
-    day3ReturnPct: number | null;
+    day3ReturnPct: number | null; // ±10% 보유/손절 "판정 지표"(3일 규칙). exitDay3Pct와 값은 정의상 동일.
     maxReturnSoFarPct: number | null; // 2026-09-18: 계산 창을 0~QUANT_OBSERVATION_END_DAYS_AFTER(10)일로 축소
     minReturnSoFarPct: number | null; // maxReturnSoFarPct와 동일 창의 최솟값(표시 전용, 판정 무관)
-    realizedReturnPct: number | null; // Math.max 방식(사후적 상한) — 2026-10-20부터 헤드라인 승률/손익비/
-    // 기대값 산출 기준에서 제외되고 참고(theoreticalMax*)용으로만 쓰인다. 필드 자체는 삭제하지 않음.
+    // ── 청산 규칙별 수익률(2026-10-20 정식화). 모두 entryClose(발굴일 종가) 기준 %. ──
+    exitDay3Pct: number | null; // 조건 없이 3거래일차 종가 청산 — 사후 정보 없음(헤드라인 통계 기준)
+    exitDay3NetPct: number | null; // exitDay3Pct - ROUND_TRIP_COST_PCT(왕복 비용 차감)
+    exitStop10Pct: number | null; // day1~day3 중 종가 -10% 이하 마감일이 있으면 그날 종가 청산, 없으면 day3 종가
+    peakReturnPct: number | null; // 종전 realizedReturnPct를 이름만 바꾼 것(계산식 동일) — 사후 상한선,
+    // day3>=10이면 day3 이후 최고가 청산 가정. 사후에만 알 수 있어 실현 불가(참고 표시 전용).
     endDate: string | null; // daysAfter>=10 도달 시: day10 시점 거래일(종료일자, 고정값)
     endClose: number | null; // daysAfter>=10 도달 시: day10 시점 종가(종료가, 고정값)
-    endReturnPct: number | null; // (endClose-entryClose)/entryClose — 카드에 표시하는 "실현수익률"
+    endReturnPct: number | null; // = exitDay10Pct(관측 종료일 종가 청산). 테이블 "10일차(%)" 참고 컬럼
     haltStartDaysAfter: number | null;
     isValidForStats: boolean; // 3일차 규칙 평가가 가능한지 여부 (haltStartDaysAfter > 3 또는 null)
     isRecentlyActive: boolean; // 관찰 지속성 보조표시(§1, 참고용 — 규칙 아님). daysAfter<30이면 항상 false.
@@ -287,7 +300,10 @@ export async function GET() {
     let day3ReturnPct: number | null = null;
     let maxReturnSoFarPct: number | null = null;
     let minReturnSoFarPct: number | null = null;
-    let realizedReturnPct: number | null = null;
+    let exitDay3Pct: number | null = null;
+    let exitDay3NetPct: number | null = null;
+    let exitStop10Pct: number | null = null;
+    let peakReturnPct: number | null = null;
     let endDate: string | null = null;
     let endClose: number | null = null;
     let endReturnPct: number | null = null;
@@ -310,15 +326,37 @@ export async function GET() {
       // 동일한 창(returnSeries)에서 최솟값만 추가로 뽑는다 — 3일차 규칙/승률 계산에는 쓰이지 않음.
       minReturnSoFarPct = Number(Math.min(...returnSeries).toFixed(2));
 
+      // peakReturnPct — 종전 realizedReturnPct. 계산식은 그대로 두고 이름만 바꿨다(사후 상한선).
       if (day3ReturnPct >= 10) {
         const afterDay3Series = validDatesForReturn.slice(QUANT_SIGNAL_FRESH_DAYS).map((d) => {
           const c = tradeDateMap.get(d)!.close;
           return ((c - entryClose) / entryClose) * 100;
         });
-        realizedReturnPct = Number(Math.max(...afterDay3Series).toFixed(2));
+        peakReturnPct = Number(Math.max(...afterDay3Series).toFixed(2));
       } else {
-        realizedReturnPct = day3ReturnPct;
+        peakReturnPct = day3ReturnPct;
       }
+
+      // exitDay3Pct — 조건 없이 3거래일차 종가로 청산. day3ReturnPct와 정의상 같은 값이므로
+      // 재계산하지 않고 그대로 쓴다(한 번만 계산 → 두 이름 사이에 값이 어긋날 여지를 없앤다).
+      // day3ReturnPct는 ±10% 판정 지표, exitDay3Pct는 청산 규칙의 결과라는 의미 구분만 남는다.
+      exitDay3Pct = day3ReturnPct;
+      exitDay3NetPct = Number((exitDay3Pct - ROUND_TRIP_COST_PCT).toFixed(2));
+
+      // exitStop10Pct — 손절 가정 버전. 보유 구간(day1~day3) 중 종가가 손절선 이하로 마감한
+      // 첫 날이 있으면 그날 종가로 청산하고, 없으면 day3 종가로 청산한다. 장중 저가가 아니라
+      // 종가만 본다(체결 가정 불확실성 배제). 최대 보유는 day3 — 그래서 스캔 창도 day3까지다.
+      const stopScanDates = validDatesForReturn.slice(1, QUANT_SIGNAL_FRESH_DAYS + 1);
+      let stopHitPct: number | null = null;
+      for (const d of stopScanDates) {
+        const c = tradeDateMap.get(d)!.close;
+        const r = ((c - entryClose) / entryClose) * 100;
+        if (r <= STOP_LOSS_THRESHOLD_PCT) {
+          stopHitPct = Number(r.toFixed(2));
+          break;
+        }
+      }
+      exitStop10Pct = stopHitPct ?? day3ReturnPct;
 
       // 종료가/종료일자(§2-2,3) — day10(QUANT_OBSERVATION_END_DAYS_AFTER) 시점 데이터가 halt 없이
       // 유효하게 존재할 때만 고정값을 채운다. 아직 도달 전이거나 halt로 그 전에 끊겼으면 null로
@@ -363,7 +401,10 @@ export async function GET() {
       day3ReturnPct,
       maxReturnSoFarPct,
       minReturnSoFarPct,
-      realizedReturnPct,
+      exitDay3Pct,
+      exitDay3NetPct,
+      exitStop10Pct,
+      peakReturnPct,
       endDate,
       endClose,
       endReturnPct,
@@ -375,8 +416,13 @@ export async function GET() {
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
 
-  // 누적 통계는 결과가 확정된(3일차 이상 경과) 건 중, 3일차 이내 거래정지가 발생하지 않은 건만 대상
-  const resultItems = quantSignalItems.filter((i) => i.group === "result" && i.isValidForStats);
+  // 누적 통계 표본(2026-10-20 재정의) — exitDay3Pct가 non-null인 건만 집계한다. day3 종가가
+  // 없으면(3거래일 미경과=관측 중, 또는 3일차 이내 거래정지로 유효 구간이 끊김) 청산 규칙을
+  // 적용할 수 없기 때문이다. 종전 필터(group==='result' && isValidForStats)와 결과는 동일하다 —
+  // 두 조건 모두 "day3 종가 존재"와 같은 집합을 가리킨다(halt가 day<=3이면 group이 pending이 됨).
+  const resultItems = quantSignalItems.filter((i) => i.exitDay3Pct != null);
+  // 통계에서 제외된 관측 중(day3 미도달) 건수 — 화면에 별도 표기한다.
+  const observingExcludedCount = quantSignalItems.length - resultItems.length;
   const avgDay3ReturnPct =
     resultItems.length > 0
       ? Number(
@@ -390,49 +436,54 @@ export async function GET() {
         )
       : null;
 
-  // 헤드라인 승률 — 2026-10-20 변경: realizedReturnPct(Math.max 방식, 사후적으로만 알 수 있는
-  // "달성 불가능한 상한")에서 day3ReturnPct(=exitAtDay3Pct, 항상 3일차 종가로 청산하는 실행
-  // 가능한 규칙) 기준으로 교체. 3일 규칙의 ±10% 임계값 자체는 변경하지 않음 — day3ReturnPct는
-  // 그 임계값 판정에 이미 쓰이던 필드를 그대로 재사용할 뿐이다.
-  const day3WinCount = resultItems.filter((i) => (i.day3ReturnPct as number) > 0).length;
-  const day3LossCount = resultItems.length - day3WinCount;
-  const day3WinRatePct =
-    resultItems.length > 0 ? Number(((day3WinCount / resultItems.length) * 100).toFixed(1)) : null;
-
-  // 손익비 (Profit Factor) 및 기대값 (Expectancy) — day3ReturnPct 기준
-  let grossProfit = 0;
-  let grossLoss = 0;
-  for (const item of resultItems) {
-    const r = item.day3ReturnPct as number;
-    if (r > 0) grossProfit += r;
-    else if (r < 0) grossLoss += Math.abs(r);
+  // 청산 규칙별 성과 집계 — 어떤 규칙이든 "거래당 수익률 배열" 하나로 환원해 같은 산식을 쓴다.
+  //   승률     = (수익률 > 0 인 건수) / n          ← ±10% 임계값은 승패 판정에 쓰지 않는다
+  //   손익비   = 승 수익 합 / |패 손실 합|
+  //   기대값   = (승 수익 합 - 패 손실 합) / n     ( = 거래당 평균 수익률)
+  //   Kelly    = W - (1-W)/R,  W=승률, R=평균승/평균패 (음수면 "베팅하지 말라"는 뜻)
+  function computeExitStats(values: number[]) {
+    const n = values.length;
+    if (n === 0) {
+      return { n: 0, winCount: 0, lossCount: 0, winRatePct: null, profitFactor: 0, expectancy: 0, kellyPct: null };
+    }
+    const wins = values.filter((v) => v > 0);
+    const losses = values.filter((v) => v < 0);
+    const grossProfit = wins.reduce((a, b) => a + b, 0);
+    const grossLoss = losses.reduce((a, b) => a + Math.abs(b), 0);
+    const winRate = wins.length / n;
+    const profitFactor = grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : grossProfit > 0 ? 99.99 : 0;
+    const expectancy = Number(((grossProfit - grossLoss) / n).toFixed(2));
+    // Kelly는 평균승/평균패 비율(R)이 필요하므로 승·패가 모두 1건 이상일 때만 정의된다.
+    let kellyPct: number | null = null;
+    if (wins.length > 0 && losses.length > 0) {
+      const avgWin = grossProfit / wins.length;
+      const avgLoss = grossLoss / losses.length;
+      const payoffRatio = avgWin / avgLoss;
+      kellyPct = Number(((winRate - (1 - winRate) / payoffRatio) * 100).toFixed(1));
+    }
+    return {
+      n,
+      winCount: wins.length,
+      lossCount: n - wins.length, // 0%는 패로 집계(종전 관례 유지)
+      winRatePct: Number((winRate * 100).toFixed(1)),
+      profitFactor,
+      expectancy,
+      kellyPct,
+    };
   }
 
-  const profitFactor = grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : (grossProfit > 0 ? 99.99 : 0);
-  const expectancy = resultItems.length > 0 ? Number(((grossProfit - grossLoss) / resultItems.length).toFixed(2)) : 0;
-
-  // 참고용 — "달성 불가능한 상한"(종전 헤드라인, realizedReturnPct=Math.max 방식) 그대로 보존.
-  // 화면에는 헤드라인과 절대 섞이지 않는 별도 참고 토글에서만 "상한(참고)"로 명시해 노출한다.
-  const theoreticalMaxWinCount = resultItems.filter((i) => (i.realizedReturnPct as number) > 0).length;
-  const theoreticalMaxWinRatePct =
-    resultItems.length > 0 ? Number(((theoreticalMaxWinCount / resultItems.length) * 100).toFixed(1)) : null;
-  let theoreticalMaxGrossProfit = 0;
-  let theoreticalMaxGrossLoss = 0;
-  for (const item of resultItems) {
-    const r = item.realizedReturnPct as number;
-    if (r > 0) theoreticalMaxGrossProfit += r;
-    else if (r < 0) theoreticalMaxGrossLoss += Math.abs(r);
-  }
-  const theoreticalMaxProfitFactor =
-    theoreticalMaxGrossLoss > 0
-      ? Number((theoreticalMaxGrossProfit / theoreticalMaxGrossLoss).toFixed(2))
-      : theoreticalMaxGrossProfit > 0
-        ? 99.99
-        : 0;
-  const theoreticalMaxExpectancy =
-    resultItems.length > 0
-      ? Number(((theoreticalMaxGrossProfit - theoreticalMaxGrossLoss) / resultItems.length).toFixed(2))
-      : 0;
+  // [주] 3일차 종가 청산 — 사후 정보가 들어가지 않는 실행 가능한 규칙(헤드라인).
+  const exitDay3Stats = computeExitStats(resultItems.map((i) => i.exitDay3Pct as number));
+  // (a) 비용 차감 후
+  const exitDay3NetStats = computeExitStats(resultItems.map((i) => i.exitDay3NetPct as number));
+  // (b) 손절 -10% 적용
+  const exitStop10Stats = computeExitStats(resultItems.map((i) => i.exitStop10Pct as number));
+  // (c) 극단값 민감도 — exitDay3Pct 상·하위 1건 제외
+  const sortedExitDay3 = [...resultItems.map((i) => i.exitDay3Pct as number)].sort((a, b) => a - b);
+  const trimmedExitDay3 = sortedExitDay3.length > 2 ? sortedExitDay3.slice(1, -1) : [];
+  const exitDay3TrimmedStats = computeExitStats(trimmedExitDay3);
+  // (d) 최고점 청산 상한 — 사후에만 알 수 있어 실현 불가. 참고용으로만 노출한다.
+  const peakStats = computeExitStats(resultItems.map((i) => i.peakReturnPct as number));
 
   // 신뢰도 배지용 표본 크기 (승패 검증이 가능한 종목만)
   const quantSignalSampleSymbolCount = new Set(resultItems.map((r) => r.symbol)).size;
@@ -440,16 +491,16 @@ export async function GET() {
   const quantSignalStats = {
     totalCount: quantSignalItems.length,
     resultCount: resultItems.length,
+    observingExcludedCount,
+    roundTripCostPct: ROUND_TRIP_COST_PCT, // 감사용 — 화면에 그대로 노출
+    stopLossThresholdPct: STOP_LOSS_THRESHOLD_PCT,
     avgDay3ReturnPct,
     avgMaxReturnSoFarPct,
-    realizedWinCount: day3WinCount,
-    realizedLossCount: day3LossCount,
-    realizedWinRatePct: day3WinRatePct,
-    profitFactor,
-    expectancy,
-    theoreticalMaxWinRatePct,
-    theoreticalMaxProfitFactor,
-    theoreticalMaxExpectancy,
+    exitDay3: exitDay3Stats,
+    exitDay3Net: exitDay3NetStats,
+    exitStop10: exitStop10Stats,
+    exitDay3Trimmed: exitDay3TrimmedStats,
+    peak: peakStats,
     sampleSymbolCount: quantSignalSampleSymbolCount,
   };
 

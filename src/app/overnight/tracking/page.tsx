@@ -47,34 +47,52 @@ interface QuantSignalItem {
   entryClose: number;
   currentClose: number;
   group: "pending" | "result";
-  day3ReturnPct: number | null;
+  day3ReturnPct: number | null; // ±10% 보유/손절 판정 지표(3일 규칙). exitDay3Pct와 값은 정의상 동일
   maxReturnSoFarPct: number | null; // 참고용(낙관적) — 실현 아님. 계산 창 0~10일(2026-09-18 축소)
   minReturnSoFarPct: number | null; // maxReturnSoFarPct와 동일 창의 최저(표시 전용, 판정 무관)
-  realizedReturnPct: number | null; // 3일차 규칙 실현손익 시뮬레이션 — 헤드라인 승률의 기준(변경 없음)
+  // ── 청산 규칙별 수익률(2026-10-20) — 카드·표·헤드라인이 모두 exitDay3Pct 하나를 주 기준으로 쓴다 ──
+  exitDay3Pct: number | null; // 3거래일차 종가 청산(사후 정보 없음) — 주 기준
+  exitDay3NetPct: number | null; // exitDay3Pct에서 왕복 비용 차감
+  exitStop10Pct: number | null; // day1~3 중 종가 -10% 이하면 그날 청산, 없으면 day3 청산
+  peakReturnPct: number | null; // 최고점 청산 상한(종전 realizedReturnPct, 식 동일) — 사후에만 알 수 있어 실현 불가
   endDate: string | null; // daysAfter>=10 도달 시: day10 시점 거래일(종료일자, 고정값)
   endClose: number | null; // daysAfter>=10 도달 시: day10 시점 종가(종료가, 고정값)
-  endReturnPct: number | null; // (endClose-entryClose)/entryClose — 카드에 표시하는 "실현수익률"
+  endReturnPct: number | null; // = exitDay10Pct(관측 종료일 종가 청산) — 테이블 "10일차(%)" 참고 컬럼
   haltStartDaysAfter: number | null; // 거래정지 시작 시점(표시 전용 — "거래정지 구간 제외 후 관찰 중" 문구에 사용)
   isValidForStats: boolean;
   isRecentlyActive: boolean; // 관찰 지속성 보조표시(참고용) — daysAfter<30이면 항상 false(변경 없음)
   recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
 }
 
+// 청산 규칙 하나에 대한 성과 묶음 — 백엔드 computeExitStats()가 규칙별로 같은 산식으로 만든다.
+interface ExitStats {
+  n: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number | null; // 수익률 > 0 비율(±10% 임계값과 무관)
+  profitFactor: number; // 승 수익 합 / |패 손실 합|
+  expectancy: number; // 거래당 평균 수익률
+  kellyPct: number | null; // W - (1-W)/R. 승·패가 모두 있어야 정의됨(음수면 베팅 금지 신호)
+}
+
 interface QuantSignalStats {
   totalCount: number;
-  resultCount: number;
+  resultCount: number; // = exitDay3 통계의 n(day3 종가 존재 건)
+  observingExcludedCount: number; // 관측 중(day3 미도달)으로 통계에서 제외된 건수
+  roundTripCostPct: number; // 왕복 비용 가정치(감사용으로 그대로 노출)
+  stopLossThresholdPct: number;
   avgDay3ReturnPct: number | null;
   avgMaxReturnSoFarPct: number | null;
-  realizedWinCount: number; // 2026-10-20: exitAtDay3Pct(=day3ReturnPct, 3일차 종가 청산) 기준 승 건수로 교체
-  realizedLossCount: number;
-  realizedWinRatePct: number | null;
-  profitFactor: number; // exitAtDay3Pct 기준
-  expectancy: number; // exitAtDay3Pct 기준
-  theoreticalMaxWinRatePct: number | null; // 참고(달성 불가능한 상한) — 종전 realizedReturnPct(Math.max) 기준
-  theoreticalMaxProfitFactor: number;
-  theoreticalMaxExpectancy: number;
+  exitDay3: ExitStats; // [주] 3일차 종가 청산
+  exitDay3Net: ExitStats; // 비용 차감 후
+  exitStop10: ExitStats; // 손절 -10% 적용
+  exitDay3Trimmed: ExitStats; // 상·하위 1건 제외(극단값 민감도)
+  peak: ExitStats; // 최고점 청산 상한 — 실현 불가, 참고용
   sampleSymbolCount: number; // 신뢰도 배지용 — 이벤트(건) 수가 아니라 unique symbol 수
 }
+
+// 표본 부족 경고 기준 — n이 이 값 미만이면 헤드라인에 노이즈 경고를 띄운다(작업지시 2026-10-20).
+const QUANT_MIN_RELIABLE_N = 100;
 
 interface TrackingResponse {
   ok: boolean;
@@ -95,20 +113,10 @@ const QUANT_SIGNAL_META = {
   condition: "RSI 50~60 + 거래량 200~400%",
 };
 
-// 표본 부족 신뢰도 배지 (2026-09-09 stockker_findings.md 정리 결과 반영) — n은 quant_signal 이벤트
-// 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준). 임계값은 하드코딩 상수.
-// n>=60 도달 시에도 이 배지는 자동으로 "검증 완료"를 의미하지 않는다 — 실제 재검증 쿼리를 별도로
-// 돌려 수치를 갱신한 뒤에만 결론을 신뢰할 수 있음(자동 판정 금지).
+// 목표 표본(종목 기준) — n은 quant_signal 이벤트 건수가 아니라 unique symbol 수(표본 독립성
+// 문제로 종목 기준). 헤드라인 2줄차의 "표본 35/60종목" 분모로만 쓴다. 2026-10-20: 등급 배지
+// (quantSignalReliability)는 헤드라인 압축으로 제거했다 — 상태 표시는 기대값 기반 1줄차가 대신한다.
 const QUANT_RELIABILITY_TARGET_N = 60;
-function quantSignalReliability(n: number): { emoji: string; label: string; showProgress: boolean } {
-  if (n >= QUANT_RELIABILITY_TARGET_N) {
-    return { emoji: "🟢", label: "신뢰도: 검증 중(재평가 완료)", showProgress: false };
-  }
-  if (n >= 30) {
-    return { emoji: "🟡", label: "신뢰도: 낮음 (표본 부족, 검증 진행 중)", showProgress: true };
-  }
-  return { emoji: "🔴", label: "신뢰도: 매우 낮음 (표본 부족, 검증 진행 중)", showProgress: true };
-}
 
 /**
  * 섹션 헤더에 표시하는 정렬 기준 문구 (하드코딩 상수, 섹션당 1회만 표시). 상세 수치 근거(회복률 등)는
@@ -206,11 +214,9 @@ function maxReturnColorClass(value: number | null): string {
   return "text-slate-500 dark:text-zinc-400";
 }
 
-// A트랙 "3일차 판정" 표시 라벨(§UI 개선) — 3일차 규칙 실현손익 계산(백엔드 realizedReturnPct)에
-// 이미 쓰이고 있는 ±10% 기준(day3ReturnPct>=10→보유 분기, B트랙 Verdict의 동일 ±10% 관례)을
-// 그대로 재사용한 "표시 전용" 라벨이다. 새 판정 규칙이 아니라 기존 3일차 규칙의 결과를 세
-// 구간으로 이름 붙인 것뿐 — day3ReturnPct>=10이면 realizedReturnPct 계산도 "보유(최고점까지
-// 추적)" 분기를 타므로 라벨과 실제 계산 분기가 항상 일치한다.
+// A트랙 "3일차 판정" 표시 라벨 — 3일 규칙의 ±10% 구간 이름(보유/손절/중립)이다. 이 ±10%는
+// 구간 라벨에만 쓰고 승패 판정에는 쓰지 않는다(승패는 exitDay3Pct > 0 단일 기준, 2026-10-20).
+// day3ReturnPct와 exitDay3Pct는 정의상 같은 값이므로 라벨과 카드 숫자는 항상 같은 값을 가리킨다.
 type QuantDay3Verdict = "hold" | "stopLoss" | "neutral";
 const QUANT_DAY3_VERDICT_META: Record<QuantDay3Verdict, { label: string; text: string; bg: string }> = {
   hold: { label: "보유", text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/30" },
@@ -495,9 +501,12 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
   // 여기까지 오지 않는다(§UI 개선, 아래 그룹핑 단계에서 미리 걸러짐).
   const displayReturnPct = ((item.currentClose - item.entryClose) / item.entryClose) * 100;
   const priceColor = priceColorClass(item.currentClose, item.entryClose);
-  const verdict = quantDay3Verdict(item.day3ReturnPct);
+  const verdict = quantDay3Verdict(item.exitDay3Pct);
   const verdictMeta = verdict ? QUANT_DAY3_VERDICT_META[verdict] : null;
   const peakDrawdown = drawdownFromPeak(item.maxReturnSoFarPct, displayReturnPct);
+  // 카드 숫자는 판정 뱃지와 반드시 같은 필드(exitDay3Pct)를 쓴다 — 종전엔 뱃지는 day3,
+  // 숫자는 peakReturnPct(최고점 가정)라 "플러스인데 손절" 같은 모순이 보였다(2026-10-20 통일).
+  const exitDay3Color = maxReturnColorClass(item.exitDay3Pct);
 
   return (
     <div className="py-2 border-t border-slate-100 dark:border-zinc-800/80 first:border-t-0 first:pt-0">
@@ -507,24 +516,29 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
           {verdictMeta.label}
         </span>
       )}
-      {/* 2행: 신호일·진입가 → 최신 종가, 실현 수익률 */}
+      {/* 2행: 신호일·진입가 → 최신 종가, 3일차 종가 청산 수익률(판정 뱃지와 동일 필드) */}
       <div className="flex items-center justify-between gap-2 flex-wrap mt-1">
         <span className="text-xs text-slate-500 dark:text-zinc-400">
           {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter}) · {item.entryClose.toLocaleString()} →{" "}
           <span className={priceColor}>{item.currentClose.toLocaleString()}</span>
         </span>
-        <span className={`text-sm font-bold ${priceColor}`}>
-          실현 {formatPct(item.realizedReturnPct)}
+        <span className={`text-sm font-bold ${exitDay3Color}`} title="3일차 종가 청산 기준(헤드라인 통계와 동일 기준)">
+          3일차 {formatPct(item.exitDay3Pct)}
         </span>
       </div>
-      {/* 3행: 참고 — 최고/최저/고점 대비 낙폭 */}
+      {/* 3행: 참고 — 최고점/최저/고점 대비 낙폭 + 최고점 청산 상한(실현 불가) */}
       <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
-        참고: 최고{" "}
+        참고: 최고점{" "}
         <span className={maxReturnColorClass(item.maxReturnSoFarPct)}>{formatPct(item.maxReturnSoFarPct)}</span>
         {" · 최저 "}
         <span className={maxReturnColorClass(item.minReturnSoFarPct)}>{formatPct(item.minReturnSoFarPct)}</span>
         {" · 고점 대비 낙폭 "}
         {peakDrawdown != null ? `-${peakDrawdown.toFixed(1)}%p` : "—"}
+        <span title="3일차 +10% 이상이면 이후 최고가에 팔았다고 가정한 값 — 사후에만 알 수 있어 실현 불가">
+          {" · 최고점 청산 상한 "}
+          {formatPct(item.peakReturnPct)}
+          <span className="text-slate-300 dark:text-zinc-600"> (실현 불가)</span>
+        </span>
       </p>
       {/* 거래정지 예외 표시(§UI 개선) — 판정 로직 변경 없음, 참고 문구만 추가 */}
       {item.haltStartDaysAfter != null && (
@@ -588,31 +602,40 @@ function QuantGroupedCard({ group }: { group: QuantSymbolGroup }) {
 // 관찰 종료(endDate!=null) 표본 전용 표(§UI 개선) — 카드 대신 정렬 가능한 표로 전환. 종목 단위
 // 그룹핑 없이 발굴 건(신호) 단위로 한 행씩 전부 나열한다(같은 종목이 여러 번 신호를 냈으면
 // 여러 행으로 보임 — 카드와 달리 표에서는 종목별로 묶지 않는 편이 비교에 유리하다).
-// "10일차(%)" 열은 day10 종료가 기준 확정값(endReturnPct, 사후 확정값이 아니라 고정 보유기간
-// 규칙의 결과 — 2026-10-20 "실현"이라는 이름이 317행 Math.max 방식(사후적으로만 알 수 있는 값)과
-// 혼동돼 개명), "승패" 열은 2026-10-20부터 헤드라인 집계 통계와 동일한 기준(day3ReturnPct=
-// exitAtDay3Pct, 항상 3일차 종가로 청산)을 쓴다 — 종전에는 realizedReturnPct(Math.max 방식)를
-// 썼는데, 헤드라인이 exitAtDay3Pct로 교체되며 표의 승패도 같은 기준으로 통일했다.
-type QuantEndedSortKey = "discoveryDate" | "day3ReturnPct" | "endReturnPct" | "maxReturnSoFarPct" | "minReturnSoFarPct" | "drawdown";
+// 컬럼 위계(2026-10-20): "3일차(%)"가 주 컬럼(bold)이고 승패 뱃지와 반드시 같은 필드
+// (exitDay3Pct)를 쓴다 — 종전엔 강조 컬럼이 10일차(endReturnPct)인데 승패는 3일차 기준이라
+// "수익률은 플러스인데 패"로 보이는 모순이 있었다. "최고점(%)"은 MFE(0~10일 최고 도달)이며
+// 사후에만 알 수 있는 값이라 회색으로 격하한다.
+// 컬럼 축소(2026-10-20): 기본 노출은 종목·발견일·3일차·최고점·승패 5개. 10일차/최저/반납은
+// detail=true일 때만 보여준다(헤더의 "상세" 토글 1개로 일괄 전환).
+type QuantEndedSortKey = "discoveryDate" | "exitDay3Pct" | "endReturnPct" | "maxReturnSoFarPct" | "minReturnSoFarPct" | "drawdown";
 
-const QUANT_ENDED_COLUMNS: { key: QuantEndedSortKey; label: string }[] = [
-  { key: "discoveryDate", label: "신호일" },
-  { key: "day3ReturnPct", label: "3일차(%)" },
-  { key: "endReturnPct", label: "10일차(%)" },
-  { key: "maxReturnSoFarPct", label: "최고(%)" },
-  { key: "minReturnSoFarPct", label: "최저(%)" },
-  { key: "drawdown", label: "고점대비낙폭(%)" },
+const QUANT_ENDED_COLUMNS: { key: QuantEndedSortKey; label: string; detail?: boolean }[] = [
+  { key: "discoveryDate", label: "발견일" },
+  { key: "exitDay3Pct", label: "3일차(%)" },
+  { key: "maxReturnSoFarPct", label: "최고점(%)" },
+  { key: "endReturnPct", label: "10일차(%)", detail: true },
+  { key: "minReturnSoFarPct", label: "최저(%)", detail: true },
+  { key: "drawdown", label: "반납(%p)", detail: true },
 ];
+
+// 접은 상태에서 보여줄 행 수 — 토글이 컬럼만 바꾸면 차이가 체감되지 않아, 행 수까지 함께
+// 줄인다(접힘=최신 5건 요약 / 펼침=전체 이력 + 상세 컬럼).
+const QUANT_ENDED_COLLAPSED_ROWS = 5;
 
 function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
   const [sortKey, setSortKey] = useState<QuantEndedSortKey>("discoveryDate");
   const [sortDesc, setSortDesc] = useState(true);
+  const [showDetail, setShowDetail] = useState(false);
+  const visibleColumns = QUANT_ENDED_COLUMNS.filter((col) => showDetail || !col.detail);
 
   const rows = useMemo(() => {
     const withComputed = items.map((item) => {
-      const endReturnPct = item.endReturnPct ?? item.realizedReturnPct;
+      // 10일차 미도달이면 null 그대로 둔다 — 종전엔 peakReturnPct로 폴백했는데, 실현 불가 값이
+      // 참고 컬럼에 섞여 들어가므로 제거했다.
+      const endReturnPct = item.endReturnPct;
       const drawdown = drawdownFromPeak(item.maxReturnSoFarPct, endReturnPct);
-      const win = item.isValidForStats ? (item.day3ReturnPct ?? 0) > 0 : null; // null=통계 제외(거래정지), 기준: exitAtDay3Pct
+      const win = item.exitDay3Pct != null ? item.exitDay3Pct > 0 : null; // null=day3 없음(통계 제외)
       return { item, endReturnPct, drawdown, win };
     });
     const valueOf = (r: (typeof withComputed)[number]): number | string => {
@@ -637,63 +660,115 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
     }
   }
 
+  function toggleDetail() {
+    setShowDetail((v) => {
+      const next = !v;
+      // 접을 때는 발견일 최신순으로 되돌린다 — 접힘 상태는 "최신 5건 요약"이라 보이지 않는
+      // 컬럼(또는 다른 기준)으로 정렬돼 있으면 어떤 5건인지 설명되지 않는다.
+      if (!next) {
+        setSortKey("discoveryDate");
+        setSortDesc(true);
+      }
+      return next;
+    });
+  }
+
+  const visibleRows = showDetail ? rows : rows.slice(0, QUANT_ENDED_COLLAPSED_ROWS);
+  const hiddenRowCount = rows.length - visibleRows.length;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400">
-            <th
-              onClick={() => toggleSort("discoveryDate")}
-              className="text-left px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
-            >
-              신호일{sortKey === "discoveryDate" && (sortDesc ? " ▼" : " ▲")}
-            </th>
-            <th className="text-left px-2 py-1.5 font-semibold">종목</th>
-            {QUANT_ENDED_COLUMNS.filter((col) => col.key !== "discoveryDate").map((col) => (
-              <th
-                key={col.key}
-                onClick={() => toggleSort(col.key)}
-                className="text-right px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
-              >
-                {col.label}
-                {sortKey === col.key && (sortDesc ? " ▼" : " ▲")}
-              </th>
-            ))}
-            <th className="text-center px-2 py-1.5 font-semibold" title="승패 기준: 3일차 종가 청산(exitAtDay3Pct=day3ReturnPct) — 10일차(%) 열과 다른 필드">
-              승패
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ item, endReturnPct, drawdown, win }) => (
-            <tr key={`${item.symbol}::${item.discoveryDate}`} className="border-b border-slate-100 dark:border-zinc-800/60">
-              <td className="px-2 py-1.5 text-left text-slate-500 dark:text-zinc-400">{formatDiscoveryDate(item.discoveryDate)}</td>
-              <td className="px-2 py-1.5 text-left">
-                <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
-                  {item.name}
-                </Link>
-                {item.haltStartDaysAfter != null && (
-                  <span className="ml-1 text-amber-600 dark:text-amber-400" title="거래정지 구간 제외 후 관찰">⏸</span>
-                )}
-              </td>
-              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.day3ReturnPct)}`}>{formatPct(item.day3ReturnPct)}</td>
-              <td className={`px-2 py-1.5 text-right font-bold ${priceColorClass(endReturnPct ?? 0, 0)}`}>{formatPct(endReturnPct)}</td>
-              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.maxReturnSoFarPct)}`}>{formatPct(item.maxReturnSoFarPct)}</td>
-              <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.minReturnSoFarPct)}`}>{formatPct(item.minReturnSoFarPct)}</td>
-              <td className="px-2 py-1.5 text-right text-slate-500 dark:text-zinc-400">{drawdown != null ? `-${drawdown.toFixed(1)}%p` : "—"}</td>
-              <td className="px-2 py-1.5 text-center">
-                {win == null ? (
-                  <span className="text-slate-400 dark:text-zinc-500" title="거래정지로 3일차 판정 불가 — 통계 제외">제외</span>
-                ) : win ? (
-                  <span className="text-rose-500 font-bold">승</span>
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+          {showDetail
+            ? `전체 ${rows.length}건 · 상세 컬럼 표시 중`
+            : `최신 ${visibleRows.length}건 표시 중${hiddenRowCount > 0 ? ` (${hiddenRowCount}건 숨김)` : ""} · 발견일 최신순`}
+        </span>
+        <button
+          onClick={toggleDetail}
+          className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex-shrink-0"
+        >
+          {showDetail ? `최신 ${QUANT_ENDED_COLLAPSED_ROWS}건만 보기 ▲` : `전체 ${rows.length}건 + 상세 보기 ▼`}
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400">
+              <th className="text-left px-2 py-1.5 font-semibold">종목</th>
+              {visibleColumns.map((col) =>
+                col.key === "discoveryDate" ? (
+                  <th
+                    key={col.key}
+                    onClick={() => toggleSort(col.key)}
+                    className="text-left px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
+                  >
+                    {col.label}
+                    {sortKey === col.key && (sortDesc ? " ▼" : " ▲")}
+                  </th>
                 ) : (
-                  <span className="text-blue-500 font-bold">패</span>
-                )}
-              </td>
+                  <th
+                    key={col.key}
+                    onClick={() => toggleSort(col.key)}
+                    className="text-right px-2 py-1.5 font-semibold cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 select-none"
+                  >
+                    {col.label}
+                    {sortKey === col.key && (sortDesc ? " ▼" : " ▲")}
+                  </th>
+                )
+              )}
+              <th
+                className="text-center px-2 py-1.5 font-semibold"
+                title="승패 기준: 3일차 종가 청산(exitDay3Pct > 0) — 주 컬럼 '3일차(%)'와 같은 필드"
+              >
+                승패
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map(({ item, endReturnPct, drawdown, win }) => (
+              <tr key={`${item.symbol}::${item.discoveryDate}`} className="border-b border-slate-100 dark:border-zinc-800/60">
+                <td className="px-2 py-1.5 text-left">
+                  <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
+                    {item.name}
+                  </Link>
+                  {item.haltStartDaysAfter != null && (
+                    <span className="ml-1 text-amber-600 dark:text-amber-400" title="거래정지 구간 제외 후 관찰">⏸</span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-left text-slate-500 dark:text-zinc-400">{formatDiscoveryDate(item.discoveryDate)}</td>
+                {/* 주 컬럼 — 승패 뱃지와 같은 필드(exitDay3Pct) */}
+                <td className={`px-2 py-1.5 text-right font-bold ${maxReturnColorClass(item.exitDay3Pct)}`}>{formatPct(item.exitDay3Pct)}</td>
+                {/* 최고점(MFE) — 사후에만 알 수 있는 값이라 회색 격하 */}
+                <td
+                  className="px-2 py-1.5 text-right text-slate-400 dark:text-zinc-500"
+                  title="관측 창(0~10일) 중 최고 도달 수익률 — 사후에만 알 수 있어 실현 불가"
+                >
+                  {formatPct(item.maxReturnSoFarPct)}
+                </td>
+                {showDetail && (
+                  <>
+                    <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(endReturnPct)}`}>{formatPct(endReturnPct)}</td>
+                    <td className={`px-2 py-1.5 text-right ${maxReturnColorClass(item.minReturnSoFarPct)}`}>{formatPct(item.minReturnSoFarPct)}</td>
+                    <td className="px-2 py-1.5 text-right text-slate-500 dark:text-zinc-400">
+                      {drawdown != null ? `-${drawdown.toFixed(1)}%p` : "—"}
+                    </td>
+                  </>
+                )}
+                <td className="px-2 py-1.5 text-center">
+                  {win == null ? (
+                    <span className="text-slate-400 dark:text-zinc-500" title="3일차 종가 없음(관측 중/거래정지) — 통계 제외">제외</span>
+                  ) : win ? (
+                    <span className="text-rose-500 font-bold">승</span>
+                  ) : (
+                    <span className="text-blue-500 font-bold">패</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -720,39 +795,68 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
   );
 }
 
-// 퀀트 신호 참고 통계 토글(§2-3) — 판정 조건 + 과거 유사조건 참고 통계(문장형, "대박률" 금지) +
-// 최고점 기준 낙관적 시나리오(실현 아님 명시). 헤드라인 승률(§2-2)과 절대 섞이지 않도록 분리.
+// 퀀트 신호 참고 통계 토글 — 판정 조건 + 청산 규칙별 성과 표(2026-10-20: 헤드라인에서 내려온
+// 승률·손익비·기대값·Kelly 전부를 여기로 이동). 헤드라인은 3줄만 남기고, 상세 수치는 펼쳐야만
+// 보이게 해서 "작은 표본의 숫자"가 매매 근거처럼 읽히지 않도록 한다.
 function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
+  const rows: { label: string; s: ExitStats; muted?: boolean; title?: string }[] = [
+    { label: "3일차 종가", s: stats.exitDay3 },
+    { label: `3일차 비용차감 (왕복 ${stats.roundTripCostPct.toFixed(2)}%)`, s: stats.exitDay3Net },
+    { label: `손절 ${stats.stopLossThresholdPct}% (종가 기준)`, s: stats.exitStop10 },
+    { label: "극단값 제외 (상·하위 각 1건)", s: stats.exitDay3Trimmed },
+    {
+      label: "최고점 상한 (실현 불가)",
+      s: stats.peak,
+      muted: true,
+      title: "3일차 +10% 이상이면 이후 최고가에 팔았다고 가정 — 사후에만 알 수 있어 실현 불가",
+    },
+  ];
   return (
     <CollapsibleSection label="퀀트신호 판정 기준 및 통계 근거 보기">
       <p className="text-xs text-slate-600 dark:text-zinc-300">판정 조건: {QUANT_SIGNAL_META.condition}</p>
-      <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
-        과거 통계는 표본이 작고 검증 중이라 화면에 표시하지 않습니다.
-      </p>
       {stats.resultCount > 0 && (
-        <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
-          참고(달성 불가능한 상한 — 최고점 매도 가정, 실제 체결 불가): 승률{" "}
-          {stats.theoreticalMaxWinRatePct != null ? `${stats.theoreticalMaxWinRatePct.toFixed(1)}%` : "—"}
-          , 손익비 {stats.theoreticalMaxProfitFactor}, 거래당 기대값{" "}
-          <span
-            className={
-              stats.theoreticalMaxExpectancy > 0
-                ? "text-rose-500"
-                : stats.theoreticalMaxExpectancy < 0
-                  ? "text-blue-500"
-                  : ""
-            }
-          >
-            {stats.theoreticalMaxExpectancy > 0 ? "+" : ""}
-            {stats.theoreticalMaxExpectancy}%
-          </span>
-          , 평균 최고수익률{" "}
-          <span className={stats.avgMaxReturnSoFarPct && stats.avgMaxReturnSoFarPct > 0 ? "text-rose-500" : stats.avgMaxReturnSoFarPct && stats.avgMaxReturnSoFarPct < 0 ? "text-blue-500" : ""}>
-            {stats.avgMaxReturnSoFarPct != null
-              ? `${stats.avgMaxReturnSoFarPct >= 0 ? "+" : ""}${stats.avgMaxReturnSoFarPct.toFixed(2)}%`
-              : "—"}
-          </span>
-        </p>
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800">
+                  <th className="text-left px-2 py-1.5 font-semibold">기준</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">승률</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">손익비</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">기대값</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">Kelly</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">n</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={r.label}
+                    title={r.title}
+                    className={`border-b border-slate-50 dark:border-zinc-800/60 ${
+                      r.muted ? "text-slate-400 dark:text-zinc-500" : "text-slate-600 dark:text-zinc-300"
+                    }`}
+                  >
+                    <td className="text-left px-2 py-1.5">{r.label}</td>
+                    <td className="text-right px-2 py-1.5">
+                      {r.s.winRatePct != null ? `${r.s.winRatePct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="text-right px-2 py-1.5">{r.s.profitFactor}</td>
+                    <td className={`text-right px-2 py-1.5 ${r.muted ? "" : priceColorClass(r.s.expectancy, 0)}`}>
+                      {r.s.expectancy >= 0 ? "+" : ""}
+                      {r.s.expectancy}%
+                    </td>
+                    <td className="text-right px-2 py-1.5">{r.s.kellyPct != null ? `${r.s.kellyPct}%` : "—"}</td>
+                    <td className="text-right px-2 py-1.5">{r.s.n}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            표본 n&lt;{QUANT_MIN_RELIABLE_N} — 손익비 차이 0.3 이내는 노이즈
+          </p>
+        </>
       )}
       <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{QUANT_OBSERVATION_END_DISCLAIMER}</p>
     </CollapsibleSection>
@@ -970,49 +1074,18 @@ export default function TrackingPage() {
   const quantObservingGroupsVisible =
     isSearching || showAllQuantResults ? quantObservingGroups : quantObservingGroups.slice(0, QUANT_RESULT_PAGE_SIZE);
 
-  // 비용 가정(왕복 수수료+세액 근사치) — 2026-10-20 추가, 명시적 가정값. 실제 계좌·종목별
-  // 수수료율/세율과 다를 수 있다. 헤드라인 기대값(exitAtDay3Pct 기준)에서 단순 차감만 한다.
-  const QUANT_FEE_TAX_ROUNDTRIP_PCT = 0.2;
-
-  // §통계 패널 추가(표시만, 기존 수치 정의는 변경하지 않음) — 백엔드 헤드라인 통계와 동일한
-  // resultItems 필터(group==='result' && isValidForStats)를 그대로 재사용해, "그 집합 안에서"
-  // 추가로 계산한다. 즐겨찾기 필터와 무관하게 항상 전체 표본 기준(기존 헤드라인 통계와 동일 관례).
-  const quantStatsResultItems = data.quantSignalItems.filter((i) => i.group === "result" && i.isValidForStats);
+  // 고점 대비 낙폭 참고 패널 — 승률/손익비/기대값/극단값 제외/비용 차감은 전부 백엔드
+  // quantSignalStats(규칙별 ExitStats)에서 내려오므로 여기서 다시 계산하지 않는다(종전 중복 계산
+  // 제거). 낙폭만 "최고점(MFE) 대비 3일차 청산 시 얼마나 반납했는지"로, 헤드라인과 같은
+  // 기준(exitDay3Pct)에서 센다. 카드의 "참고" 낙폭(대비 현재가)과는 기준이 다르다.
+  const quantStatsResultItems = data.quantSignalItems.filter((i) => i.exitDay3Pct != null);
   const quantExtraStats = (() => {
-    if (quantStatsResultItems.length === 0) return null;
-    // (a) 최대 수익 1건 제외 손익비·기대값 — 2026-10-20: 헤드라인이 day3ReturnPct(exitAtDay3Pct)
-    // 기준으로 교체됨에 따라, 이 "1건 제외" 통계도 같은 기준으로 통일한다(종전엔 realizedReturnPct
-    // 기준이었음). 합산식 자체는 기존과 동일, 적용 대상 필드만 바뀜.
-    const sorted = [...quantStatsResultItems].sort(
-      (a, b) => (b.day3ReturnPct ?? -Infinity) - (a.day3ReturnPct ?? -Infinity)
-    );
-    const excludedTop1 = sorted.slice(1);
-    let grossProfit = 0;
-    let grossLoss = 0;
-    for (const it of excludedTop1) {
-      const r = it.day3ReturnPct ?? 0;
-      if (r > 0) grossProfit += r;
-      else if (r < 0) grossLoss += Math.abs(r);
-    }
-    const n = excludedTop1.length;
-    const profitFactorExTop1 = n > 0 ? (grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : grossProfit > 0 ? 99.99 : 0) : null;
-    const expectancyExTop1 = n > 0 ? Number(((grossProfit - grossLoss) / n).toFixed(2)) : null;
-
-    // (b) 평균/최악 고점 대비 낙폭 — maxReturnSoFarPct 대비 realizedReturnPct(종전 헤드라인,
-    // 참고용 상한) 차이는 그대로 유지한다. 이 낙폭은 승패 판정이 아니라 "최고점에서 얼마나
-    // 반납했는지"를 보여주는 참고 수치라 교체 대상이 아니다. 카드의 "참고" 낙폭(대비 현재가)과는
-    // 기준이 다르다(위 주석 참고).
     const drawdowns = quantStatsResultItems
-      .map((it) => drawdownFromPeak(it.maxReturnSoFarPct, it.realizedReturnPct))
+      .map((it) => drawdownFromPeak(it.maxReturnSoFarPct, it.exitDay3Pct))
       .filter((d): d is number => d != null);
-    const avgDrawdown = drawdowns.length > 0 ? Number((drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length).toFixed(2)) : null;
-    const worstDrawdown = drawdowns.length > 0 ? Number(Math.max(...drawdowns).toFixed(2)) : null;
-
-    // (c) 비용 반영 후 기대값 — 헤드라인 기대값(day3ReturnPct 기준, 백엔드 quantSignalStats.expectancy)에서
-    // 왕복 비용 가정치를 단순 차감.
-    const costAdjustedExpectancy = Number((data.quantSignalStats.expectancy - QUANT_FEE_TAX_ROUNDTRIP_PCT).toFixed(2));
-
-    return { profitFactorExTop1, expectancyExTop1, avgDrawdown, worstDrawdown, costAdjustedExpectancy, excludedCount: sorted.length > 0 ? 1 : 0 };
+    if (drawdowns.length === 0) return null;
+    const avgDrawdown = Number((drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length).toFixed(2));
+    return { avgDrawdown };
   })();
 
   return (
@@ -1089,48 +1162,58 @@ export default function TrackingPage() {
               </p>
             )}
 
-            {/* 헤드라인 승률(§2-2) — 화면에 노출하는 유일한 "승률" 숫자. 2026-10-20부터 실행
-                가능한 청산 규칙(exitAtDay3Pct=항상 3일차 종가 청산) 기준으로 교체(백엔드
-                day3ReturnPct). 종전 방식(최고점 매도 가정, 실제로는 불가능한 상한)은 아래 토글에
-                "참고(달성 불가능한 상한)"로만 노출하고 헤드라인과는 절대 섞이지 않는다. */}
-            <p className="text-sm text-slate-700 dark:text-zinc-300 mt-1">
-              {quantSignalStats.resultCount > 0 ? (
-                <>
-                  <span className="text-slate-400 dark:text-zinc-500">(전체 표본 기준)</span> 실전 검증{" "}
-                  {quantSignalStats.resultCount}건({quantSignalStats.sampleSymbolCount}종목) · {quantSignalStats.realizedWinCount}승{" "}
-                  {quantSignalStats.realizedLossCount}패 · 승률{" "}
-                  <span className="font-bold">
-                    {quantSignalStats.realizedWinRatePct != null
-                      ? `${quantSignalStats.realizedWinRatePct.toFixed(1)}%`
-                      : "—"}
-                  </span>{" "}
-                  · 손익비{" "}
-                  <span className="font-bold">{quantSignalStats.profitFactor}</span>{" "}
-                  <span className="text-slate-400 dark:text-zinc-500">(3일차 종가 청산 기준, 거래정지 종목 제외, 전체 이력 기준)</span>
-                </>
-              ) : (
-                <span className="text-slate-400 dark:text-zinc-500">실전 검증 대기 중 (3일차 판정 필요)</span>
-              )}
-            </p>
-
-            {/* 신뢰도 배지(§3) — 표본(unique 종목 수) 기준 등급. n≥60(목표 표본) 도달 전까지는
-                자동으로 결론을 확정하지 않는다는 점을 명시해 과신을 방지한다. */}
-            {(() => {
-              const reliability = quantSignalReliability(quantSignalStats.sampleSymbolCount);
-              return (
-                <div className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                  <p>
-                    {reliability.emoji} {reliability.label}
-                  </p>
-                  {reliability.showProgress && (
-                    <p className="mt-0.5">
-                      목표 표본 n≥{QUANT_RELIABILITY_TARGET_N}(종목기준) 도달 시 재평가 예정 (현재{" "}
-                      {quantSignalStats.sampleSymbolCount}/{QUANT_RELIABILITY_TARGET_N})
+            {/* 헤드라인(2026-10-20 압축) — 3줄만 남긴다. 승률·손익비·Kelly·비용차감·손절·극단값·
+                최고점 상한·신뢰도 배지·표본부족 경고는 전부 아래 "통계 근거 보기" 접기 안의
+                규칙별 표로 옮겼다. 1줄차 상태 라벨은 실행 가능한 세 규칙(3일차/비용차감/손절)의
+                기대값으로 자동 판정한다 — 하드코딩하지 않는다. */}
+            {quantSignalStats.resultCount > 0 ? (
+              <div className="mt-2">
+                {/* 1줄: 상태 — 실행 가능한 세 규칙의 기대값이 모두 ≤0이면 적색, 하나라도 >0이면 황색 */}
+                {(() => {
+                  const executableExpectancies = [
+                    quantSignalStats.exitDay3.expectancy,
+                    quantSignalStats.exitDay3Net.expectancy,
+                    quantSignalStats.exitStop10.expectancy,
+                  ];
+                  const anyPositive = executableExpectancies.some((e) => e > 0);
+                  return (
+                    <p
+                      className={`text-sm font-bold ${
+                        anyPositive ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
+                      }`}
+                    >
+                      {anyPositive ? "🟡 관찰 중" : "🔴 검증 중"} · 매매 근거로 쓰지 말 것
                     </p>
-                  )}
-                </div>
-              );
-            })()}
+                  );
+                })()}
+                {/* 2줄: 주 기준 기대값 + 표본 */}
+                <p className="text-sm text-slate-700 dark:text-zinc-300 mt-0.5">
+                  3일차 종가 청산 기대값{" "}
+                  <span className={`font-bold ${priceColorClass(quantSignalStats.exitDay3.expectancy, 0)}`}>
+                    {quantSignalStats.exitDay3.expectancy >= 0 ? "+" : ""}
+                    {quantSignalStats.exitDay3.expectancy}%
+                  </span>
+                  <span className="text-slate-400 dark:text-zinc-500">
+                    {"  ·  표본 "}
+                    {quantSignalStats.sampleSymbolCount}/{QUANT_RELIABILITY_TARGET_N}종목
+                  </span>
+                </p>
+                {/* 3줄: 평균 최고 → 3일차 (고점 반납) */}
+                {quantSignalStats.avgMaxReturnSoFarPct != null && quantSignalStats.avgDay3ReturnPct != null && (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                    평균 최고 {quantSignalStats.avgMaxReturnSoFarPct >= 0 ? "+" : ""}
+                    {quantSignalStats.avgMaxReturnSoFarPct.toFixed(1)}% → 3일차{" "}
+                    {quantSignalStats.avgDay3ReturnPct >= 0 ? "+" : ""}
+                    {quantSignalStats.avgDay3ReturnPct.toFixed(1)}%
+                    {quantExtraStats && ` (고점 반납 -${quantExtraStats.avgDrawdown.toFixed(1)}%p)`}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 dark:text-zinc-500 mt-1">
+                실전 검증 대기 중 (3일차 판정 필요)
+              </p>
+            )}
 
             <div className="mt-3 mb-4">
               <QuantReferenceToggle stats={quantSignalStats} />
@@ -1194,80 +1277,6 @@ export default function TrackingPage() {
               </div>
             )}
 
-            {quantSignalStats.resultCount > 0 && (
-              <div className="mt-4 bg-slate-50 dark:bg-zinc-950 rounded-2xl p-3 text-center">
-                <p className="text-xs text-slate-600 dark:text-zinc-300">
-                  평균 3일차 수익률{" "}
-                  <span
-                    className={
-                      quantSignalStats.avgDay3ReturnPct != null
-                        ? priceColorClass(quantSignalStats.avgDay3ReturnPct, 0)
-                        : ""
-                    }
-                  >
-                    {quantSignalStats.avgDay3ReturnPct != null
-                      ? `${quantSignalStats.avgDay3ReturnPct >= 0 ? "+" : ""}${quantSignalStats.avgDay3ReturnPct.toFixed(2)}%`
-                      : "—"}
-                  </span>
-                  , 평균 최고수익률{" "}
-                  <span
-                    className={
-                      quantSignalStats.avgMaxReturnSoFarPct != null
-                        ? priceColorClass(quantSignalStats.avgMaxReturnSoFarPct, 0)
-                        : ""
-                    }
-                  >
-                    {quantSignalStats.avgMaxReturnSoFarPct != null
-                      ? `${quantSignalStats.avgMaxReturnSoFarPct >= 0 ? "+" : ""}${quantSignalStats.avgMaxReturnSoFarPct.toFixed(2)}%`
-                      : "—"}
-                  </span>{" "}
-                  <span className="text-slate-400 dark:text-zinc-500">(참고 수치, 승률 아님)</span>
-                </p>
-              </div>
-            )}
-
-            {/* §통계 패널 추가 — 기존 승률/손익비/기대값 정의는 그대로 두고, 같은 표본(resultItems)
-                위에서 참고용으로 추가 계산한다. 표본 신뢰 배지는 위에서 그대로 유지(변경 없음). */}
-            {quantExtraStats && (
-              <div className="mt-2 bg-slate-50 dark:bg-zinc-950 rounded-2xl p-3 text-center">
-                <p className="text-xs text-slate-600 dark:text-zinc-300">
-                  최대 수익 1건 제외 시 손익비{" "}
-                  <span className="font-bold">
-                    {quantExtraStats.profitFactorExTop1 != null ? quantExtraStats.profitFactorExTop1 : "—"}
-                  </span>
-                  , 기대값{" "}
-                  <span
-                    className={
-                      quantExtraStats.expectancyExTop1 != null ? priceColorClass(quantExtraStats.expectancyExTop1, 0) : ""
-                    }
-                  >
-                    {quantExtraStats.expectancyExTop1 != null
-                      ? `${quantExtraStats.expectancyExTop1 >= 0 ? "+" : ""}${quantExtraStats.expectancyExTop1}%`
-                      : "—"}
-                  </span>
-                </p>
-                <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1">
-                  평균 고점 대비 낙폭{" "}
-                  <span className="font-bold">
-                    {quantExtraStats.avgDrawdown != null ? `-${quantExtraStats.avgDrawdown.toFixed(1)}%p` : "—"}
-                  </span>
-                  , 최악 고점 대비 낙폭{" "}
-                  <span className="font-bold text-rose-500">
-                    {quantExtraStats.worstDrawdown != null ? `-${quantExtraStats.worstDrawdown.toFixed(1)}%p` : "—"}
-                  </span>
-                </p>
-                <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1">
-                  비용 반영 후 기대값{" "}
-                  <span className={priceColorClass(quantExtraStats.costAdjustedExpectancy, 0)}>
-                    {quantExtraStats.costAdjustedExpectancy >= 0 ? "+" : ""}
-                    {quantExtraStats.costAdjustedExpectancy}%
-                  </span>{" "}
-                  <span className="text-slate-400 dark:text-zinc-500">
-                    (왕복 수수료+세액 {QUANT_FEE_TAX_ROUNDTRIP_PCT}% 가정 차감, 가정값)
-                  </span>
-                </p>
-              </div>
-            )}
           </section>
         )}
 
