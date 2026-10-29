@@ -18,8 +18,9 @@ const path = require("path");
 const L = require("./bt-lib.cjs");
 L.quietKisDebug();
 
-const START = "20200101";
-const SEAL = "20251231";                  // 2026 열람 금지
+// 기간·수급 폴더는 env 로만 바꾼다(기본값 = 인샘플 등록값). 홀드아웃은 계산 로직을 건드리지 않는다.
+const START = process.env.MOM_START || "20200101";
+const SEAL = process.env.MOM_SEAL || "20251231";                  // 기본값에서 2026 열람 금지
 const HORIZONS = [20, 60, 120];
 const MAIN_H = 60;
 const BLOCK = { 20: 1, 60: 2, 120: 3 };   // 분기 블록 길이 ≥ 호라이즌 (1분기 ≈ 62거래일)
@@ -33,7 +34,10 @@ const COST = 0.3;                         // 왕복 비용(%) / 회
 const ALPHA_BONF = 0.025;
 const TIER_A = 12, TIER_B = 6;            // 연환산 %/년
 const ITERS = 10000;
-const INV_DIR = path.join(L.CACHE_ROOT, "investor");
+const INV_DIRS = (process.env.MOM_INV_DIRS || path.join(L.CACHE_ROOT, "investor")).split(",");
+const OUT_FILE = process.env.MOM_OUT || path.join(L.CACHE_ROOT, "momentum-result.json");
+const DUMP = process.env.MOM_DUMP || "";  // (가)(다) 보고용 날짜별 덤프. 출력·계산에 영향 없음
+const YEARS = ["2020", "2021", "2022", "2023", "2024", "2025", ...(SEAL >= "20260101" ? ["2026"] : [])];
 const quarterOf = (d) => `${d.slice(0, 4)}Q${Math.floor((+d.slice(4, 6) - 1) / 3) + 1}`;
 
 const sum = (a) => a.reduce((x, y) => x + y, 0);
@@ -80,15 +84,21 @@ function flipP(ds, ws, seed = 9090) {
 
 // ── 데이터 적재: 수급 캐시 종목 ∩ 일봉 캐시, 전역 거래일 축 ──
 function load() {
-  const symbols = fs.readdirSync(INV_DIR).filter((f) => f.endsWith(".json") && !f.includes("error")).map((f) => f.replace(".json", ""));
+  const symbols = fs.readdirSync(INV_DIRS[0]).filter((f) => f.endsWith(".json") && !f.includes("error")).map((f) => f.replace(".json", ""));
   const dateSet = new Set(), raw = new Map();
   const excl = { noCandles: 0, noInvestor: 0, zeroRowNoPrice: 0, outOfRange: 0, rowsKept: 0, rowsTotal: 0, haltDays: 0 };
   for (const s of symbols) {
     const p = L.loadCandles(s);
     if (!p?.candles?.length) { excl.noCandles++; continue; }
     let inv;
-    try { inv = JSON.parse(fs.readFileSync(path.join(INV_DIR, `${s}.json`), "utf8")); } catch { excl.noInvestor++; continue; }
+    try { inv = JSON.parse(fs.readFileSync(path.join(INV_DIRS[0], `${s}.json`), "utf8")); } catch { excl.noInvestor++; continue; }
     if (!inv?.rows?.length) { excl.noInvestor++; continue; }
+    let invRows = inv.rows;
+    for (const dir of INV_DIRS.slice(1)) {          // 뒤 폴더는 이어 붙이기만 한다(기간이 겹치지 않음)
+      const f = path.join(dir, `${s}.json`);
+      if (!fs.existsSync(f)) continue;
+      try { const x = JSON.parse(fs.readFileSync(f, "utf8")); if (x?.rows?.length) invRows = invRows.concat(x.rows); } catch { /* 결측으로 처리 */ }
+    }
     // 정지일: 봉인만 적용한 전체 일봉으로 계산 (bt-lib 주석 참조)
     const H = L.haltedDateSet(p.candles.filter((c) => String(c.stck_bsop_date || "") <= SEAL));
     const px = new Map();
@@ -101,7 +111,7 @@ function load() {
       dateSet.add(d);
     }
     const flow = new Map();
-    for (const r of inv.rows) {
+    for (const r of invRows) {
       const d = String(r.stck_bsop_date || "");
       excl.rowsTotal++;
       if (d < START || d > SEAL) { excl.outOfRange++; continue; }
@@ -162,6 +172,7 @@ function main() {
   const cells = cell();
   const diag = { rho: [], fqPast20: Array.from({ length: NQ }, () => ({ s: 0, n: 0 })), fqMom: Array.from({ length: NQ }, () => ({ s: 0, n: 0 })), days: 0 };
   const rebal = { mom: { prev: null, turns: [] }, flow: { prev: null, turns: [] }, next: -1, count: 0 };
+  const dumpLines = [];
 
   for (let i = 0; i < n; i++) {
     if (i < MOM_LONG) { acct.lookback += syms.length; continue; }      // D-252 가 축에 없음 (유니버스 창 포함)
@@ -185,7 +196,7 @@ function main() {
 
     let flowMissing = 0, turnoverShort = 0, momMissing = 0;
     const rows = [];
-    for (const [S] of univ) {
+    for (const [S, tv60] of univ) {
       if (S.pfc[i + 1] - S.pfc[flo] < FLOW_W) { flowMissing++; continue; }
       const tcnt = S.pcnt[i + 1] - S.pcnt[tlo];
       const denom = tcnt < TURNOVER_W * 0.8 ? 0 : (S.ptv[i + 1] - S.ptv[tlo]) / tcnt;
@@ -196,6 +207,7 @@ function main() {
         f: (S.pf[i + 1] - S.pf[flo]) / denom,
         m: S.cl[i - MOM_SKIP] / S.cl[i - MOM_LONG] - 1,
         p20: S.has[i - 20] ? (S.cl[i] / S.cl[i - 20] - 1) * 100 : null,
+        tv60,
       });
     }
     if (rows.length < MIN_ROWS) { acct.dateDropped += syms.length; continue; }
@@ -254,6 +266,7 @@ function main() {
     }
 
     const q = quarterOf(d);
+    const dumpDay = DUMP ? { d, q, e0: dates[e0], e: e0 + MAIN_H < n ? dates[e0 + MAIN_H] : null, rows: rows.map((r) => [r.S.sym, r.fq, r.mq, Math.round(r.tv60), r.S.cl[i], r.fwd[MAIN_H]]) } : null;
     for (const h of HORIZONS) {
       const uni = rows.filter((r) => r.fwd[h] !== null);
       if (uni.length < MIN_ROWS) { hDateDrop[h]++; continue; }
@@ -269,6 +282,15 @@ function main() {
           top.push(mean(t)); bot.push(mean(b)); nTop += t.length;
         }
         if (empty) { portDrop[P.key][h]++; continue; }
+        if (dumpDay && h === MAIN_H) {
+          // 칸 평균 후 동일가중 → 종목 가중치 = 1 / (5 × 칸 크기)
+          const w = [];
+          for (let c = 0; c < NQ; c++) {
+            const mem = uni.filter((r) => r[P.ctrl] === c && r[P.sortBy] === NQ - 1);
+            for (const r of mem) w.push([r.S.sym, 1 / (NQ * mem.length)]);
+          }
+          dumpDay[P.key] = { top: mean(top), uni: mUni, nTop, w };
+        }
         const m = byQ[P.key][h];
         if (!m.has(q)) m.set(q, { spread: [], longonly: [], market: [], nTop: 0, days: 0 });
         const a = m.get(q);
@@ -276,6 +298,7 @@ function main() {
         a.nTop += nTop; a.days++;
       }
     }
+    if (dumpDay) dumpLines.push(JSON.stringify(dumpDay));
   }
 
   // ── 1) 표본 산술 ──
@@ -356,7 +379,7 @@ function main() {
       if (!sub.length) { console.log(`  ${lab}: 없음`); continue; }
       console.log(`  ${lab}: ${sub.length}분기 (시장 ${sg(mean(sub.map((r) => r.market)), 2)}%) | 롱-숏 ${sg(mean(sub.map((r) => r.spread)))}%p | 롱온리 ${sg(mean(sub.map((r) => r.longonly)))}%p`);
     }
-    for (const y of ["2020", "2021", "2022", "2023", "2024", "2025"]) {
+    for (const y of YEARS) {
       const sub = rowsMain.filter((r) => r.q.startsWith(y));
       if (!sub.length) { console.log(`   ${y}: 분기 없음`); continue; }
       const lo = sub.map((r) => r.longonly);
@@ -418,7 +441,8 @@ function main() {
     console.log(`  둘 다 Tier → 비용 차감 후 α 큰 쪽: ${tiered[0].name} (${sg(tiered[0].alphaNet)} vs ${sg(tiered[1].alphaNet)}%p)`);
   }
 
-  const out = path.join(L.CACHE_ROOT, "momentum-result.json");
+  const out = OUT_FILE;
+  if (DUMP) fs.writeFileSync(DUMP, dumpLines.join("\n") + "\n");
   fs.writeFileSync(out, JSON.stringify({
     generatedAt: new Date().toISOString(), acct, hAcct, hDateDrop, portDrop, series: outSeries, verdicts,
     cells: cells.map((r) => r.map((c) => ({ avg: c.cnt / diag.days, min: c.min, lt20: c.lt20, ret60: c.retDays ? c.retSum / c.retDays : null }))),

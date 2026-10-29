@@ -13,11 +13,13 @@ const path = require("path");
 const L = require("./bt-lib.cjs");
 L.quietKisDebug();
 
-const OUT_DIR = path.join(L.CACHE_ROOT, "investor");   // ~/stockker-bt-cache/investor
+// 기본값은 #9 인샘플(2020~2025). 홀드아웃 수집은 env 로 기간·저장 경로를 따로 준다 —
+// 인샘플 캐시 파일을 덮어쓰지 않기 위해 디렉터리를 분리한다.
+const OUT_DIR = process.env.INV_OUT_DIR || path.join(L.CACHE_ROOT, "investor");   // ~/stockker-bt-cache/investor
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-const START = "20200101";
-const END = "20251231";                                 // 2026 열람 금지
+const START = process.env.INV_START || "20200101";
+const END = process.env.INV_END || "20251231";          // 기본값에서는 2026 열람 금지
 const EP = "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily";
 const TR = "FHPTJ04160001";
 const KEEP = ["stck_bsop_date", "stck_clpr", "acml_vol", "acml_tr_pbmn",
