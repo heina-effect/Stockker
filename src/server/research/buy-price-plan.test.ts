@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateProfitLossRate, parseFormattedPrice } from "./buy-plan-utils";
+import { buildBuyPlan, calculateProfitLossRate, parseFormattedPrice } from "./buy-plan-utils";
 
 describe("Buy Plan Utilities", () => {
   describe("calculateProfitLossRate", () => {
@@ -33,6 +33,20 @@ describe("Buy Plan Utilities", () => {
     it("should handle empty or invalid inputs", () => {
       expect(parseFormattedPrice("")).toBe(0);
       expect(parseFormattedPrice("abc")).toBe(0);
+    });
+  });
+
+  describe("buildBuyPlan", () => {
+    it("현재가가 있으면 평단가·현재가·수익률을 채운다", () => {
+      const plan = buildBuyPlan(50000, 226750);
+      expect(plan).toMatchObject({ targetPrice: 50000, currentPrice: 226750, currentProfitLossRate: 353.5, priceStatus: "ok" });
+    });
+
+    it("현재가 조회 실패(null·0·NaN)면 대체 가격 없이 수익률을 비운다", () => {
+      for (const p of [null, undefined, 0, Number.NaN]) {
+        const plan = buildBuyPlan(50000, p);
+        expect(plan).toMatchObject({ targetPrice: 50000, currentPrice: null, currentProfitLossRate: null, priceStatus: "unavailable" });
+      }
     });
   });
 });

@@ -1,6 +1,4 @@
-import {
-  mockBuyPlan,
-} from "./mock-data";
+import { buildBuyPlan } from "./buy-plan-utils";
 import type { BuyPricePlan, IssueCluster, SourceItem } from "@/types/research";
 import { collectRawSources } from "./pipeline/collect";
 import { normalizeSources } from "./pipeline/normalize";
@@ -293,13 +291,14 @@ export async function generateIssues(symbol: string): Promise<{ clusters: IssueC
   }
 }
 
+// 현재가 조회 실패 시 대체 가격을 쓰지 않는다 — priceStatus="unavailable" 로 돌려 화면이 수익률을 숨긴다.
 export async function generateBuyPlan(symbol: string, averagePrice: number): Promise<BuyPricePlan> {
   try {
     const quote = await getDomesticStockQuote(symbol);
-    return mockBuyPlan(symbol, averagePrice, quote.price);
+    return buildBuyPlan(averagePrice, quote.price);
   } catch (e) {
-    console.warn(`[BuyPlan] Failed to fetch live price for ${symbol}, falling back to mock:`, e);
-    return mockBuyPlan(symbol, averagePrice);
+    console.warn(`[BuyPlan] Failed to fetch live price for ${symbol}:`, e);
+    return buildBuyPlan(averagePrice, null);
   }
 }
 

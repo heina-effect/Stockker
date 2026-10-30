@@ -107,14 +107,14 @@ export function OvernightScreeningCard() {
         <div className="bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 text-amber-700 dark:text-amber-300 px-4 py-3 rounded-2xl flex items-center gap-3">
           <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
           <div className="text-xs leading-relaxed">
-            <span className="font-bold">시장 경고: 코스닥 지수 역배열 진입.</span> 전체 매매 비중을 <strong>50% 축소</strong>할 것을 권장합니다. (보수적 접근 필요)
+            <span className="font-bold">코스닥 지수 역배열.</span> 거시 지표가 기준 아래입니다. (지수 종가: {kosdaqState.value.toFixed(2)})
           </div>
         </div>
       ) : (
         <div className="bg-emerald-500/10 dark:bg-emerald-500/5 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 px-4 py-3 rounded-2xl flex items-center gap-3">
           <TrendingUp className="w-5 h-5 text-emerald-500 flex-shrink-0" />
           <div className="text-xs leading-relaxed">
-            <span className="font-bold">시장 지표 양호: 코스닥 지수 정배열 상태 유지.</span> 오버나이트 진입 전략을 정상 비중으로 유지합니다. (지수 종가: {kosdaqState.value.toFixed(2)})
+            <span className="font-bold">코스닥 지수 정배열.</span> 거시 지표가 기준 범위입니다. (지수 종가: {kosdaqState.value.toFixed(2)})
           </div>
         </div>
       )}

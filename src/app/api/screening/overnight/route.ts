@@ -589,7 +589,7 @@ export async function GET(req: Request) {
       const weightSuggestion = reduceWeight ? 0.5 : 1.0;
 
       const normalReasons = [
-        reduceWeight ? "거시 지표 불안정(비중 50% 축소 제안)" : "거시 지표 정상",
+        reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
         "주봉·일봉 정배열 충족",
         `거래량 급증(${volumeRatio.toFixed(0)}%)`,
         `안정적인 윗꼬리(${tailRatio.toFixed(1)}%)`,
@@ -600,7 +600,7 @@ export async function GET(req: Request) {
       }
 
       const aggressiveReasons = [
-        reduceWeight ? "거시 지표 불안정(비중 50% 축소 제안)" : "정배열 만족",
+        reduceWeight ? "거시 지표 불안정" : "정배열 만족",
         freshnessCount <= 2 ? "테마 신선도 조건 일부 미달(공격형 진입)" : `거래량 증가폭 다소 완화(${volumeRatio.toFixed(0)}%)`
       ];
       if (foreignBuyLimit) {
@@ -851,7 +851,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           weightSuggestion,
           foreignBuyLimit: true,
           reasons: [
-            reduceWeight ? "거시 지표 불안정(비중 50% 축소 제안)" : "거시 지표 정상",
+            reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
             "주봉·일봉 정배열(5 > 20 > 60 > 120) 충족",
             "거래량 급증(20일 평균 대비 245%)",
             "윗꼬리 제한 통과(0.8%)",
@@ -871,7 +871,7 @@ function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosd
           weightSuggestion,
           foreignBuyLimit: false,
           reasons: [
-            reduceWeight ? "거시 지표 불안정(비중 50% 축소 제안)" : "거시 지표 정상",
+            reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
             "주봉·일봉 정배열 충족",
             "거래량 급증(20일 평균 대비 210%)",
             "윗꼬리 제한 통과(1.2%)",

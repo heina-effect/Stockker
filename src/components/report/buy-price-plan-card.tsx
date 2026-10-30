@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { BuyPricePlan } from "@/types/research";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calculator, Info } from "lucide-react";
+import { Loader2, Calculator } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
 
@@ -19,6 +19,11 @@ function getKoreanAmountHelper(amount: number): string {
   const man = amount / 10000;
   return `약 ${man.toLocaleString(undefined, { maximumFractionDigits: 0 })}만 원`;
 }
+
+// API 자체가 실패해도 시세 조회 실패와 같게 보여준다 — 수익률은 만들지 않는다.
+const failedPlan = (avg: number): BuyPricePlan => ({
+  targetPrice: avg, currentPrice: null, currentProfitLossRate: null, priceStatus: "unavailable", generatedAt: new Date().toISOString(),
+});
 
 export function BuyPricePlanCard({ symbol }: { symbol: string }) {
   const [displayValue, setDisplayValue] = useState("");
@@ -65,7 +70,11 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
       const data = await res.json();
       if (data.ok) {
         setPlan(data.buyPlan);
+      } else {
+        setPlan(failedPlan(rawVal));
       }
+    } catch {
+      setPlan(failedPlan(rawVal));
     } finally {
       setLoading(false);
     }
@@ -88,7 +97,7 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
         <div className="flex items-center gap-2">
           <Calculator className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
           <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-            내 평단가 기준 대응 가이드
+            내 평단가 수익률
             {hydrated && displayValue.length > 0 && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                 (LocalStorageAdapter.getBuyPrice(symbol) === getRawNumber()) 
@@ -103,7 +112,7 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
       </div>
       
       <p className="text-sm text-slate-500 dark:text-zinc-400 mb-6">
-        현재 보유 중인 주식의 평균단가를 입력하면 AI가 비중 조절 및 대응 가이드를 제안해 드립니다.
+        보유 중인 주식의 평균단가를 입력하면 현재가 대비 수익률을 계산합니다.
       </p>
 
       {!hydrated ? (
@@ -126,7 +135,7 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
               disabled={!displayValue || loading}
               className="h-12 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-medium w-full sm:w-auto px-6"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "가이드 받기"}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "수익률 계산"}
             </Button>
           </div>
           {displayValue && getRawNumber() > 0 && (
@@ -139,40 +148,29 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
           <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-slate-100 dark:border-zinc-800">
             <div>
-              <p className="text-xs text-slate-500 mb-1">입력된 매수가</p>
+              <p className="text-xs text-slate-500 mb-1">입력한 평단가</p>
               <p className="font-semibold">{formatNumber(plan.targetPrice)}원</p>
             </div>
-            <div>
-              <p className="text-xs text-slate-500 mb-1">예상 수익률</p>
-              <p className={`font-bold ${plan.currentProfitLossRate > 0 ? "text-red-500" : "text-blue-500"}`}>
-                {plan.currentProfitLossRate > 0 ? "+" : ""}{plan.currentProfitLossRate}%
-              </p>
-            </div>
+            {plan.priceStatus === "ok" && plan.currentPrice !== null && plan.currentProfitLossRate !== null ? (
+              <>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">현재가</p>
+                  <p className="font-semibold">{formatNumber(plan.currentPrice)}원</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">수익률</p>
+                  <p className={`font-bold ${plan.currentProfitLossRate > 0 ? "text-red-500" : "text-blue-500"}`}>
+                    {plan.currentProfitLossRate > 0 ? "+" : ""}{plan.currentProfitLossRate}%
+                  </p>
+                </div>
+              </>
+            ) : (
+              /* 조회 실패 시 현재가·수익률을 하나도 보여주지 않는다 — 대체 값 없음 */
+              <p className="text-sm font-semibold text-rose-600 dark:text-rose-400">현재가 조회 실패</p>
+            )}
           </div>
-          
-          <div className="mb-4">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-zinc-200 mb-2">포지션 진단</h4>
-            <p className="text-sm text-slate-600 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-950 p-3 rounded-xl border">
-              {plan.positionAnalysis}
-            </p>
-          </div>
-          
-          <div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-zinc-200 mb-2">AI 액션 가이드</h4>
-            <ul className="flex flex-col gap-2">
-              {plan.actionGuides.map((guide, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-zinc-300 relative pl-4">
-                  <span className="absolute left-0 top-1.5 w-1.5 h-1.5 bg-indigo-400 rounded-full" />
-                  {guide}
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          <div className="mt-6 flex items-center justify-between">
-            <div className="text-[10px] text-slate-400 flex items-center gap-1">
-              <Info className="w-3 h-3" /> 본 가이드는 AI 기반 참조용입니다.
-            </div>
+
+          <div className="mt-6 flex items-center justify-end">
             <div className="flex gap-2 items-center">
               <button 
                 onClick={() => setPlan(null)} 

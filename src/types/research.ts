@@ -69,13 +69,17 @@ export interface SourceItem {
   _isMock?: boolean;               // internal flag
 }
 
+/**
+ * 평단가 대비 현재 수익률 — 사실 세 가지(평단가·현재가·수익률)만 담는다.
+ * 현재가 조회에 실패하면 priceStatus="unavailable" 이고 currentPrice·수익률은 null 이다.
+ * 대체 가격을 넣지 않는다(2026-10-30 — 하드코딩 폴백 가격과 템플릿 대응 가이드 제거).
+ */
 export interface BuyPricePlan {
   targetPrice: number;
-  currentProfitLossRate: number;
-  positionAnalysis: string;
-  actionGuides: string[];
+  currentPrice: number | null;
+  currentProfitLossRate: number | null;
+  priceStatus: "ok" | "unavailable";
   generatedAt: string;
-  _meta?: any;
 }
 
 export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "disclosure_linked" | "peer" | "ai_inferred";

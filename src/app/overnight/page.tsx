@@ -4,13 +4,10 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardHeader } from "@/components/home/dashboard-header";
 import {
-  ShieldAlert,
-  TrendingUp,
   Activity,
   CheckCircle2,
   XCircle,
   Flame,
-  Info,
   Calendar,
   Clock,
   Zap
@@ -185,6 +182,9 @@ function OvernightScreeningContent() {
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
               관심 종목을 추려 보는 도구입니다. 수익을 예측하거나 매매 시점을 알려주지 않습니다 — 백테스트 검증(가설 10건, 2020~2026)에서 초과수익이 확인되지 않았습니다.
             </p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+              손익 관리 규칙은 검증된 바 없으며 각자 판단으로 정할 것.
+            </p>
             <p className="text-sm text-slate-500 dark:text-zinc-400 mt-2 flex items-center gap-1.5">
               <Calendar className="w-4 h-4" />
               {dateStr} {timeStr} 분석 기준
@@ -205,47 +205,41 @@ function OvernightScreeningContent() {
               </Link>
             )}
           </div>
-
-          {/* 청산 가이드 팝오버/정보 */}
-          <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 p-3 rounded-xl max-w-md">
-            <h4 className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1 mb-1">
-              <Info className="w-3.5 h-3.5" />
-              청산 필수 규칙 (Exit Rules)
-            </h4>
-            <ul className="text-[10px] text-slate-600 dark:text-zinc-400 list-disc pl-4 space-y-0.5">
-              <li><strong>하드스탑:</strong> 진입가 대비 <span className="text-rose-500 font-bold">-5%</span> 이탈 시 즉시 매도</li>
-              <li><strong>시가 생명선:</strong> 09:30 이후 당일 시가 하향 이탈 시 매도</li>
-              <li><strong>익절 트레일링:</strong> <span className="text-emerald-500 font-bold">+5%</span> 도달 후 고점 대비 -3% 하락 시 익절</li>
-            </ul>
-          </div>
         </div>
 
         {/* 0단계: 거시 시장 상태 */}
         <div className="mb-8">
           <h2 className="text-sm font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
-            [0단계] 글로벌 & 국내 거시 시장 분위기
+            [0단계] 시장 상태
           </h2>
-          {kosdaqState.reduceWeight ? (
-            <div className="bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 text-amber-800 dark:text-amber-300 p-5 rounded-2xl flex items-start gap-4">
-              <ShieldAlert className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-bold text-base mb-1">시장 분위기: 역배열 하락 추세 (보수적 접근)</h3>
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
-                  코스닥 지수가 5일/20일/60일/120일 이동평균선 상으로 역배열 흐름에 진입했습니다. 전체적인 매수 비중을 <strong>50% 축소</strong>하고 종목 선정 기준을 보다 엄격히 적용하시기 바랍니다. (지수 종가: {kosdaqState.value.toFixed(2)})
-                </p>
+          {/* 사실 서술만 — 지수값과 이동평균 대비 위치. reduceWeight 는 API 내부 로직용이라 화면에
+              행동 지시로 노출하지 않는다(2026-10-30, 검증 종료 후 매매 지시형 문구 제거). */}
+          {(() => {
+            const ma = kosdaqState.maState;
+            const lines = ([[5, ma?.ma5], [20, ma?.ma20], [60, ma?.ma60], [120, ma?.ma120]] as const)
+              .filter(([, v]) => typeof v === "number" && v > 0) as [number, number][];
+            const fmt = (list: [number, number][]) => list.map(([d, v]) => `${d}일선(${v.toFixed(2)})`).join("·");
+            const above = lines.filter(([, v]) => kosdaqState.value > v);
+            const below = lines.filter(([, v]) => kosdaqState.value <= v);
+            const aligned = lines.length === 4 && lines.every(([, v], i) => i === 0 || lines[i - 1][1] > v);
+            return (
+              <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl flex items-start gap-4">
+                <Activity className="w-6 h-6 text-slate-400 dark:text-zinc-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-slate-700 dark:text-zinc-300 space-y-1">
+                  <p className="font-bold">
+                    코스닥 {kosdaqState.value.toFixed(2)}
+                    {below.length > 0 && ` — ${fmt(below)} 아래`}
+                    {above.length > 0 && `${below.length > 0 ? " ·" : " —"} ${fmt(above)} 위`}
+                  </p>
+                  {lines.length === 4 && (
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">
+                      이동평균 배열(5·20·60·120일): {aligned ? "정배열" : "정배열 아님"}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="bg-emerald-500/10 dark:bg-emerald-500/5 border border-emerald-500/20 text-emerald-800 dark:text-emerald-400 p-5 rounded-2xl flex items-start gap-4">
-              <TrendingUp className="w-6 h-6 text-emerald-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-bold text-base mb-1">시장 분위기: 정배열 상승 흐름 (정상 비중 유지)</h3>
-                <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
-                  코스닥 지수의 이평선 구조가 정배열(5일/20일/60일/120일)을 안정적으로 유지하고 있습니다. 오버나이트 진입 전략을 정상 비중으로 매매하기에 적절한 환경입니다. (지수 종가: {kosdaqState.value.toFixed(2)})
-                </p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* 탭 인터페이스 */}
@@ -358,11 +352,6 @@ function OvernightScreeningContent() {
                             ⚡ 퀀트신호
                           </span>
                         )}
-                        {stock.weightSuggestion && stock.weightSuggestion < 1.0 && (
-                          <span className="inline-block text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-md">
-                            비중 50% 축소 제안
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -428,12 +417,9 @@ function OvernightScreeningContent() {
                   </div>
                 </div>
 
-                {/* 청산 가이드 및 상세 링크 */}
+                {/* 상세 링크 */}
                 {stock.classification !== "exclude" && (
-                  <div className="bg-indigo-50/30 dark:bg-zinc-950 border border-indigo-100/30 dark:border-zinc-800/60 p-3 rounded-xl mt-4 flex items-center justify-between">
-                    <div className="text-[10px] text-indigo-700 dark:text-indigo-400 leading-tight">
-                      <strong>지정가 청산 룰:</strong> 하드스탑 -5% | 트레일링 +5% / -3%
-                    </div>
+                  <div className="bg-indigo-50/30 dark:bg-zinc-950 border border-indigo-100/30 dark:border-zinc-800/60 p-3 rounded-xl mt-4 flex items-center justify-end">
                     <Link
                       href={`/stocks/${stock.symbol}`}
                       className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
