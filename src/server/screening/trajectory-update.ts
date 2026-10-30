@@ -33,7 +33,7 @@ import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening
  * 이후 실행에서 자연스럽게 따라잡힌다.
  */
 
-const TRACKING_WINDOW_DAYS_AFTER = 32; // 추적 유지 구간: days_after 0 ~ 31
+export const TRACKING_WINDOW_DAYS_AFTER = 32; // 추적 유지 구간: days_after 0 ~ 31
 const MAX_TARGETS = 60;
 const LOOKBACK_CALENDAR_DAYS = 55; // 32영업일을 넉넉히 포함하는 캘린더일 여유분
 

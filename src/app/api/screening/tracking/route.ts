@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { formatKSTDateCompact } from "@/server/screening/storage";
 import { fetchAllRows } from "@/server/screening/paginate";
 import { getTradingDaysBetween } from "@/server/screening/trading-calendar";
+import { TRACKING_WINDOW_DAYS_AFTER } from "@/server/screening/trajectory-update";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,9 @@ const QUANT_SIGNAL_FRESH_DAYS = 3;
 // 10영업일로 수정한다. B트랙의 PRIMARY_STAGE_DAYS_AFTER(값은 우연히 같은 10이지만 목적이 다름 —
 // 스크리닝 재노출 관리용)와는 완전히 별개 상수이며 절대 공유하지 않는다.
 const QUANT_OBSERVATION_END_DAYS_AFTER = 10;
+// 2026-10-30 — 관찰 중/관찰 종료 판정은 더 이상 이 상수(day10)를 쓰지 않는다. 판정 기준이
+// 3일차 종가 청산이므로 "day3 종가 존재 = 관찰 종료"로 통일했다(헤드라인 n과 표 건수 일치).
+// 이 상수는 10일차·최고점 참고 컬럼의 계산 창으로만 남는다.
 
 // 왕복 거래비용 추정(매수·매도 수수료 + 증권거래세). 응답(quantSignalStats.roundTripCostPct)으로
 // 그대로 내려보내 화면에 노출하고, 감사 가능하게 한다.
@@ -139,9 +143,13 @@ export async function GET() {
     Map<string, { close: number; isHalted: boolean; volRatio20: number | null }>
   >();
   const quantSymbols = [...new Set(quantSignalRows.map((r) => r.symbol))];
+  // 발견일 이후 경과 거래일(정지일 포함) 산출용 거래일 캘린더. 저장 행 수로 세면 궤적 갱신이
+  // days_after 31에서 멈추므로 상한(TRACKING_WINDOW_DAYS_AFTER)을 넘는 일이 없어 쓸 수 없다.
+  let quantCalendarDays: string[] = [];
   if (quantSignalRows.length > 0) {
     let quantMinDate = todayKey;
     for (const r of quantSignalRows) if (r.discovery_date < quantMinDate) quantMinDate = r.discovery_date;
+    quantCalendarDays = await getTradingDaysBetween(quantMinDate, todayKey);
 
     let quantTrajRows: {
       symbol: string;
@@ -263,6 +271,9 @@ export async function GET() {
     endReturnPct: number | null; // = exitDay10Pct(관측 종료일 종가 청산). 테이블 "10일차(%)" 참고 컬럼
     haltStartDaysAfter: number | null;
     isValidForStats: boolean; // 3일차 규칙 평가가 가능한지 여부 (haltStartDaysAfter > 3 또는 null)
+    elapsedTradingDays: number; // 발견일로부터 오늘까지 경과 거래일(정지일 포함, 거래일 캘린더 기준)
+    observationEnded: boolean; // 관찰 종료 = day3 종가 존재, 또는 정지로 미완인 채 경과 거래일이 상한 초과
+    haltIncomplete: boolean; // 거래정지로 day3 종가 없이 상한 초과로 종료된 건(통계 제외, "관측 미완")
     isRecentlyActive: boolean; // 관찰 지속성 보조표시(§1, 참고용 — 규칙 아님). daysAfter<30이면 항상 false.
     recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
   }
@@ -294,6 +305,11 @@ export async function GET() {
     if (validDatesForReturn.length === 0) continue;
 
     const daysAfter = sortedDates.length - 1; // 전체 경과일은 정지 포함 표출용
+    // 캘린더가 비어 있으면(마이그레이션 미적용 등) 저장 행 기준 daysAfter로 폴백한다.
+    const elapsedTradingDays =
+      quantCalendarDays.length > 0
+        ? quantCalendarDays.filter((d) => d > row.discovery_date).length
+        : daysAfter;
     const currentClose = tradeDateMap.get(validDatesForReturn[validDatesForReturn.length - 1])!.close;
     const group: "pending" | "result" = validDatesForReturn.length - 1 < QUANT_SIGNAL_FRESH_DAYS ? "pending" : "result";
 
@@ -359,8 +375,8 @@ export async function GET() {
       exitStop10Pct = stopHitPct ?? day3ReturnPct;
 
       // 종료가/종료일자(§2-2,3) — day10(QUANT_OBSERVATION_END_DAYS_AFTER) 시점 데이터가 halt 없이
-      // 유효하게 존재할 때만 고정값을 채운다. 아직 도달 전이거나 halt로 그 전에 끊겼으면 null로
-      // 남겨 프런트에서 "관찰 중" 상태(현재가 계속 갱신)로 자연스럽게 폴백하도록 한다.
+      // 유효하게 존재할 때만 고정값을 채운다. 아직 도달 전이거나 halt로 그 전에 끊겼으면 null
+      // (표의 "10일차" 참고 컬럼이 빈칸). 관찰 중/종료 판정과는 무관하다(observationEnded 참고).
       if (validDatesForReturn.length - 1 >= QUANT_OBSERVATION_END_DAYS_AFTER) {
         endDate = validDatesForReturn[QUANT_OBSERVATION_END_DAYS_AFTER];
         endClose = tradeDateMap.get(endDate)!.close;
@@ -388,6 +404,12 @@ export async function GET() {
       }
     }
 
+    // 관찰 중/종료(2026-10-30 통일) — 판정 기준이 3일차 종가 청산이므로 day3 종가가 있으면 종료.
+    // 3일차 이내 거래정지로 day3 종가가 영영 안 생기는 건은 경과 거래일이 추적 상한을 넘으면
+    // 유효일 수와 무관하게 "거래정지로 관측 미완"으로 종료한다(무한 관찰 중 방지).
+    const haltIncomplete = exitDay3Pct == null && elapsedTradingDays > TRACKING_WINDOW_DAYS_AFTER;
+    const observationEnded = exitDay3Pct != null || haltIncomplete;
+
     quantSignalItems.push({
       symbol: row.symbol,
       name: row.name,
@@ -410,6 +432,9 @@ export async function GET() {
       endReturnPct,
       haltStartDaysAfter,
       isValidForStats,
+      elapsedTradingDays,
+      observationEnded,
+      haltIncomplete,
       isRecentlyActive,
       recentRecapture: recentRecaptureBySymbol.get(row.symbol) ?? null,
     });
@@ -421,8 +446,9 @@ export async function GET() {
   // 적용할 수 없기 때문이다. 종전 필터(group==='result' && isValidForStats)와 결과는 동일하다 —
   // 두 조건 모두 "day3 종가 존재"와 같은 집합을 가리킨다(halt가 day<=3이면 group이 pending이 됨).
   const resultItems = quantSignalItems.filter((i) => i.exitDay3Pct != null);
-  // 통계에서 제외된 관측 중(day3 미도달) 건수 — 화면에 별도 표기한다.
-  const observingExcludedCount = quantSignalItems.length - resultItems.length;
+  // 통계에서 제외된 관측 중(day3 미도달) 건수 — 거래정지로 관측 미완 종료된 건은 따로 센다.
+  const haltIncompleteCount = quantSignalItems.filter((i) => i.haltIncomplete).length;
+  const observingExcludedCount = quantSignalItems.length - resultItems.length - haltIncompleteCount;
   const avgDay3ReturnPct =
     resultItems.length > 0
       ? Number(
@@ -492,6 +518,7 @@ export async function GET() {
     totalCount: quantSignalItems.length,
     resultCount: resultItems.length,
     observingExcludedCount,
+    haltIncompleteCount,
     roundTripCostPct: ROUND_TRIP_COST_PCT, // 감사용 — 화면에 그대로 노출
     stopLossThresholdPct: STOP_LOSS_THRESHOLD_PCT,
     avgDay3ReturnPct,
