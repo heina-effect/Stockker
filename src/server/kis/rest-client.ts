@@ -273,6 +273,40 @@ export async function getDomesticStockDaily(symbol: string): Promise<any> {
 }
 
 /**
+ * 국내 주식 일봉 조회 — getDomesticStockDaily와 같은 조건(수정주가, 130봉 목표·최대 3페이지·
+ * 페이지당 150 캘린더일)으로, 페이지네이션 시작점만 "오늘" 대신 endDate로 옮긴 것.
+ * 스크리닝이 그날 계산한 day0 지표를 사후에 같은 방식으로 재현하는 백필 전용이다
+ * (backfill-day0-indicators). getDomesticStockDailyAround는 비수정주가라 쓰지 않는다.
+ */
+export async function getDomesticStockDailyEndingAt(symbol: string, endDateYYYYMMDD: string): Promise<any[]> {
+  const anchor = new Date(Date.UTC(
+    Number(endDateYYYYMMDD.slice(0, 4)),
+    Number(endDateYYYYMMDD.slice(4, 6)) - 1,
+    Number(endDateYYYYMMDD.slice(6, 8))
+  ));
+  return fetchPaginatedCandles({
+    cacheKey: `daily_ending_${symbol}_${endDateYYYYMMDD}`,
+    targetCount: 130,
+    maxPages: 3,
+    windowDays: 150,
+    dateField: "stck_bsop_date",
+    label: "DailyEndingAt",
+    anchorEndDate: anchor,
+    buildPageFetch: (date1, date2) => callKisApi<KisRawResponse>(
+      `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?${new URLSearchParams({
+        FID_COND_MRKT_DIV_CODE: "J",
+        FID_INPUT_ISCD: symbol,
+        FID_INPUT_DATE_1: date1,
+        FID_INPUT_DATE_2: date2,
+        FID_PERIOD_DIV_CODE: "D",
+        FID_ORG_ADJ_PRC: "0", // 0: 수정주가 — getDomesticStockDaily(스크리닝)와 동일
+      }).toString()}`,
+      { method: "GET", trId: "FHKST03010100", useQuoteCreds: true }
+    ),
+  });
+}
+
+/**
  * 국내 주식 일봉 조회 — 과거 특정 날짜 주변 조회용 (백테스트/소급 시드 전용).
  *
  * getDomesticStockDaily는 "오늘"부터 과거로 페이지네이션하므로 최근 ~6개월치만

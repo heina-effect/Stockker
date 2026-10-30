@@ -481,7 +481,7 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
       {" · "}
       {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter}) · RSI{" "}
       {item.rsi14 != null ? item.rsi14.toFixed(1) : "—"} · 거래량{" "}
-      {item.volumeRatio != null ? `${item.volumeRatio.toFixed(0)}%` : "—"}
+      {item.volumeRatio != null ? `${item.volumeRatio.toFixed(0)}% (당일 포함)` : "—"}
       {item.haltStartDaysAfter != null ? (
         <span className="text-amber-600 dark:text-amber-400">
           {" "}

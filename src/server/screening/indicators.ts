@@ -296,7 +296,15 @@ export function computeIndicatorSeries(rows: TrajectoryDailyRow[]): IndicatorVal
  *
  * skipFilled=true이면 이미 rsi14가 채워진 행은 upsert 대상에서 제외한다(백필 재실행 시
  * 불필요한 쓰기 방지용). 일일 자동 갱신에서는 항상 skipFilled=false로 호출해 전체를 갱신한다.
+ *
+ * 입력 부족 가드(2026-10-30) — 재계산은 원본을 덮기 전에 입력이 충분한지 먼저 확인한다.
+ * 10/8 이후 발견 건은 발견일 이전 히스토리 없이 day0부터만 저장돼, 다음 날 재계산이 스크리닝
+ * 시점(130봉 기준)에 채운 day0 지표를 전부 null로 덮어 퀀트 신호가 추적에서 사라졌다.
+ *   1) 종가가 있는 행이 RSI(14) 최소 길이(15)에 못 미치면 재계산 자체를 하지 않는다.
+ *   2) 길이가 충분해도 각 행의 앞쪽 입력이 모자라 계산값이 null인 지표는 기존 값을 유지한다
+ *      (day0는 시계열 첫 행이라 히스토리 없이는 어떤 지표도 계산되지 않는다 — 1만으로는 못 막는다).
  */
+const MIN_ROWS_FOR_RECALC = 15; // RSI(14) 계산에 필요한 최소 종가 수(period + 1)
 export async function recalculateIndicatorsForDiscovery(
   supabase: SupabaseAdmin,
   symbol: string,
@@ -306,7 +314,9 @@ export async function recalculateIndicatorsForDiscovery(
   const { data, error } = await supabase
     .from("stock_trajectory")
     .select(
-      "symbol,name,discovery_date,trade_date,days_after,open,high,low,close,volume,return_from_entry,is_pre_discovery,rsi14"
+      "symbol,name,discovery_date,trade_date,days_after,open,high,low,close,volume,return_from_entry,is_pre_discovery," +
+        "rsi14,macd,macd_signal,macd_hist,bb_upper,bb_mid,bb_lower,bb_pct_b,ma5,ma20,ma60," +
+        "vol_ratio_5,vol_ratio_20,stoch_slow_k,stoch_slow_d,williams_r"
     )
     .eq("symbol", symbol)
     .eq("discovery_date", discoveryDate)
@@ -316,6 +326,9 @@ export async function recalculateIndicatorsForDiscovery(
 
   const rows = (data || []) as any[];
   if (rows.length === 0) return { rowsUpdated: 0, skipped: true };
+  if (rows.filter((r) => Number(r.close) > 0).length < MIN_ROWS_FOR_RECALC) {
+    return { rowsUpdated: 0, skipped: true };
+  }
 
   const series = computeIndicatorSeries(
     rows.map((r) => ({
@@ -345,22 +358,22 @@ export async function recalculateIndicatorsForDiscovery(
       volume: row.volume,
       return_from_entry: row.return_from_entry,
       is_pre_discovery: row.is_pre_discovery,
-      rsi14: ind.rsi14,
-      macd: ind.macd,
-      macd_signal: ind.macdSignal,
-      macd_hist: ind.macdHist,
-      bb_upper: ind.bbUpper,
-      bb_mid: ind.bbMid,
-      bb_lower: ind.bbLower,
-      bb_pct_b: ind.bbPctB,
-      ma5: ind.ma5,
-      ma20: ind.ma20,
-      ma60: ind.ma60,
-      vol_ratio_5: ind.volRatio5,
-      vol_ratio_20: ind.volRatio20,
-      stoch_slow_k: ind.stochSlowK,
-      stoch_slow_d: ind.stochSlowD,
-      williams_r: ind.williamsR,
+      rsi14: ind.rsi14 ?? row.rsi14,
+      macd: ind.macd ?? row.macd,
+      macd_signal: ind.macdSignal ?? row.macd_signal,
+      macd_hist: ind.macdHist ?? row.macd_hist,
+      bb_upper: ind.bbUpper ?? row.bb_upper,
+      bb_mid: ind.bbMid ?? row.bb_mid,
+      bb_lower: ind.bbLower ?? row.bb_lower,
+      bb_pct_b: ind.bbPctB ?? row.bb_pct_b,
+      ma5: ind.ma5 ?? row.ma5,
+      ma20: ind.ma20 ?? row.ma20,
+      ma60: ind.ma60 ?? row.ma60,
+      vol_ratio_5: ind.volRatio5 ?? row.vol_ratio_5,
+      vol_ratio_20: ind.volRatio20 ?? row.vol_ratio_20,
+      stoch_slow_k: ind.stochSlowK ?? row.stoch_slow_k,
+      stoch_slow_d: ind.stochSlowD ?? row.stoch_slow_d,
+      williams_r: ind.williamsR ?? row.williams_r,
       is_halted: ind.isHalted,
     }));
 
