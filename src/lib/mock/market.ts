@@ -1,3 +1,6 @@
+// TODO(2026-10-30): 가짜 데이터 생성 코드 — 재연결 금지, 삭제 검토.
+//   가짜 지수(코스피 2580.45·코스닥 865.12)·관심종목 시세를 만든다. 지금은 이 값을 그리는 화면이 없지만
+//   WatchlistPanel·MarketOverviewCard 를 다시 연결하면 실제 시세처럼 노출된다.
 import { StockQuote, Orderbook, MarketIndex, PricePoint } from "@/types/stock";
 
 export const MOCK_WATCHLIST: StockQuote[] = [

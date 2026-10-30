@@ -13,6 +13,8 @@ const RELATION_LABEL: Record<RelationType, string> = {
   supply_chain: "공급망",
   disclosure_linked: "공시 연관",
   peer: "유사 종목",
+  // TODO(2026-10-30): 재연결 금지, 삭제 검토 — 서버가 ai_inferred 관계를 만들지 않아 지금은 안 보이는 라벨.
+  //   모델 호출 없이 이 값을 붙이면 근거 없는 "AI 추론" 표기가 된다.
   ai_inferred: "AI 추론",
 };
 

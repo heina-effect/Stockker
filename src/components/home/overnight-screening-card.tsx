@@ -33,8 +33,9 @@ export function OvernightScreeningCard() {
     async function fetchScreening() {
       try {
         const res = await fetch("/api/screening/overnight");
-        if (!res.ok) throw new Error("Failed to fetch");
-        const json = await res.json();
+        const json = await res.json().catch(() => null);
+        // 실패(ok:false)·휴장일 응답에는 결과가 없다 — 종목 수·지수를 그리지 않는다
+        if (!res.ok || !json?.ok || !json.results) throw new Error(json?.reason || "screening_failed");
         setData(json);
       } catch (err) {
         console.error(err);
@@ -66,7 +67,7 @@ export function OvernightScreeningCard() {
     return (
       <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col items-center justify-center py-8 text-slate-400 dark:text-zinc-500">
         <Activity className="w-8 h-8 mb-2 opacity-50" />
-        <span className="text-sm">오버나이트 스크리닝 정보를 불러올 수 없습니다.</span>
+        <span className="text-sm">스크리닝 실패 — 데이터를 가져오지 못했습니다</span>
       </div>
     );
   }
@@ -102,8 +103,12 @@ export function OvernightScreeningCard() {
         </Link>
       </div>
 
-      {/* 0단계: 거시 시장 상태 배너 */}
-      {kosdaqState.reduceWeight ? (
+      {/* 0단계: 거시 시장 상태 배너 — 지수 조회 실패 시 0 이나 대체 값을 그리지 않는다 */}
+      {!(kosdaqState.value > 0) ? (
+        <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400 px-4 py-3 rounded-2xl text-xs">
+          코스닥 지수 조회 실패
+        </div>
+      ) : kosdaqState.reduceWeight ? (
         <div className="bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 text-amber-700 dark:text-amber-300 px-4 py-3 rounded-2xl flex items-center gap-3">
           <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0" />
           <div className="text-xs leading-relaxed">

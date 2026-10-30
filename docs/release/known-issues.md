@@ -15,6 +15,14 @@
 
 현재 알려진 P0 이슈 없음.
 
+### P2: 가짜 데이터 생성 코드 잔존 — 재연결 금지, 삭제 검토 (2026-10-30)
+
+**현상**: 다음 코드는 지금 화면에 노출되지 않지만, 다시 연결하면 가짜 숫자·근거 없는 AI 라벨이 실제처럼 보인다.
+- `src/lib/mock/market.ts` + `src/components/dashboard/mock-live-provider.tsx` — 가짜 지수·관심종목 시세. 소비자(`WatchlistPanel`·`MarketOverviewCard`)는 렌더링되는 화면이 없다.
+- `src/components/report/related-stocks-card.tsx` 의 `ai_inferred: "AI 추론"` 라벨 — 서버가 이 관계 유형을 만들지 않는다.
+
+**대응**: 재연결하지 않는다. 정리 작업 때 삭제를 검토한다. 각 파일에 같은 TODO 주석을 달아 두었다.
+
 ### P1
 
 ### P1: 완전 첫 방문의 현재가 지연 가능성

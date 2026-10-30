@@ -42,7 +42,8 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
         {clusters === null ? (
           <span className="text-xs text-slate-400 animate-pulse">불러오는 중...</span>
         ) : clusters.length > 0 ? (
-          <span className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full font-medium">AI 선별</span>
+          // 임베딩 선별이 실패하면 규칙 기반 목록으로 바뀌므로 "AI" 대신 중립 표기(2026-10-30)
+          <span className="text-[10px] text-violet-600 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full font-medium">자동 선별</span>
         ) : null}
       </div>
 

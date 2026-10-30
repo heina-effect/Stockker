@@ -112,76 +112,28 @@ async function refreshCache(): Promise<any> {
       lastFetched = Date.now();
       return { ...fresh, _cacheState: "miss" };
     }
-    // AI returned empty/failed — return stale if available, else mock
+    // AI returned empty/failed — return stale if available, else empty (생성 실패 상태)
     return cachedIntelligence
       ? { ...cachedIntelligence, _cacheState: "stale" }
-      : { ...getFallbackHomeIntelligence(), _cacheState: process.env.NODE_ENV === "production" ? "empty" : "mock" };
+      : { ...getFallbackHomeIntelligence(), _cacheState: "empty" };
   } catch (e) {
     console.error("[HomeCache] refresh failed:", e);
     return cachedIntelligence
       ? { ...cachedIntelligence, _cacheState: "stale" }
-      : { ...getFallbackHomeIntelligence(), _cacheState: process.env.NODE_ENV === "production" ? "empty" : "mock" };
+      : { ...getFallbackHomeIntelligence(), _cacheState: "empty" };
   }
 }
 
+// AI 생성 실패 + 캐시 없음 → 빈 상태. 개발 모드에서도 고정 종목·가격으로 채우지 않는다(2026-10-30 —
+// 배포 없이 next dev 로만 돌리므로 개발용 고정 데이터가 실제 화면에 "AI 포착 후보"로 노출됐다).
 function getFallbackHomeIntelligence() {
-  if (process.env.NODE_ENV === "production") {
-    return {
-      issues: [],
-      stocks: [],
-      trendingSectors: [],
-      sectors: [],
-      aiPicks: [],
-      _meta: { mode: "fallback", fallbackReason: "home_intelligence_unavailable" },
-    };
-  }
-
   return {
-    issues: [
-      {
-        id: "issue-global-1",
-        title: "연준 금리 동결, 하반기 IT 투자 심리 회복 기대감 상승",
-        description: "글로벌 금리 인하 기대가 다소 후퇴했으나, AI 발 인프라 투자 지속으로 반도체 등 핵심 부품 공급망의 안정성이 부각되고 있습니다.",
-        trendStrength: 95,
-        timestamp: new Date().toISOString(),
-      },
-    ],
-    stocks: [
-      { symbol: "005930", name: "삼성전자", reason: "HBM3E 양산 기대감", trendStrength: 92, sourceCount: 3, price: 75000 },
-    ],
-    trendingSectors: [
-      {
-        sectorId: "sec-semiconductor",
-        id: "sec-semiconductor",
-        name: "반도체",
-        whyNow: "글로벌 AI 인프라 투자 지속에 따른 실적 턴어라운드",
-        description: "글로벌 AI 인프라 투자 지속에 따른 실적 턴어라운드",
-        sourceCount: 3,
-        trendStrength: 94,
-        representativeSymbols: ["005930", "000660"],
-      },
-    ],
-    aiPicks: [
-      {
-        id: "pick-1", type: "stock", targetId: "000660", name: "SK하이닉스",
-        recommendationType: "close_watch",
-        reasons: [{ summary: "외국인 연속 순매수 기록", sourceType: "technical" }],
-        riskSummary: "단기 급등에 따른 차익 실현 매물 출회 가능성",
-        disclaimer: "정보 제공 목적이며 투자 판단과 책임은 이용자 본인에게 있습니다.",
-      },
-    ],
-    sectors: [
-      {
-        sectorId: "sec-semiconductor",
-        id: "sec-semiconductor",
-        name: "반도체",
-        whyNow: "글로벌 AI 인프라 투자 지속에 따른 실적 턴어라운드",
-        description: "글로벌 AI 인프라 투자 지속에 따른 실적 턴어라운드",
-        sourceCount: 3,
-        trendStrength: 94,
-        representativeSymbols: ["005930", "000660"],
-      },
-    ],
+    issues: [],
+    stocks: [],
+    trendingSectors: [],
+    sectors: [],
+    aiPicks: [],
+    _meta: { mode: "fallback", fallbackReason: "home_intelligence_unavailable" },
   };
 }
 

@@ -49,6 +49,9 @@ export function AIPicksCard() {
           <PicksSkeleton />
         ) : error ? (
           <div className="text-sm text-slate-400 italic">데이터를 불러오지 못했습니다.</div>
+        ) : data?._meta?.mode === "fallback" ? (
+          /* AI 생성 실패 + 캐시 없음 — 대체 후보를 그리지 않는다 */
+          <div className="text-sm text-slate-400 italic">AI 후보 생성 실패 — 잠시 후 다시 시도해 주세요.</div>
         ) : picks.length === 0 ? (
           <div className="text-sm text-slate-400 italic">현재 포착된 후보가 없습니다.</div>
         ) : (

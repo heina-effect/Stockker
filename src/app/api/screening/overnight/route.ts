@@ -49,6 +49,18 @@ function sanitizeError(msg: string | undefined | null): string {
   return out;
 }
 
+// 스크리닝 실패 응답 — 가짜 결과로 대신 채우지 않는다(2026-10-30). 종목·지수값 없이 사유만 돌려주고
+// DB 에 저장하지 않는다. launchd 가 응답 본문을 screening.log 에 그대로 남기므로 이 본문만 봐도
+// 그날 실패했는지와 사유를 알 수 있다.
+function screeningFailed(reason: string, detail?: string) {
+  const failedAt = new Date().toISOString();
+  console.error(`[Overnight API] SCREENING FAILED reason=${reason}${detail ? ` detail=${detail}` : ""} at=${failedAt}`);
+  return NextResponse.json(
+    { ok: false, error: "screening_failed", reason, ...(detail ? { detail } : {}), failedAt },
+    { status: 503 }
+  );
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const isDebug = searchParams.get("debug") === "true";
@@ -64,7 +76,7 @@ export async function GET(req: Request) {
 
   let volumeRank: any[] = [];
   let firstStockErrorMsg = "";
-  // 분석 결과 버킷을 외부 스코프에 선언 — 외부 catch에서도 저장 가능하도록
+  // 분석 결과 버킷 — try 블록 전체에서 공유한다
   let normalBucket: any[] = [];
   let aggressiveBucket: any[] = [];
   let excludeBucket: any[] = [];
@@ -147,13 +159,12 @@ export async function GET(req: Request) {
       });
     }
 
-    // mock gate: 실전 시세 자격증명(KIS_APP_KEY_PROD)이 없는 경우에만 mock 반환
+    // 실전 시세 자격증명(KIS_APP_KEY_PROD)이 없으면 실패로 끝낸다.
     // KIS_MODE=mock이더라도 quote 키가 구성되어 있으면 실데이터 스크리닝 수행
     // (KIS_MODE는 주문 모드를 제어할 뿐, 시세 스크리닝과 무관)
     const hasQuoteCreds = kisConfig.quote.configured;
     if (!hasQuoteCreds && !isDebug) {
-      console.log("[Overnight API] No quote credentials configured. Serving mock data.");
-      return NextResponse.json(getMockScreeningResult(reduceWeight, kosdaqClose, kosdaqMAState));
+      return screeningFailed("no_quote_credentials");
     }
 
     // [실제 KIS API 연동 분석 수행] 거래량순 조회로 후보군 풀 확보 (순차 호출로 큐 동시 점유 방지)
@@ -197,7 +208,7 @@ export async function GET(req: Request) {
           }
         });
       }
-      return NextResponse.json(getMockScreeningResult(reduceWeight, kosdaqClose, kosdaqMAState));
+      return screeningFailed("volume_rank_empty");
     }
 
     const master = getSearchMaster();
@@ -661,8 +672,7 @@ export async function GET(req: Request) {
       !accountedSymbols.has(stock.mksc_shrn_iscd || stock.stck_shrn_iscd)
     ).length;
 
-    // 만약 단 1개 종목도 실시간 분석에 성공하지 못했다면 (모의투자 API 쿨다운 등 극단적 상황)
-    // 사용자 경험 보존을 위해 Mock 데이터로 Fallback 서빙 (디버그 모드일 때는 Mock fallback 차단)
+    // 단 1개 종목도 실시간 분석에 성공하지 못했다면 (모의투자 API 쿨다운 등 극단적 상황) 실패로 끝낸다
     if (analyzedSymbols.size === 0) {
       console.warn("[Overnight API] No symbols analyzed successfully.");
       if (isDebug) {
@@ -677,7 +687,7 @@ export async function GET(req: Request) {
           }
         });
       }
-      return NextResponse.json(getMockScreeningResult(reduceWeight, kosdaqClose, kosdaqMAState));
+      return screeningFailed("no_symbols_analyzed", sanitizeError(firstStockErrorMsg) || undefined);
     }
 
     // 백테스트 집계를 위해 당일 스크리닝 결과를 영속 저장 (Redis 우선, 폴백 단계는 storage.ts 참고)
@@ -798,21 +808,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     // stack은 서버 로그에만 남기고 응답 본문에는 절대 넣지 않는다.
     console.error("[Overnight API] Critical error:", err?.stack || err);
-    // 실데이터 분석이 한 건이라도 완료된 상태면 오류 경로에서도 결과를 영속 저장한다.
-    if (analyzedSymbols.size > 0) {
-      try {
-        const todayKey = formatKSTDateCompact(new Date());
-        const partialItems: ScreeningResultItem[] = [
-          ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
-          ...aggressiveBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "aggressive" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
-          ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
-          ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
-        ];
-        await saveScreeningResult({ date: todayKey, reduceWeight, kosdaqValue: kosdaqClose, items: partialItems });
-      } catch (saveErr) {
-        console.error("[Overnight API] Save in error path failed:", (saveErr as Error)?.message || saveErr);
-      }
-    }
+    // 실패 시 DB 저장은 하지 않는다 — 일부만 분석된 결과를 그날의 스크리닝으로 남기지 않는다(2026-10-30).
     if (isDebug) {
       return NextResponse.json({
         ok: false,
@@ -823,153 +819,6 @@ export async function GET(req: Request) {
         }
       }, { status: 500 });
     }
-    // 에러 발생 시 견고하게 Mock 데이터로 Fallback하여 사용자 화면이 안 나오거나 터지지 않도록 방지
-    return NextResponse.json(getMockScreeningResult(false, 845.2, { ma5: 850, ma20: 840, ma60: 830, ma120: 820 }));
+    return screeningFailed("critical_error", sanitizeError(err?.message || String(err)));
   }
-}
-
-// 헬퍼: KIS Mock 모드 또는 에러 발생 시를 위한 고품질 모킹 데이터
-function getMockScreeningResult(reduceWeight: boolean, kosdaqClose: number, kosdaqMAState: any) {
-  const timestamp = new Date().toISOString();
-  const weightSuggestion = reduceWeight ? 0.5 : 1.0;
-  
-  return {
-    ok: true,
-    kosdaqState: {
-      value: kosdaqClose || 842.15,
-      maState: kosdaqMAState || { ma5: 839.2, ma20: 843.5, ma60: 830.1, ma120: 815.4 },
-      reduceWeight: reduceWeight
-    },
-    results: {
-      normal: [
-        {
-          symbol: "000660",
-          name: "SK하이닉스",
-          price: 224500,
-          changeRate: 3.5,
-          classification: "normal",
-          weightSuggestion,
-          foreignBuyLimit: true,
-          reasons: [
-            reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
-            "주봉·일봉 정배열(5 > 20 > 60 > 120) 충족",
-            "거래량 급증(20일 평균 대비 245%)",
-            "윗꼬리 제한 통과(0.8%)",
-            "5일 이내 장대양봉 발생",
-            "장대양봉 중간값 지지",
-            "변동성 수렴 완료",
-            "외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)"
-          ],
-          metrics: { volumeRatio: 245.2, tailRatio: 0.8, freshnessCount: 3, rsi14: 58.7, quantSignal: true }
-        },
-        {
-          symbol: "005930",
-          name: "삼성전자",
-          price: 81200,
-          changeRate: 1.8,
-          classification: "normal",
-          weightSuggestion,
-          foreignBuyLimit: false,
-          reasons: [
-            reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
-            "주봉·일봉 정배열 충족",
-            "거래량 급증(20일 평균 대비 210%)",
-            "윗꼬리 제한 통과(1.2%)",
-            "5일 이내 장대양봉 발생",
-            "장대양봉 중간값 지지",
-            "조정기 거래량 50% 이하 감소"
-          ],
-          metrics: { volumeRatio: 210.5, tailRatio: 1.2, freshnessCount: 3, rsi14: 72.3, quantSignal: false }
-        }
-      ],
-      aggressive: [
-        {
-          symbol: "086520",
-          name: "에코프로",
-          price: 94500,
-          changeRate: 6.2,
-          classification: "aggressive",
-          weightSuggestion,
-          foreignBuyLimit: false,
-          reasons: ["정배열 만족", "거래량 증가폭 다소 완화(20일 평균 대비 175%)", "테마 신선도 조건 일부 미달(공격형 추세 지속)"],
-          metrics: { volumeRatio: 175.4, tailRatio: 2.1, freshnessCount: 2, rsi14: 48.2, quantSignal: false }
-        },
-        {
-          symbol: "068270",
-          name: "셀트리온",
-          price: 189400,
-          changeRate: -0.5,
-          classification: "aggressive",
-          weightSuggestion,
-          foreignBuyLimit: true,
-          reasons: [
-            "정배열 만족", 
-            "거래량 조건 통과(205%)", 
-            "테마 신선도 2개 요건 만족(공격형 매매)",
-            "외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)"
-          ],
-          metrics: { volumeRatio: 205.1, tailRatio: 0.5, freshnessCount: 2, rsi14: 61.4, quantSignal: true }
-        }
-      ],
-      exclude: [
-        {
-          symbol: "005490",
-          name: "POSCO홀딩스",
-          price: 368000,
-          changeRate: 0.2,
-          classification: "exclude",
-          reasons: ["정배열 미달 (일봉 MA5 < MA20 역배열 상태)"],
-          metrics: { volumeRatio: 85.2, tailRatio: 0.1, freshnessCount: 0, rsi14: 33.1, quantSignal: false }
-        },
-        {
-          symbol: "035720",
-          name: "카카오",
-          price: 43200,
-          changeRate: -2.3,
-          classification: "exclude",
-          reasons: ["정배열 미달 (주봉/일봉 모두 역배열 상태)", "거래량 기준 미달(82%)"],
-          metrics: { volumeRatio: 82.4, tailRatio: 0.0, freshnessCount: 0, rsi14: 29.8, quantSignal: false }
-        },
-        {
-          symbol: "005380",
-          name: "현대차",
-          price: 275000,
-          changeRate: 23.5,
-          classification: "exclude",
-          reasons: ["당일 등락률 +20% 이상 급등주 제외", "상한가 근접 제외"],
-          metrics: { volumeRatio: 310.2, tailRatio: 4.8, freshnessCount: 4, rsi14: 88.5, quantSignal: false }
-        },
-        {
-          symbol: "999999",
-          name: "투자경고예시주",
-          price: 15400,
-          changeRate: 12.4,
-          classification: "exclude",
-          reasons: ["투자경고 종목 제외"],
-          metrics: { volumeRatio: 450.2, tailRatio: 1.2, freshnessCount: 3, rsi14: 77.2, quantSignal: false }
-        },
-        {
-          symbol: "999998",
-          name: "거래정지예시주",
-          price: 5200,
-          changeRate: 0.0,
-          classification: "exclude",
-          reasons: ["거래정지 종목 제외"],
-          metrics: { volumeRatio: 0.0, tailRatio: 0.0, freshnessCount: 0, rsi14: null, quantSignal: false }
-        },
-        {
-          symbol: "999997",
-          name: "단기과열예시주",
-          price: 8900,
-          changeRate: 4.5,
-          classification: "exclude",
-          reasons: ["단기과열 종목 제외 (공격형 이하 강등)"],
-          metrics: { volumeRatio: 220.5, tailRatio: 1.0, freshnessCount: 3, rsi14: 63.2, quantSignal: true }
-        }
-      ]
-    },
-    excludedNotice: [],
-    generatedAt: timestamp,
-    disclaimer: "본 스크리닝 결과는 이동평균선 및 당사의 오버나이트 알고리즘 기준에 따라 추출된 참고 자료이며, 투자 결과에 대한 책임은 투자자 본인에게 있습니다."
-  };
 }

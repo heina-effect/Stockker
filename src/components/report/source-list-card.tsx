@@ -122,7 +122,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
     <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
       <div className="flex items-center justify-between mb-1">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
-          AI 분석 근거 소스
+          분석 근거 소스
           <CheckCircle2 className="w-4 h-4 text-emerald-500" />
         </h3>
         <span className="text-[10px] text-slate-400 dark:text-zinc-500">
@@ -255,7 +255,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       )}
 
       <p className="mt-4 text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">
-        실제 뉴스 및 Open DART 공시를 AI가 선별한 근거 목록입니다. 분석 요약은 원문 링크와 함께 확인해 주세요.
+        실제 뉴스 및 Open DART 공시에서 자동으로 선별한 근거 목록입니다. 분석 요약은 원문 링크와 함께 확인해 주세요.
       </p>
         </>
       )}

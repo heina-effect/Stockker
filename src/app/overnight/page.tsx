@@ -76,19 +76,23 @@ function OvernightScreeningContent() {
   const [activeTab, setActiveTab] = useState<"normal" | "aggressive" | "exclude">(defaultTab);
   const [data, setData] = useState<OvernightResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [failure, setFailure] = useState<null | "failed" | "skipped">(null);
   const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null);
 
   useEffect(() => {
     async function fetchScreening() {
       try {
         const res = await fetch("/api/screening/overnight");
-        if (!res.ok) throw new Error("Failed to fetch overnight data");
-        const json = await res.json();
+        const json = await res.json().catch(() => null);
+        // 실패(ok:false)·휴장일(skipped) 응답에는 결과가 없다 — 종목·지수를 하나도 그리지 않는다
+        if (!res.ok || !json?.ok || !json.results) {
+          setFailure(json?.skipped ? "skipped" : "failed");
+          return;
+        }
         setData(json);
       } catch (err) {
         console.error(err);
-        setError(true);
+        setFailure("failed");
       } finally {
         setLoading(false);
       }
@@ -133,14 +137,15 @@ function OvernightScreeningContent() {
     );
   }
 
-  if (error || !data) {
+  if (failure || !data) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col">
         <DashboardHeader />
         <main className="flex-1 container mx-auto px-4 py-12 flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
           <XCircle className="w-12 h-12 mb-4 text-red-500" />
-          <h2 className="text-xl font-bold mb-2">오류 발생</h2>
-          <p className="text-sm mb-4">데이터를 불러오는 중 문제가 발생했습니다.</p>
+          <h2 className="text-xl font-bold mb-2">
+            {failure === "skipped" ? "휴장일 — 오늘은 스크리닝하지 않았습니다" : "스크리닝 실패 — 데이터를 가져오지 못했습니다"}
+          </h2>
           <button 
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors"
@@ -214,7 +219,12 @@ function OvernightScreeningContent() {
           </h2>
           {/* 사실 서술만 — 지수값과 이동평균 대비 위치. reduceWeight 는 API 내부 로직용이라 화면에
               행동 지시로 노출하지 않는다(2026-10-30, 검증 종료 후 매매 지시형 문구 제거). */}
-          {(() => {
+          {!(kosdaqState.value > 0) ? (
+            /* 지수 조회 실패 시 0 이나 대체 값을 그리지 않는다 */
+            <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl text-sm text-slate-500 dark:text-zinc-400">
+              코스닥 지수 조회 실패
+            </div>
+          ) : (() => {
             const ma = kosdaqState.maState;
             const lines = ([[5, ma?.ma5], [20, ma?.ma20], [60, ma?.ma60], [120, ma?.ma120]] as const)
               .filter(([, v]) => typeof v === "number" && v > 0) as [number, number][];

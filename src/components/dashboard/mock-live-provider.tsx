@@ -1,5 +1,9 @@
 "use client";
 
+// TODO(2026-10-30): 가짜 데이터 생성 코드 — 재연결 금지, 삭제 검토.
+//   lib/mock/market 의 가짜 시세를 공급한다. 소비자(WatchlistPanel·MarketOverviewCard)는 현재 어떤 화면에도
+//   렌더링되지 않는다. 다시 연결하면 가짜 숫자가 실제처럼 노출된다.
+
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { StockQuote, Orderbook, MarketIndex, PricePoint } from "@/types/stock";
 import { MOCK_WATCHLIST, MOCK_MARKET_INDICES, generateMockOrderbook, generateMockChartData } from "@/lib/mock/market";
