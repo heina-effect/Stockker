@@ -1151,7 +1151,12 @@ export default function TrackingPage() {
               ⚡ 퀀트 신호 트래커{!isSearching && ` ${quantSignalStats.totalCount}건`}
             </h2>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              RSI·거래량 조건 기반 장기 통계 검증 (몇 개월 단위 데이터 축적용)
+              RSI·거래량 조건이 뜬 종목의 기록 — 참고용 관찰
+            </p>
+            {/* 헤드라인(2026-10-29) — 백테스트 검증 종료 결론(analysis/hypothesis-log.md 최종 정리)을
+                고정 문구로 둔다. 실시간 기대값으로 상태를 바꾸지 않는다. */}
+            <p className="text-sm font-bold text-rose-600 dark:text-rose-400 mt-2">
+              검증 완료 — 알파 없음 (가설 10건, 2020~2026)
             </p>
             {/* §1 — 검색 중에는 헤더 건수(전체 표본)와 실제 표시 카드 수가 달라 혼동될 수 있어
                 별도로 분리 표시한다. 헤드라인 통계는 검색 여부와 무관하게 항상 전체 표본 기준이므로
@@ -1162,31 +1167,11 @@ export default function TrackingPage() {
               </p>
             )}
 
-            {/* 헤드라인(2026-10-20 압축) — 3줄만 남긴다. 승률·손익비·Kelly·비용차감·손절·극단값·
-                최고점 상한·신뢰도 배지·표본부족 경고는 전부 아래 "통계 근거 보기" 접기 안의
-                규칙별 표로 옮겼다. 1줄차 상태 라벨은 실행 가능한 세 규칙(3일차/비용차감/손절)의
-                기대값으로 자동 판정한다 — 하드코딩하지 않는다. */}
+            {/* 실측 요약 2줄 — 승률·손익비·Kelly·비용차감·손절·극단값·최고점 상한·신뢰도 배지·
+                표본부족 경고는 전부 아래 "통계 근거 보기" 접기 안의 규칙별 표에 있다. */}
             {quantSignalStats.resultCount > 0 ? (
-              <div className="mt-2">
-                {/* 1줄: 상태 — 실행 가능한 세 규칙의 기대값이 모두 ≤0이면 적색, 하나라도 >0이면 황색 */}
-                {(() => {
-                  const executableExpectancies = [
-                    quantSignalStats.exitDay3.expectancy,
-                    quantSignalStats.exitDay3Net.expectancy,
-                    quantSignalStats.exitStop10.expectancy,
-                  ];
-                  const anyPositive = executableExpectancies.some((e) => e > 0);
-                  return (
-                    <p
-                      className={`text-sm font-bold ${
-                        anyPositive ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
-                      }`}
-                    >
-                      {anyPositive ? "🟡 관찰 중" : "🔴 검증 중"} · 매매 근거로 쓰지 말 것
-                    </p>
-                  );
-                })()}
-                {/* 2줄: 주 기준 기대값 + 표본 */}
+              <div className="mt-0.5">
+                {/* 1줄: 주 기준 기대값 + 표본 */}
                 <p className="text-sm text-slate-700 dark:text-zinc-300 mt-0.5">
                   3일차 종가 청산 기대값{" "}
                   <span className={`font-bold ${priceColorClass(quantSignalStats.exitDay3.expectancy, 0)}`}>
@@ -1198,7 +1183,7 @@ export default function TrackingPage() {
                     {quantSignalStats.sampleSymbolCount}/{QUANT_RELIABILITY_TARGET_N}종목
                   </span>
                 </p>
-                {/* 3줄: 평균 최고 → 3일차 (고점 반납) */}
+                {/* 2줄: 평균 최고 → 3일차 (고점 반납) */}
                 {quantSignalStats.avgMaxReturnSoFarPct != null && quantSignalStats.avgDay3ReturnPct != null && (
                   <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                     평균 최고 {quantSignalStats.avgMaxReturnSoFarPct >= 0 ? "+" : ""}
@@ -1211,7 +1196,7 @@ export default function TrackingPage() {
               </div>
             ) : (
               <p className="text-sm text-slate-400 dark:text-zinc-500 mt-1">
-                실전 검증 대기 중 (3일차 판정 필요)
+                3일차 결과 대기 중
               </p>
             )}
 

@@ -178,8 +178,13 @@ function OvernightScreeningContent() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-zinc-50">
-              오버나이트 스크리닝 리포트
+              오버나이트 관심목록
             </h1>
+            {/* 용도 재정의(2026-10-29) — 백테스트에서 스크리너 통과 종목의 초과수익이 확인되지 않았다
+                (analysis/hypothesis-log.md 최종 정리). 예측기가 아니라 관심 종목을 추려 보는 도구다. */}
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+              관심 종목을 추려 보는 도구입니다. 수익을 예측하거나 매매 시점을 알려주지 않습니다 — 백테스트 검증(가설 10건, 2020~2026)에서 초과수익이 확인되지 않았습니다.
+            </p>
             <p className="text-sm text-slate-500 dark:text-zinc-400 mt-2 flex items-center gap-1.5">
               <Calendar className="w-4 h-4" />
               {dateStr} {timeStr} 분석 기준
