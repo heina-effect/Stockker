@@ -42,6 +42,33 @@ export function isAfterKSTMarketClose(): boolean {
   return h > 15 || (h === 15 && m >= 30);
 }
 
+// 당일 시세를 DB 에 저장해도 되는 시간대(2026-11-02) — 스크리닝 저장과 궤적 갱신이 이 함수 하나를 쓴다.
+//   15:30 이전        차단(before_market_close) — 정규장 진행 중, 종가 미확정
+//   15:30 ~ 16:00     허용 — 10/20 이후 이 구간 저장 day0 10건 전부 KIS 와 일치
+//   16:00 ~ 20:00     차단(after_hours_session) — KRX 애프터마켓(2026-09-14 시행, 접속매매 ±30%) 진행 중,
+//                     이 구간 저장 178행 전부 불일치
+//   20:00 이후        허용 — 애프터마켓 종료 후 일봉 확정으로 추정. 미검증(docs/release/known-issues.md)
+// 휴장일 판정은 하지 않는다(호출부의 거래일 가드 몫).
+export type PersistBlockReason = "before_market_close" | "after_hours_session";
+export type KSTPersistWindow = { allowed: true } | { allowed: false; reason: PersistBlockReason };
+
+export function getKSTPersistWindow(): KSTPersistWindow {
+  if (!isAfterKSTMarketClose()) return { allowed: false, reason: "before_market_close" };
+  const h = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+  if (h >= 16 && h < 20) return { allowed: false, reason: "after_hours_session" };
+  return { allowed: true };
+}
+
+// 당일 시세 캐시 키 구분 — 저장 구간이 갈리는 경계마다 키를 바꿔, 다른 구간에서 받은 당일 값을
+// 재사용하지 않게 한다(16~20시에 받은 애프터마켓 값이 20시 이후 저장으로 넘어가는 것 차단).
+// 15:30~16:00 은 기존 "post" 그대로 둔다.
+function kstSessionCacheTag(): "pre" | "post" | "ah" | "eve" {
+  if (!isAfterKSTMarketClose()) return "pre";
+  const h = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+  if (h < 16) return "post";
+  return h < 20 ? "ah" : "eve";
+}
+
 // EGW00201(초당 거래건수 초과) 등 rate limit 에러 감지
 function isPaginationRateLimit(msg: string): boolean {
   const m = String(msg).toLowerCase();
@@ -252,7 +279,7 @@ export async function getDomesticStockDaily(symbol: string): Promise<any> {
     // 재사용돼, 마감 후 재실행해도 종가가 안 갱신되는 문제가 있었다(Phase 42 10/19 사례:
     // 삼성SDI 11:15 KST 조회값이 15:46 KST 재실행에도 그대로 남음). pre/post 구간을 키에
     // 포함해, 마감 후 첫 호출은 반드시 새로 조회하도록 한다.
-    cacheKey: `daily_${symbol}_${formatKSTDate(new Date())}_${isAfterKSTMarketClose() ? "post" : "pre"}`,
+    cacheKey: `daily_${symbol}_${formatKSTDate(new Date())}_${kstSessionCacheTag()}`,
     targetCount: 130,   // 120 MA + 여유분
     maxPages: 3,        // ~100봉/페이지 → 2페이지로 130봉 확보
     windowDays: 150,    // 페이지당 약 150 캘린더일(≈ 100거래일) 요청
@@ -333,7 +360,7 @@ export async function getDomesticStockDailyAround(symbol: string, anchorDateYYYY
   // 동일 이유). 과거 전용(30일 장기 캐시) 쪽은 그대로 둔다 — 고정된 과거 값이라 필요 없음.
   const isNearCurrent = futureAnchor > now;
   const cacheKey = isNearCurrent
-    ? `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}_${isAfterKSTMarketClose() ? "post" : "pre"}`
+    ? `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}_${formatKSTDate(now)}_${kstSessionCacheTag()}`
     : `daily_around_v2_${symbol}_${anchorDateYYYYMMDD}`;
   const cacheTtlMs = isNearCurrent ? ONE_DAY_CACHE_MS : 30 * 24 * 60 * 60 * 1000;
 
@@ -369,7 +396,7 @@ export async function getDomesticStockDailyRawPrice(symbol: string, dateYYYYMMDD
   // 조회 대상이 "오늘"이면(백테스트가 당일 발굴 건의 다음거래일=오늘 가격을 조회하는 경우)
   // 마감 전후로 값이 바뀌므로 구분을 더한다. 과거 날짜는 고정값이라 그대로 둔다(30일 캐시 유지).
   const isToday = dateYYYYMMDD === formatKSTDate(new Date());
-  const cacheKey = `raw_price_${symbol}_${dateYYYYMMDD}${isToday ? `_${isAfterKSTMarketClose() ? "post" : "pre"}` : ""}`;
+  const cacheKey = `raw_price_${symbol}_${dateYYYYMMDD}${isToday ? `_${kstSessionCacheTag()}` : ""}`;
   return withDedupeAndCache(cacheKey, 30 * 24 * 60 * 60 * 1000, async () => {
     const res = await callKisApi<KisRawResponse>(
       `/uapi/domestic-stock/v1/quotations/inquire-daily-price?${new URLSearchParams({
@@ -510,7 +537,7 @@ export async function getDomesticStockWeekly(symbol: string): Promise<any[]> {
   return fetchPaginatedCandles({
     // 진행 중인 이번 주 봉의 종가는 장중/마감 후 값이 바뀌므로(daily와 동일 이유) 마감 전후
     // 구분을 키에 더한다.
-    cacheKey: `weekly_${symbol}_${formatKSTDate(new Date())}_${isAfterKSTMarketClose() ? "post" : "pre"}`,
+    cacheKey: `weekly_${symbol}_${formatKSTDate(new Date())}_${kstSessionCacheTag()}`,
     targetCount: 130,   // 120주 MA + 여유분
     maxPages: 3,        // ~100주/페이지 → 2페이지로 130주(약 2.5년) 확보
     windowDays: 760,    // 페이지당 약 760 캘린더일(≈ 108주) 요청
@@ -561,7 +588,7 @@ export async function getDomesticIndexDaily(
   // 명시적 anchorDate=오늘 호출) 그날 종가가 마감 전후로 바뀌므로 키에 구분을 더한다.
   // anchorDate가 과거 날짜로 명시된 소급 조회는 고정값이라 영향 없음(그대로 유지).
   const isToday = resolvedDateKey === formatKSTDate(new Date());
-  const cacheKey = `index_daily_${code}_${resolvedDateKey}_${targetCount}_${maxPages}${isToday ? `_${isAfterKSTMarketClose() ? "post" : "pre"}` : ""}`;
+  const cacheKey = `index_daily_${code}_${resolvedDateKey}_${targetCount}_${maxPages}${isToday ? `_${kstSessionCacheTag()}` : ""}`;
   return fetchPaginatedCandles({
     cacheKey,
     targetCount,   // 120 MA + 여유분(기본값)

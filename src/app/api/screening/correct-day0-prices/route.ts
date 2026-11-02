@@ -26,8 +26,11 @@ export const dynamic = "force-dynamic";
  * 바꾸지 않는 값: 스크리닝 판단 입력 기록(tail_ratio, volume_ratio, classification, reasons, rsi14,
  *   quant_signal) — 그날 스크리너가 본 값의 기록이다. 지표 컬럼은 backfill-day0-indicators 몫.
  *
- * 검증: 같은 (symbol, trade_date)가 다른 발견 그룹에 마감 후(15:30 KST 이후) 저장돼 있으면 그 행의
- * 시가·고가·저가·종가가 KIS와 같아야 한다. 다르면 그 행은 건너뛴다. 대조 행이 없으면 검증 불가로 표시하고 진행.
+ * 검증: 같은 (symbol, trade_date)가 다른 발견 그룹에 저장돼 있고 그 행이 대조에 유효하면 시가·고가·저가·종가가
+ * KIS와 같아야 한다. 다르면 그 행은 건너뛴다. 대조 행이 없으면 검증 불가로 표시하고 진행.
+ * 유효한 대조 행(2026-11-02 강화): 거래일 다음 날 이후 저장분, 또는 일봉 캐시 키 수정(ef26f6e, 10/20 17:25 KST)
+ * 이후 저장분. 그 전의 같은 날 마감 후 저장분은 장중 캐시를 재사용했을 수 있어 대조에 쓰지 않는다
+ * (주성엔지니어링 10/13: 16:25 저장분 2행이 15:22 장중 값과 거래량까지 같았다).
  *
  * body: { apply?: boolean (기본 false = dry-run), from?: "YYYYMMDD" (기본 20261006),
  *         exclude?: ["symbol::discovery_date", ...] (작업 범위 밖으로 뺄 행) }
@@ -38,6 +41,13 @@ type Row = Record<string, any>;
 const round2 = (x: number) => Number(x.toFixed(2));
 const pct = (to: number, from: number) => round2(((to - from) / from) * 100);
 const kstHHMM = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 16);
+const CACHE_KEY_FIX_KST = "2026-10-20T17:25";
+const isoDate = (yyyymmdd: string) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+// 대조 행 유효성 — 위 "검증" 참고
+function isValidPeer(createdAt: string, tradeDate: string): boolean {
+  const saved = kstHHMM(createdAt);
+  return saved.slice(0, 10) > isoDate(tradeDate) || saved >= CACHE_KEY_FIX_KST;
+}
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -102,7 +112,7 @@ export async function POST(request: NextRequest) {
     const { data: p, error: pErr } = await supabase.from("stock_trajectory").select("*")
       .eq("symbol", t.symbol).eq("trade_date", t.discovery_date).neq("discovery_date", t.discovery_date);
     if (pErr) throw pErr;
-    peers.set(key, (p ?? []).filter((x) => kstHHMM(x.created_at) >= `${t.discovery_date.slice(0, 4)}-${t.discovery_date.slice(4, 6)}-${t.discovery_date.slice(6, 8)}T15:30`));
+    peers.set(key, (p ?? []).filter((x) => isValidPeer(x.created_at, t.discovery_date)));
     const { data: s, error: sErr } = await supabase.from("overnight_screening_items")
       .select("*").eq("symbol", t.symbol).eq("date", t.discovery_date);
     if (sErr) throw sErr;
@@ -132,14 +142,14 @@ export async function POST(request: NextRequest) {
     };
     const base = { symbol: t.symbol, name: t.name, discoveryDate: t.discovery_date, createdAtKst: kstHHMM(t.created_at) };
 
-    // DB 내부 대조 — 마감 후 저장된 다른 그룹 행의 O/H/L/C가 KIS와 같아야 한다(거래량은 시간외 차이로 제외).
+    // DB 내부 대조 — 유효한(isValidPeer) 다른 그룹 행의 O/H/L/C가 KIS와 같아야 한다(거래량은 시간외 차이로 제외).
     const peerRows = peers.get(key) ?? [];
     const peerMismatch = peerRows.filter((p) =>
       Number(p.open) !== next.open || Number(p.high) !== next.high || Number(p.low) !== next.low || Number(p.close) !== next.close
     );
     const verification = peerRows.length === 0 ? "대조 행 없음" : peerMismatch.length === 0 ? `일치(${peerRows.length}행)` : "불일치";
     if (peerMismatch.length > 0) {
-      results.push({ ...base, status: "skipped", reason: "마감 후 저장된 다른 그룹 행과 KIS 값 불일치",
+      results.push({ ...base, status: "skipped", reason: "유효한 대조 행(다른 그룹)과 KIS 값 불일치",
         kis: next, peers: peerMismatch.map((p) => ({ discovery: p.discovery_date, open: p.open, high: p.high, low: p.low, close: p.close })) });
       continue;
     }

@@ -13,15 +13,14 @@ import {
   Zap
 } from "lucide-react";
 import Link from "next/link";
+import { formatGapPct, maArrangement, maGaps, type MAState } from "./market-state";
+import { persistSkipLabel } from "@/lib/screening/persist-skip-label";
+import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
+import { SurfaceCard } from "@/components/common/surface-card";
 
-interface KosdaqState {
+interface IndexState {
   value: number;
-  maState: {
-    ma5: number;
-    ma20: number;
-    ma60: number;
-    ma120: number;
-  };
+  maState?: MAState | null;
   reduceWeight: boolean;
 }
 
@@ -51,7 +50,11 @@ interface ExcludedNoticeItem {
 
 interface OvernightResponse {
   ok: boolean;
-  kosdaqState: KosdaqState;
+  // false = 저장 허용 시간대(15:30~16:00, 20:00 이후) 밖 조회라 DB 에 저장하지 않았다(2026-11-02)
+  persisted?: boolean;
+  persistSkippedReason?: string;
+  kosdaqState: IndexState;
+  kospiState?: IndexState;
   results: {
     normal: ScreeningStock[];
     aggressive: ScreeningStock[];
@@ -157,7 +160,7 @@ function OvernightScreeningContent() {
     );
   }
 
-  const { kosdaqState, results, excludedNotice, generatedAt, disclaimer } = data;
+  const { kosdaqState, kospiState, persisted, persistSkippedReason, results, excludedNotice, generatedAt, disclaimer } = data;
   const currentStocks = results[activeTab];
 
   // 전체 버킷에서 quantSignal 건수 집계
@@ -176,6 +179,17 @@ function OvernightScreeningContent() {
       <DashboardHeader />
       
       <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl">
+        {/* 미저장 조회 표시(2026-11-02) — 저장 허용 시간대 밖 실행은 API 가 저장하지 않는다. 문구는 사유별로 다르다.
+            persisted 가 없는(구버전) 응답에는 그리지 않는다. */}
+        {persisted === false && (
+          <div className="mb-6 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-900 text-sm font-semibold text-slate-700 dark:text-zinc-300">
+            {persistSkipLabel(persistSkippedReason).title}
+            <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
+              {persistSkipLabel(persistSkippedReason).detail}
+            </span>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
@@ -212,45 +226,23 @@ function OvernightScreeningContent() {
           </div>
         </div>
 
-        {/* 0단계: 거시 시장 상태 */}
+        {/* 시장 상태 — 지수값과 이동평균 대비 괴리율, 배열 상태(정배열/역배열/혼조)를 사실로만 적는다.
+            색으로 좋고 나쁨을 나타내지 않는다. reduceWeight 는 API 내부 로직용이라 화면에 행동 지시로
+            노출하지 않는다(2026-10-30). 번호([0단계])는 순서 정보가 없어 뗐다(2026-11-02). */}
         <div className="mb-8">
           <h2 className="text-sm font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
-            [0단계] 시장 상태
+            시장 상태
           </h2>
-          {/* 사실 서술만 — 지수값과 이동평균 대비 위치. reduceWeight 는 API 내부 로직용이라 화면에
-              행동 지시로 노출하지 않는다(2026-10-30, 검증 종료 후 매매 지시형 문구 제거). */}
-          {!(kosdaqState.value > 0) ? (
-            /* 지수 조회 실패 시 0 이나 대체 값을 그리지 않는다 */
-            <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl text-sm text-slate-500 dark:text-zinc-400">
-              코스닥 지수 조회 실패
+          <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl flex items-start gap-4">
+            <Activity className="w-6 h-6 text-slate-400 dark:text-zinc-500 flex-shrink-0 mt-1" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 flex-1 min-w-0">
+              <IndexStateBlock label="코스닥" state={kosdaqState} />
+              <IndexStateBlock label="코스피" state={kospiState} />
             </div>
-          ) : (() => {
-            const ma = kosdaqState.maState;
-            const lines = ([[5, ma?.ma5], [20, ma?.ma20], [60, ma?.ma60], [120, ma?.ma120]] as const)
-              .filter(([, v]) => typeof v === "number" && v > 0) as [number, number][];
-            const fmt = (list: [number, number][]) => list.map(([d, v]) => `${d}일선(${v.toFixed(2)})`).join("·");
-            const above = lines.filter(([, v]) => kosdaqState.value > v);
-            const below = lines.filter(([, v]) => kosdaqState.value <= v);
-            const aligned = lines.length === 4 && lines.every(([, v], i) => i === 0 || lines[i - 1][1] > v);
-            return (
-              <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl flex items-start gap-4">
-                <Activity className="w-6 h-6 text-slate-400 dark:text-zinc-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-slate-700 dark:text-zinc-300 space-y-1">
-                  <p className="font-bold">
-                    코스닥 {kosdaqState.value.toFixed(2)}
-                    {below.length > 0 && ` — ${fmt(below)} 아래`}
-                    {above.length > 0 && `${below.length > 0 ? " ·" : " —"} ${fmt(above)} 위`}
-                  </p>
-                  {lines.length === 4 && (
-                    <p className="text-xs text-slate-500 dark:text-zinc-400">
-                      이동평균 배열(5·20·60·120일): {aligned ? "정배열" : "정배열 아님"}
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+          </div>
         </div>
+
+        <ScreeningPipelineGuide />
 
         {/* 탭 인터페이스 */}
         <div className="flex border-b border-slate-200 dark:border-zinc-800 mb-8">
@@ -316,9 +308,9 @@ function OvernightScreeningContent() {
             </div>
           ) : (
             currentStocks.map(stock => (
-              <div 
+              <SurfaceCard 
                 key={stock.symbol}
-                className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col justify-between transition-all hover:shadow-md"
+                className="flex flex-col justify-between transition-all hover:shadow-md"
               >
                 <div>
                   {/* 종목 기본 정보 */}
@@ -438,7 +430,7 @@ function OvernightScreeningContent() {
                     </Link>
                   </div>
                 )}
-              </div>
+              </SurfaceCard>
             ))
           )}
         </div>
@@ -508,6 +500,86 @@ function OvernightScreeningContent() {
           </p>
         </div>
       </main>
+    </div>
+  );
+}
+
+// 이 종목들이 어떻게 걸러졌나(2026-11-02) — 숫자는 판정 코드와 같은 OVERNIGHT_CRITERIA 에서 읽는다.
+// 단계별 건수(퍼널)는 API 응답에 없어 싣지 않는다.
+function ScreeningPipelineGuide() {
+  const ma = C.main.maPeriods.join("·");
+  const rows: [string, string][] = [
+    ["사전 제외", `ETF·ETN·파생·스팩 / 등락률 ±${C.prefilter.abnormalMovePct}% 초과 / ${C.prefilter.minPrice.toLocaleString()}원 미만`],
+    ["1차 후보", `등락률 +${C.primary.minChangeRate}% 이상 & 거래대금 ${C.primary.minTradingValue / 100_000_000}억 이상 → 회전율 상위 ${C.primary.maxTargets}개`],
+    [
+      "주 필터",
+      `회전율 ${C.main.minTurnoverRate}% 이상 · 일봉·주봉 정배열(${ma}) · 거래량 20일 평균의 ${C.main.minVolumeRatio}% 이상 · 윗꼬리 ${C.main.maxTailRatio}% 이하 · 등락률 +${C.main.excludeChangeRate}% 이상 제외 · 위험종목 제외(투자주의·경고·위험·유의, 거래정지, 정리매매, 단기과열)`,
+    ],
+    [
+      "테마 신선도",
+      `4개 조건 중 ${C.freshness.minPass}개 이상 — ${C.freshness.bigCandleWithinDays}일 이내 +${C.freshness.bigCandlePct}% 장대양봉 · 장대양봉 몸통 중간값 위 · 조정기 거래량 ${C.freshness.contractionRatio * 100}% 이하 · 조정기 변동폭 ${C.freshness.contractionRatio * 100}% 이하`,
+    ],
+    [
+      "분류",
+      `정석 = 주 필터 + 테마 신선도 통과 / 공격형 = 정배열·윗꼬리 통과, 테마 신선도 미달 또는 거래량 ${C.aggressiveVolumeRatio.min}~${C.aggressiveVolumeRatio.max}% / 나머지는 제외 탭. 이력 ${C.main.minHistoryBars}봉 미만은 분석 보류`,
+    ],
+  ];
+  return (
+    <details className="mb-8 group border border-slate-200 dark:border-zinc-800 rounded-2xl">
+      <summary className="cursor-pointer select-none px-5 py-3 text-sm font-bold text-slate-600 dark:text-zinc-300">
+        이 종목들이 어떻게 걸러졌나
+      </summary>
+      <dl className="px-5 pb-4 grid grid-cols-1 sm:grid-cols-[6.5rem_1fr] gap-x-4 gap-y-2 text-xs">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="font-semibold text-slate-500 dark:text-zinc-400">{k}</dt>
+            <dd className="text-slate-700 dark:text-zinc-300 leading-relaxed">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
+// 지수 하나의 시장 상태 — 값이 없으면(조회 실패) 0 이나 대체 값을 그리지 않는다.
+// 이평선이 없으면 지수값만 그린다.
+function IndexStateBlock({ label, state }: { label: string; state?: IndexState }) {
+  if (!state || !(state.value > 0)) {
+    return (
+      <div className="text-sm text-slate-500 dark:text-zinc-400">{label} 지수 조회 실패</div>
+    );
+  }
+  const gaps = maGaps(state.value, state.maState);
+  const arrangement = maArrangement(state.maState);
+  return (
+    <div className="min-w-0">
+      <p className="flex items-baseline gap-2 text-slate-900 dark:text-zinc-50">
+        <span className="text-sm font-semibold text-slate-500 dark:text-zinc-400">{label}</span>
+        <span className="text-2xl font-extrabold tabular-nums">{state.value.toFixed(2)}</span>
+        {arrangement && (
+          <span
+            className="text-sm font-semibold text-slate-600 dark:text-zinc-300"
+            title="이동평균 5·20·60·120일의 순서 — 정배열(5>20>60>120) · 역배열(5<20<60<120) · 그 밖은 혼조"
+          >
+            {arrangement}
+          </span>
+        )}
+      </p>
+      {gaps.length > 0 && (
+        <>
+          <p className="text-sm text-slate-700 dark:text-zinc-300 tabular-nums mt-1">
+            {gaps.map((g, i) => (
+              <span key={g.period} title={`${g.period}일 이동평균 ${g.ma.toFixed(2)}`}>
+                {i > 0 && <span className="text-slate-400 dark:text-zinc-600">{"  ·  "}</span>}
+                {g.period}일 {formatGapPct(g.gapPct)}
+              </span>
+            ))}
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums mt-0.5">
+            지수 대비 괴리율 · 이평선 {gaps.map((g) => g.ma.toFixed(2)).join(" / ")}
+          </p>
+        </>
+      )}
     </div>
   );
 }

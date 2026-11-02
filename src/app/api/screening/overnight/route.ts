@@ -4,16 +4,19 @@ import {
   getDomesticVolumeRank, 
   getDomesticStockDaily, 
   getDomesticStockWeekly,
-  getDomesticStockDetail
+  getDomesticStockDetail,
+  getKSTPersistWindow
 } from "@/server/kis/rest-client";
 import { kisConfig } from "@/server/kis/config";
 import { getSearchMaster } from "@/lib/stocks/search-master";
 import { saveScreeningResult, formatKSTDateCompact, type ScreeningResultItem } from "@/server/screening/storage";
 import { runDailyTrajectoryUpdate } from "@/server/screening/trajectory-update";
+import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
 import { computeIndicatorSeries } from "@/server/screening/indicators";
 import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { isRateLimitError, withRateLimitRetry } from "@/server/screening/rate-limit-retry";
+import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
 
 // 헬퍼: 이동평균선(MA) 계산 (최신 데이터가 0번 인덱스임)
 function calculateMA(candles: any[], period: number, key: string = "stck_clpr"): number {
@@ -90,6 +93,7 @@ export async function GET(req: Request) {
     // [0단계] 거시 필터 - 코스닥(1001) + 코스피(0001) 정배열/역배열 판정 (병렬 조회)
     let kosdaqMAState = { ma5: 0, ma20: 0, ma60: 0, ma120: 0 };
     let kospiClose = 0;
+    let kospiMAState: { ma5: number; ma20: number; ma60: number; ma120: number } | null = null;
     let kospiReduceWeight = false;
 
     try {
@@ -127,6 +131,7 @@ export async function GET(req: Request) {
         const kospiMA20 = calculateMA(kospiIndexDaily, 20, "bstp_nmix_prpr");
         const kospiMA60 = calculateMA(kospiIndexDaily, 60, "bstp_nmix_prpr");
         const kospiMA120 = calculateMA(kospiIndexDaily, 120, "bstp_nmix_prpr");
+        kospiMAState = { ma5: kospiMA5, ma20: kospiMA20, ma60: kospiMA60, ma120: kospiMA120 };
         const kospiAligned = kospiMA5 > kospiMA20 && kospiMA20 > kospiMA60 && kospiMA60 > kospiMA120;
         kospiReduceWeight = !kospiAligned;
       }
@@ -233,8 +238,8 @@ export async function GET(req: Request) {
       const isETF = masterItem?.type === "etf" || masterItem?.market === "ETF" || masterItem?.market === "ETN";
       const hasEtfKeyword = etfPrefixRegex.test(name) || derivativeRegex.test(name);
       const isSpac = name.includes("스팩") || /spac/i.test(name);
-      const isAbnormalMove = changeRate < -30 || changeRate > 30;
-      const isPennyStock = price < 1000;
+      const isAbnormalMove = changeRate < -C.prefilter.abnormalMovePct || changeRate > C.prefilter.abnormalMovePct;
+      const isPennyStock = price < C.prefilter.minPrice;
 
       return !(isETF || hasEtfKeyword || isSpac || isAbnormalMove || isPennyStock);
     });
@@ -251,7 +256,7 @@ export async function GET(req: Request) {
       .filter(stock => {
         const changeRate = Number(stock.prdy_ctrt || 0);
         const trPbmn = Number(stock.acml_tr_pbmn || 0);
-        return changeRate >= 3 && trPbmn >= 1000000000;
+        return changeRate >= C.primary.minChangeRate && trPbmn >= C.primary.minTradingValue;
       })
       .sort((a, b) => volTnrtOf(b) - volTnrtOf(a));
 
@@ -259,7 +264,7 @@ export async function GET(req: Request) {
     //    Phase 38에서 일봉/주봉도 페이지네이션(종목당 일봉 2 + 주봉 2 + 상세 1 = 최대 5호출)
     //    되면서 호출량이 늘었으므로, cold-start(캐시 미스) 타임아웃/Rate Limit 방지를 위해
     //    12 → 8로 축소. 캐시가 채워지면 당일 재호출은 거의 발생하지 않는다.
-    const MAX_TARGET_STOCKS = 8;
+    const MAX_TARGET_STOCKS = C.primary.maxTargets;
     const targetStocks: any[] = primaryCandidates.slice(0, MAX_TARGET_STOCKS);
     // 후보가 8개 미만이면 나머지도 회전율 높은 순으로 채운다. 단 하락종목 가드 적용
     // (등락률 음수 제외). 폐기 조건(±30%/동전주/ETF 등)은 pureStocks에서 이미 걸러짐.
@@ -298,12 +303,12 @@ export async function GET(req: Request) {
       let isExcluded = false;
 
       // 1-2. 등락률 제한 (조기 마킹)
-      if (changeRate >= 20 && changeRate < 25) {
-        reasons.push("당일 등락률 +20% 이상 제외");
+      if (changeRate >= C.main.excludeChangeRate && changeRate < C.main.limitUpChangeRate) {
+        reasons.push(`당일 등락률 +${C.main.excludeChangeRate}% 이상 제외`);
         isExcluded = true;
       }
-      if (changeRate >= 25) {
-        reasons.push("상한가 근접(+25% 이상) 제외");
+      if (changeRate >= C.main.limitUpChangeRate) {
+        reasons.push(`상한가 근접(+${C.main.limitUpChangeRate}% 이상) 제외`);
         isExcluded = true;
       }
 
@@ -349,8 +354,8 @@ export async function GET(req: Request) {
       // 1-1. 위험종목 필터 기준 확정 및 2차 회전율 판정
       if (detail) {
         detailVolTnrt = Number(detail.vol_tnrt || 0);
-        if (detailVolTnrt < 5.0) {
-          reasons.push(`회전율 기준 미달 (${detailVolTnrt.toFixed(2)}%, 기준 5.0% 이상)`);
+        if (detailVolTnrt < C.main.minTurnoverRate) {
+          reasons.push(`회전율 기준 미달 (${detailVolTnrt.toFixed(2)}%, 기준 ${C.main.minTurnoverRate.toFixed(1)}% 이상)`);
           isExcluded = true;
         }
 
@@ -392,17 +397,17 @@ export async function GET(req: Request) {
 
       // 이력 부족(120봉 미만)인데 위험/기준 문제는 없는 "정상이나 분석 불가"
       // 종목은 results.exclude가 아니라 excludedNotice로 분리한다.
-      const dailyInsufficient = dailyCandles.length < 120;
-      const weeklyInsufficient = weeklyCandles.length < 120;
+      const dailyInsufficient = dailyCandles.length < C.main.minHistoryBars;
+      const weeklyInsufficient = weeklyCandles.length < C.main.minHistoryBars;
       const insufficientData = dailyInsufficient || weeklyInsufficient;
       if (insufficientData && !isExcluded) {
         let reason: string;
         if (dailyInsufficient) {
           // 일봉도 부족 = 신규상장 수준
-          reason = `일봉 데이터 부족 (상장 이력 짧음) — ${dailyCandles.length}봉 확보 / 120봉 필요`;
+          reason = `일봉 데이터 부족 (상장 이력 짧음) — ${dailyCandles.length}봉 확보 / ${C.main.minHistoryBars}봉 필요`;
         } else {
           // 일봉은 충분하지만 주봉 부족 = 상장 ~2.5년 미만
-          reason = `주봉 데이터 부족 — 상장 후 약 2.5년 미만 (${weeklyCandles.length}봉 확보 / 120봉 필요, 주봉 정배열 판정 불가)`;
+          reason = `주봉 데이터 부족 — 상장 후 약 2.5년 미만 (${weeklyCandles.length}봉 확보 / ${C.main.minHistoryBars}봉 필요, 주봉 정배열 판정 불가)`;
         }
         excludedNotice.push({ symbol, name, entryClose, reason });
         continue;
@@ -410,8 +415,8 @@ export async function GET(req: Request) {
       if (insufficientData) {
         // 이미 위험/기준 문제가 있는 종목은 그대로 제외 버킷으로 (부가 사유만 기록)
         const lackDesc = dailyInsufficient
-          ? `일봉 ${dailyCandles.length}봉 확보 / 120봉 필요`
-          : `주봉 ${weeklyCandles.length}봉 확보 / 120봉 필요`;
+          ? `일봉 ${dailyCandles.length}봉 확보 / ${C.main.minHistoryBars}봉 필요`
+          : `주봉 ${weeklyCandles.length}봉 확보 / ${C.main.minHistoryBars}봉 필요`;
         reasons.push(`이평선 계산 데이터 부족 (${lackDesc})`);
         isExcluded = true;
       }
@@ -439,10 +444,10 @@ export async function GET(req: Request) {
       const currentVolume = dailyCandles.length > 0 ? Number(dailyCandles[0].acml_vol || 0) : 0;
       const avgVolume20 = calculateAvgVolume(dailyCandles.slice(1, 21), 20);
       const volumeRatio = avgVolume20 > 0 ? (currentVolume / avgVolume20) * 100 : 0;
-      const isVolumeSpike = volumeRatio >= 200;
+      const isVolumeSpike = volumeRatio >= C.main.minVolumeRatio;
       
       if (!isVolumeSpike) {
-        reasons.push(`거래량 비율 미달 (20일 평균 대비 ${volumeRatio.toFixed(1)}%, 기준 200% 이상)`);
+        reasons.push(`거래량 비율 미달 (20일 평균 대비 ${volumeRatio.toFixed(1)}%, 기준 ${C.main.minVolumeRatio}% 이상)`);
       }
 
       // 1-5. 윗꼬리 제한: (당일 고가 - 당일 종가) / 당일 고가 <= 3.5%
@@ -454,13 +459,13 @@ export async function GET(req: Request) {
       const tailDataMissing = dailyHigh <= 0;
       const tailRatio = tailDataMissing ? 0 : ((dailyHigh - dailyClose) / dailyHigh) * 100;
       // 데이터 부족(고가 누락)은 "진짜 윗꼬리 0%"가 아니므로 안전 통과로 취급하지 않는다.
-      const isTailSafe = !tailDataMissing && tailRatio <= 3.5;
+      const isTailSafe = !tailDataMissing && tailRatio <= C.main.maxTailRatio;
 
       if (tailDataMissing) {
         console.warn(`[Overnight API] Tail data missing for ${name} (${symbol}) — dailyCandles[0].stck_hgpr 누락, tailRatio 계산 불가`);
         reasons.push("윗꼬리 계산 불가 (당일 일봉 고가 데이터 부족)");
       } else if (!isTailSafe) {
-        reasons.push(`윗꼬리 비율 초과 (${tailRatio.toFixed(1)}%, 기준 3.5% 이하)`);
+        reasons.push(`윗꼬리 비율 초과 (${tailRatio.toFixed(1)}%, 기준 ${C.main.maxTailRatio}% 이하)`);
       }
 
       // 2단계: 테마 신선도 검사 (4개 중 3개 이상)
@@ -469,7 +474,7 @@ export async function GET(req: Request) {
 
       // 2-1. 대량거래 동반 +10%↑ 장대양봉 발생 후 5일 이내인지 여부
       let bigCandleIndex = -1;
-      for (let i = 0; i < Math.min(5, dailyCandles.length); i++) {
+      for (let i = 0; i < Math.min(C.freshness.bigCandleWithinDays, dailyCandles.length); i++) {
         const c = dailyCandles[i];
         const cOpen = Number(c.stck_oprc || 0);
         const cClose = Number(c.stck_clpr || 0);
@@ -480,7 +485,7 @@ export async function GET(req: Request) {
         const subDaily = dailyCandles.slice(i + 1);
         const cAvgVol = calculateAvgVolume(subDaily, 20);
         
-        if (cChange >= 10 && cVolume >= cAvgVol * 2) {
+        if (cChange >= C.freshness.bigCandlePct && cVolume >= cAvgVol * C.freshness.bigCandleVolumeMultiple) {
           bigCandleIndex = i;
           break;
         }
@@ -489,7 +494,7 @@ export async function GET(req: Request) {
       const hasBigCandleWithin5Days = bigCandleIndex !== -1;
       if (hasBigCandleWithin5Days) {
         freshnessCount++;
-        freshnessDetails.push("5일 이내 장대양봉 발생");
+        freshnessDetails.push(`${C.freshness.bigCandleWithinDays}일 이내 장대양봉 발생`);
       }
 
       // 2-2. 현재가 >= 장대양봉 몸통 중간값
@@ -527,10 +532,10 @@ export async function GET(req: Request) {
         } else {
           // 2-3. 조정구간 평균 거래량 <= 장대양봉 거래량의 50%
           const avgVolumeAdj = adjustmentRange.reduce((acc, c) => acc + Number(c.acml_vol || 0), 0) / adjustmentRange.length;
-          isVolumeContracted = avgVolumeAdj <= bigVolume * 0.5;
+          isVolumeContracted = avgVolumeAdj <= bigVolume * C.freshness.contractionRatio;
           if (isVolumeContracted) {
             freshnessCount++;
-            freshnessDetails.push("조정기 거래량 50% 이하 감소");
+            freshnessDetails.push(`조정기 거래량 ${C.freshness.contractionRatio * 100}% 이하 감소`);
           }
 
           // 2-4. 조정구간 평균 일중 변동폭 <= 장대양봉 변동폭의 50%
@@ -539,7 +544,7 @@ export async function GET(req: Request) {
             const l = Number(c.stck_lwpr || 0);
             return acc + (h - l);
           }, 0) / adjustmentRange.length;
-          isVolatilityContracted = avgRangeAdj <= bigRange * 0.5;
+          isVolatilityContracted = avgRangeAdj <= bigRange * C.freshness.contractionRatio;
           if (isVolatilityContracted) {
             freshnessCount++;
             freshnessDetails.push("변동성 수렴 완료");
@@ -596,7 +601,7 @@ export async function GET(req: Request) {
 
       // 3버킷 분류 판단
       const is1stStagePass = isDailyAligned && isWeeklyAligned && isVolumeSpike && isTailSafe && !isExcluded;
-      const isFreshnessPass = freshnessCount >= 3;
+      const isFreshnessPass = freshnessCount >= C.freshness.minPass;
       const weightSuggestion = reduceWeight ? 0.5 : 1.0;
 
       const normalReasons = [
@@ -612,7 +617,7 @@ export async function GET(req: Request) {
 
       const aggressiveReasons = [
         reduceWeight ? "거시 지표 불안정" : "정배열 만족",
-        freshnessCount <= 2 ? "테마 신선도 조건 일부 미달(공격형 진입)" : `거래량 증가폭 다소 완화(${volumeRatio.toFixed(0)}%)`
+        freshnessCount < C.freshness.minPass ? "테마 신선도 조건 일부 미달(공격형 진입)" : `거래량 증가폭 다소 완화(${volumeRatio.toFixed(0)}%)`
       ];
       if (foreignBuyLimit) {
         aggressiveReasons.push("외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)");
@@ -631,7 +636,7 @@ export async function GET(req: Request) {
           reasons: normalReasons,
           metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt, rsi14, quantSignal, latestIndicator, day0Open, day0High, day0Low, day0Close: entryClose, currentVolume }
         });
-      } else if (!isExcluded && isTailSafe && (isDailyAligned && isWeeklyAligned) && (freshnessCount <= 2 || (volumeRatio >= 150 && volumeRatio < 200))) {
+      } else if (!isExcluded && isTailSafe && (isDailyAligned && isWeeklyAligned) && (freshnessCount < C.freshness.minPass || (volumeRatio >= C.aggressiveVolumeRatio.min && volumeRatio < C.aggressiveVolumeRatio.max))) {
         aggressiveBucket.push({
           symbol,
           name,
@@ -690,8 +695,18 @@ export async function GET(req: Request) {
       return screeningFailed("no_symbols_analyzed", sanitizeError(firstStockErrorMsg) || undefined);
     }
 
+    // 저장 시간대 제한(2026-11-02) — 15:30 이전(장중 잠정 종가)과 16:00~20:00(애프터마켓)에는
+    // day0·궤적을 남기지 않는다. 10/6~10/20 장중 실행분 29건, 마감 후 애프터마켓 구간 실행분 178행이 틀린 종가로
+    // 저장된 원인(docs/release/known-issues.md). 조회·응답은 그대로 한다. 판정은 getKSTPersistWindow 하나만 쓴다.
+    // 휴장일·주말은 위 거래일 가드가 이미 건너뛴다.
+    const persistWindow = getKSTPersistWindow();
+    const persisted = persistWindow.allowed;
+    if (!persistWindow.allowed) {
+      console.log(`[Overnight API] Persist window closed (${persistWindow.reason}) — screening/trajectory persist skipped (view only).`);
+    }
+
     // 백테스트 집계를 위해 당일 스크리닝 결과를 영속 저장 (Redis 우선, 폴백 단계는 storage.ts 참고)
-    try {
+    if (persisted) try {
       const todayKey = formatKSTDateCompact(new Date());
       const persistedItems: ScreeningResultItem[] = [
         ...normalBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "normal" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
@@ -713,7 +728,7 @@ export async function GET(req: Request) {
     // [핵심 로직 변경] 당일 스크리닝 분석 대상 종목들의 days_after=0 궤적을 지표와 함께 DB에 직행 저장한다.
     // 기존에는 runDailyTrajectoryUpdate가 이를 수행 후 backfill-indicators가 지표를 채웠으나,
     // 이제 스크리닝 과정에서 계산된 일봉(최대 130봉)을 재사용해 지표 공백을 완전히 원천 차단한다.
-    try {
+    if (persisted) try {
       const todayKey = formatKSTDateCompact(new Date());
       const supabase = getSupabaseAdmin();
       if (supabase) {
@@ -762,6 +777,8 @@ export async function GET(req: Request) {
             console.error("[Overnight API] Failed to upsert day0 trajectories:", error);
           } else {
             console.log(`[Overnight API] Successfully upserted ${trajectoryPayloads.length} day0 trajectories with indicators`);
+            // 불변식: 방금 저장한 스크리닝 항목 entry_close 와 day0 종가가 같아야 한다(다르면 경고만)
+            await warnEntryDay0Mismatches(supabase, trajectoryPayloads.map((p) => ({ symbol: p.symbol, date: todayKey })), "overnight");
           }
         }
       }
@@ -770,7 +787,7 @@ export async function GET(req: Request) {
     }
 
     // 발굴 종목 궤적(stock_trajectory) 일일 갱신 — 실패해도 스크리닝 응답을 막지 않는다
-    try {
+    if (persisted) try {
       await runDailyTrajectoryUpdate();
     } catch (e) {
       console.error("[Overnight API] Trajectory update failed:", (e as Error)?.message || e);
@@ -778,6 +795,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      persisted,
+      ...(persistWindow.allowed ? {} : { persistSkippedReason: persistWindow.reason }),
       kosdaqState: {
         value: kosdaqClose,
         maState: kosdaqMAState,
@@ -785,6 +804,8 @@ export async function GET(req: Request) {
       },
       kospiState: {
         value: kospiClose,
+        // 120봉 미만이면 null — 화면은 지수값만 그린다
+        maState: kospiMAState,
         reduceWeight: kospiReduceWeight
       },
       results: {

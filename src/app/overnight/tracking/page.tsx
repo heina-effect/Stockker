@@ -119,10 +119,8 @@ const QUANT_SIGNAL_META = {
   condition: "RSI 50~60 + 거래량 200~400%",
 };
 
-// 목표 표본(종목 기준) — n은 quant_signal 이벤트 건수가 아니라 unique symbol 수(표본 독립성
-// 문제로 종목 기준). 헤드라인 2줄차의 "표본 35/60종목" 분모로만 쓴다. 2026-10-20: 등급 배지
-// (quantSignalReliability)는 헤드라인 압축으로 제거했다 — 상태 표시는 기대값 기반 1줄차가 대신한다.
-const QUANT_RELIABILITY_TARGET_N = 60;
+// 목표 표본(종전 60종목)은 산출 근거가 없었고 검증도 종료돼 제거했다(2026-11-02). 헤드라인은 표본 종목 수만 쓴다
+// — n은 quant_signal 이벤트 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
 
 /**
  * 섹션 헤더에 표시하는 정렬 기준 문구 (하드코딩 상수, 섹션당 1회만 표시). 상세 수치 근거(회복률 등)는
@@ -753,7 +751,7 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
 function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
   const rows: { label: string; s: ExitStats; muted?: boolean; title?: string }[] = [
     { label: "3일차 종가", s: stats.exitDay3 },
-    { label: `3일차 비용차감 (왕복 ${stats.roundTripCostPct.toFixed(2)}%)`, s: stats.exitDay3Net },
+    { label: `3일차 비용차감 (왕복 ${stats.roundTripCostPct}%)`, s: stats.exitDay3Net },
     { label: `손절 ${stats.stopLossThresholdPct}% (종가 기준)`, s: stats.exitStop10 },
     { label: "극단값 제외 (상·하위 각 1건)", s: stats.exitDay3Trimmed },
     {
@@ -1123,16 +1121,13 @@ export default function TrackingPage() {
                 표본부족 경고는 전부 아래 "통계 근거 보기" 접기 안의 규칙별 표에 있다. */}
             {quantSignalStats.resultCount > 0 ? (
               <div className="mt-0.5">
-                {/* 1줄: 주 기준 기대값 + 표본 */}
+                {/* 1줄: 표본 — 기대값은 헤드라인 바로 아래에서 결론("알파 없음")과 모순돼 보여 뺐다
+                    (2026-11-02). 비용 차감 전후 기대값은 아래 "통계 근거 보기" 표에 있다. */}
                 <p className="text-sm text-slate-700 dark:text-zinc-300 mt-0.5">
-                  3일차 종가 청산 기대값{" "}
-                  <span className={`font-bold ${priceColorClass(quantSignalStats.exitDay3.expectancy, 0)}`}>
-                    {quantSignalStats.exitDay3.expectancy >= 0 ? "+" : ""}
-                    {quantSignalStats.exitDay3.expectancy}%
-                  </span>
+                  3일차 결과 {quantSignalStats.resultCount}건
                   <span className="text-slate-400 dark:text-zinc-500">
                     {"  ·  표본 "}
-                    {quantSignalStats.sampleSymbolCount}/{QUANT_RELIABILITY_TARGET_N}종목
+                    {quantSignalStats.sampleSymbolCount}종목
                   </span>
                 </p>
                 {/* 2줄: 평균 최고 → 3일차 (고점 반납) */}

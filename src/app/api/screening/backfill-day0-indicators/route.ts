@@ -34,7 +34,10 @@ export const dynamic = "force-dynamic";
  *   - KIS 발견일 종가가 저장된 day0 종가와 다르면(수정주가 반영 등) 그 행은 쓰지 않는다.
  *   - apply 시 대상 행 전체를 JSON으로 먼저 덤프하고, 쓰기 직전·직후 가격 컬럼을 스냅샷과 비교한다.
  *
- * body: { apply?: boolean (기본 false = dry-run), from?: "YYYYMMDD" (기본 20261006) }
+ * body: { apply?: boolean (기본 false = dry-run), from?: "YYYYMMDD" (기본 20261006),
+ *         to?: "YYYYMMDD" (포함, 기본 없음) }
+ *   to 를 두는 이유(2026-11-02): 종목별 KIS 일봉 창의 끝이 그 종목의 가장 늦은 발견일이라, 범위에 최근 발견일이
+ *   섞이면 이전 발견일들의 창 시작점이 밀려 EMA 계열(MACD)이 소수점 넷째 자리에서 달라지고 대조군이 멈춘다.
  */
 
 const INDICATOR_COLUMNS = [
@@ -69,7 +72,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { apply?: boolean; from?: string } = {};
+  let body: { apply?: boolean; from?: string; to?: string } = {};
   try {
     const text = await request.text();
     if (text) body = JSON.parse(text);
@@ -78,20 +81,23 @@ export async function POST(request: NextRequest) {
   }
   const apply = body.apply === true;
   const from = body.from ?? "20261006";
+  const to = body.to;
 
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase 미구성" }, { status: 500 });
 
-  const day0Rows = await fetchAllRows<Row>((f, t) =>
-    supabase
+  const day0Rows = await fetchAllRows<Row>((f, t) => {
+    let q = supabase
       .from("stock_trajectory")
       .select("*")
       .eq("days_after", 0)
-      .gte("discovery_date", from)
+      .gte("discovery_date", from);
+    if (to) q = q.lte("discovery_date", to);
+    return q
       .order("symbol", { ascending: true })
       .order("discovery_date", { ascending: true })
-      .range(f, t)
-  );
+      .range(f, t);
+  });
   const targets = day0Rows.filter((r) => r.rsi14 == null);
   const controls = day0Rows.filter((r) => r.rsi14 != null);
 
@@ -160,7 +166,9 @@ export async function POST(request: NextRequest) {
     .filter((c) => c.row.rsi14 != null)
     .map((c) => {
       const closeMismatch = c.indicators
-        ? CLOSE_DERIVED.filter((col) => Number(c.row[col] ?? NaN) !== Number(c.indicators![col] ?? NaN))
+        ? CLOSE_DERIVED.filter((col) => (c.row[col] ?? null) !== null || (c.indicators![col] ?? null) !== null)
+            // 둘 다 null(신규상장이라 정의 불가)은 일치로 본다
+            .filter((col) => Number(c.row[col] ?? NaN) !== Number(c.indicators![col] ?? NaN))
             .map((col) => ({ col, stored: c.row[col], recomputed: c.indicators![col] }))
         : [];
       const volumeDiff = c.indicators

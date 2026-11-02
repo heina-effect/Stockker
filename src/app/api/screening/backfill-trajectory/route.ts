@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { kisConfig } from "@/server/kis/config";
 import { getDomesticStockDailyAround } from "@/server/kis/rest-client";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
+import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
 import { withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 
 export const runtime = "nodejs";
@@ -160,6 +161,9 @@ export async function POST(request: NextRequest) {
 
       if (upsertErr) throw upsertErr;
       rowsInserted += rows.length;
+      // 불변식: 이 백필이 쓴 day0 종가(basePrice)는 스크리닝 항목 entry_close 와 같아야 한다(다르면 경고만).
+      // 7/2~9/23 237그룹 불일치가 이 경로(8/31 백필)에서 생겼다.
+      await warnEntryDay0Mismatches(supabase, [{ symbol: disc.symbol, date: disc.date }], "backfill-trajectory");
     } catch (e: any) {
       skipped.push({ symbol: disc.symbol, discovery_date: disc.date, reason: sanitizeError(e?.message || String(e)) });
     }

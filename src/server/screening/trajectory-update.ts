@@ -1,9 +1,10 @@
 import "server-only";
 
-import { getDomesticStockDailyAround, isAfterKSTMarketClose } from "@/server/kis/rest-client";
+import { getDomesticStockDailyAround, getKSTPersistWindow } from "@/server/kis/rest-client";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { formatKSTDateCompact } from "@/server/screening/storage";
 import { recalculateIndicatorsForDiscovery } from "@/server/screening/indicators";
+import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
 import { fetchAllRows } from "@/server/screening/paginate";
 import { withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening/trading-calendar";
@@ -28,9 +29,10 @@ import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening
  * "마지막 저장일 다음날부터 처리 대상일까지 전부" upsert로 넓혀, 데이터 공백 자체도 함께
  * 메운다(단, KIS 응답에 해당 날짜 캔들이 없으면 그 날짜만 건너뛴다).
  *
- * 15:30 KST 마감 가드: 장중(15:30 이전) 실행 시 당일 종가는 미확정 값이라(Phase 42 10/8
- * 실험으로 확인), 당일 몫은 쓰지 않고 그 이전까지의 공백만 처리한다. 당일 처리는 다음날
- * 이후 실행에서 자연스럽게 따라잡힌다.
+ * 저장 시간대 가드: 15:30 이전(장중, Phase 42 10/8 실험으로 확인)과 16:00~20:00(애프터마켓,
+ * 2026-11-02 전수 점검으로 확인)에는 당일 종가가 확정값이 아니라, 당일 몫은 쓰지 않고 그 이전까지의
+ * 공백만 처리한다. 판정은 스크리닝 라우트와 같은 getKSTPersistWindow 를 쓴다. 당일 처리는 다음
+ * 허용 구간 실행에서 자연스럽게 따라잡힌다.
  */
 
 export const TRACKING_WINDOW_DAYS_AFTER = 32; // 추적 유지 구간: days_after 0 ~ 31
@@ -76,9 +78,9 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
     console.warn("[Trajectory Update] 거래일 캘린더 갱신 실패(오늘자는 미확정으로 취급):", e?.message || e);
   }
 
-  // 15:30 이전이거나 오늘이 거래일이 아니면, 이번 실행에서는 "오늘"을 처리 대상에 포함하지
+  // 저장 허용 구간이 아니거나 오늘이 거래일이 아니면, 이번 실행에서는 "오늘"을 처리 대상에 포함하지
   // 않는다 — 캘린더에서 오늘보다 이전의 가장 최근 거래일까지만 따라잡는다.
-  const includeToday = isAfterKSTMarketClose() && todayIsTradingDay;
+  const includeToday = getKSTPersistWindow().allowed && todayIsTradingDay;
   const recentTradingDays = await getTradingDaysBetween(lookbackKey, todayKey);
   const effectiveToday = includeToday
     ? todayKey
@@ -157,6 +159,7 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
 
   let processed = 0;
   let skipped = 0;
+  const day0Written: { symbol: string; date: string }[] = []; // 불변식 검사 대상(day0 행을 이 실행이 새로 쓴 그룹)
 
   for (const target of targets) {
     try {
@@ -220,6 +223,7 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
         );
         if (upsertErr) throw upsertErr;
         wroteAny = true;
+        if (daysAfter === 0) day0Written.push({ symbol: target.symbol, date: target.discoveryDate });
       }
 
       if (!wroteAny) {
@@ -246,6 +250,9 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
       console.warn(`[Trajectory Update] ${target.symbol}(${target.discoveryDate}) 처리 실패:`, e?.message || e);
     }
   }
+
+  // 불변식: day0 행을 새로 쓴 그룹은 스크리닝 항목 entry_close 와 day0 종가가 같아야 한다(다르면 경고만)
+  await warnEntryDay0Mismatches(supabase, day0Written, "trajectory-update");
 
   const durationMs = Date.now() - startedAt;
   console.log(
