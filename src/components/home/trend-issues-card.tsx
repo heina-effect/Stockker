@@ -2,6 +2,7 @@
 import { Clock, TrendingUp, Zap } from "lucide-react";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 function IssuesSkeleton() {
   return (
@@ -34,7 +35,7 @@ export function TrendIssuesCard() {
   const issues: any[] = data?.issues || [];
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
+    <SurfaceCard className="flex flex-col h-full">
       <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
         <TrendingUp className="w-5 h-5 text-indigo-500" />
         지금 중요한 이슈
@@ -77,6 +78,6 @@ export function TrendIssuesCard() {
           ))
         )}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

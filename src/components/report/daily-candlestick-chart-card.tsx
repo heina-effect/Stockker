@@ -32,6 +32,7 @@ function generateFullDayIntradayGrid() {
 
 // The mock generators have been removed to prefer real data from the KIS API using the /api/stocks/[symbol]/ohlc route
 import { aggregateToOHLC, calculateMA, shouldAppendLiveDailyCandle } from "@/lib/stocks/chart-utils";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 interface CandlestickShapeProps {
   x?: number;
@@ -115,9 +116,9 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[280px] flex items-center justify-center animate-pulse">
+      <SurfaceCard className="h-[280px] flex items-center justify-center animate-pulse">
         데이터 로드 중...
-      </div>
+      </SurfaceCard>
     );
   }
 
@@ -219,7 +220,7 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
   const freshnessTimestamp = state?.lastUpdated ? new Date(state.lastUpdated).toISOString() : null;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[280px]">
+    <SurfaceCard className="flex flex-col h-[280px]">
       <div className="flex items-center justify-between mb-2">
         <div className="flex flex-col">
            <div className="flex items-center gap-3">
@@ -305,6 +306,6 @@ export function DailyCandlestickChartCard({ symbol }: { symbol: string }) {
           </ResponsiveContainer>
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

@@ -7,6 +7,7 @@ import { getCanonicalSectorForSymbol } from "@/lib/stocks/sector-utils";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
 import { USER_STORAGE_EVENT } from "@/lib/user-storage/events";
 import { useEffect, useState } from "react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 type WatchlistSummary = {
   symbol: string;
@@ -65,11 +66,11 @@ export function WatchlistAsideCard() {
   }, [mounted, watchlist]);
 
   if (!mounted) {
-    return <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm h-full flex flex-col animate-pulse" />;
+    return <SurfaceCard className="h-full flex flex-col animate-pulse" />;
   }
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm h-full flex flex-col">
+    <SurfaceCard className="h-full flex flex-col">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="font-bold text-lg text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           나의 관심 종목
@@ -180,6 +181,6 @@ export function WatchlistAsideCard() {
           검색하여 종목 추가 &raquo;
         </Link>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

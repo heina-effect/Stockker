@@ -5,6 +5,7 @@ import { Building2, AlertCircle } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
 import type { AnalystOpinionItem, AnalystOpinionSummary } from "@/types/research";
 import { useOptionalLiveMarket } from "@/components/dashboard/live-market-provider";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 type CardData = AnalystOpinionSummary & { currentPrice?: number };
 
@@ -67,7 +68,7 @@ export function AnalystOpinionCard({ symbol }: { symbol: string }) {
   const hasData = data && data.items.length > 0;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
+    <SurfaceCard>
       <div className="flex items-center gap-2 mb-1">
         <Building2 className="w-4 h-4 text-indigo-500" />
         <h3 className="font-bold text-slate-900 dark:text-zinc-50">국내 증권사 투자의견</h3>
@@ -112,7 +113,7 @@ export function AnalystOpinionCard({ symbol }: { symbol: string }) {
           표시할 투자의견 데이터가 없습니다.
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }
 

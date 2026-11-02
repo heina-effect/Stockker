@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
 import { SECTOR_UNIVERSE } from "@/data/sectors/taxonomy";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 const VALID_SECTOR_IDS = new Set(Object.keys(SECTOR_UNIVERSE));
 
@@ -36,7 +37,7 @@ export function AIPicksCard() {
   const picks: any[] = data?.aiPicks || [];
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
+    <SurfaceCard background="none" className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-900 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-lg text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-500" />
@@ -100,6 +101,6 @@ export function AIPicksCard() {
           })
         )}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

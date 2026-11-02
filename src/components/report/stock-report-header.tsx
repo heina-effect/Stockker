@@ -40,6 +40,7 @@ import {
   Utensils,
   Zap,
 } from "lucide-react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 const SECTOR_ICON_MAP = {
   cpu: Cpu,
@@ -135,7 +136,7 @@ export function StockReportHeader({ symbol, initialName }: { symbol: string; ini
 
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 md:p-8 shadow-sm border border-transparent flex flex-col md:flex-row md:items-start justify-between gap-6">
+    <SurfaceCard className="md:p-8 flex flex-col md:flex-row md:items-start justify-between gap-6">
       <div className="flex-1">
         {/* ── 종목명/티커: 즉시 렌더링 (no skeleton) ── */}
         <div className="flex items-center justify-between mb-2">
@@ -218,6 +219,6 @@ export function StockReportHeader({ symbol, initialName }: { symbol: string; ini
           )}
         </div>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

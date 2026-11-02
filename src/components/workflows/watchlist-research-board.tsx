@@ -6,6 +6,7 @@ import { USER_STORAGE_EVENT } from "@/lib/user-storage/events";
 import Link from "next/link";
 import { getStockName } from "@/lib/stocks/metadata";
 import { formatChange, formatNumber } from "@/lib/utils";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 type WatchlistSummary = {
   symbol: string;
@@ -91,7 +92,7 @@ export function WatchlistResearchBoard() {
         const isUp = (quote?.change ?? 0) > 0;
         const isDown = (quote?.change ?? 0) < 0;
         return (
-          <div key={sym} className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col gap-5">
+          <SurfaceCard key={sym} className="flex flex-col gap-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -176,7 +177,7 @@ export function WatchlistResearchBoard() {
                 상세 리포트 보기 &rarr;
               </Link>
             </div>
-          </div>
+          </SurfaceCard>
         );
       })}
     </div>

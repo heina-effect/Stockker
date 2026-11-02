@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { SentimentScore } from "@/types/research";
 import { CheckCircle2, TrendingDown, Clock, Link2 } from "lucide-react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 function stripEnglishParenthetical(text: string): string {
   return text.replace(/\s*\(([A-Za-z0-9][A-Za-z0-9\s.,;:'"!?%&/+·-]*)\)/g, "").trim();
@@ -20,7 +21,7 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   if (!data) return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[340px] flex flex-col">
+    <SurfaceCard className="h-[340px] flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
@@ -39,11 +40,11 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
         <div className="h-4 bg-slate-100 dark:bg-zinc-800 rounded w-1/3 mb-2" />
         <div className="h-8 bg-slate-50 dark:bg-zinc-950 rounded border border-slate-100 dark:border-zinc-800" />
       </div>
-    </div>
+    </SurfaceCard>
   );
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
+    <SurfaceCard>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-bold text-slate-900 dark:text-zinc-50">AI 감성 점수</h3>
@@ -120,7 +121,7 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
           {(data as any)._meta.fallbackReason && <span className="text-amber-500 break-all">{`Reason: ${(data as any)._meta.fallbackReason}`}</span>}
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }
 

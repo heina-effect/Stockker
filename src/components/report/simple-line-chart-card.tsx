@@ -4,6 +4,7 @@ import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import { FreshnessLabel } from "./freshness-label";
 import { AlertCircle } from "lucide-react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 export function SimpleLineChartCard({ symbol }: { symbol: string }) {
   const { marketStore } = useLiveMarket();
@@ -15,17 +16,17 @@ export function SimpleLineChartCard({ symbol }: { symbol: string }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent h-[300px] flex items-center justify-center">
+      <SurfaceCard className="h-[300px] flex items-center justify-center">
         <div className="animate-pulse flex items-center gap-2 text-slate-400">
           <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
           차트 데이터 불러오는 중...
         </div>
-      </div>
+      </SurfaceCard>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-[300px]">
+    <SurfaceCard className="flex flex-col h-[300px]">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50">당일 시세 흐름</h3>
         
@@ -69,6 +70,6 @@ export function SimpleLineChartCard({ symbol }: { symbol: string }) {
           )}
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useHomeIntelligence } from "./home-intelligence-provider";
 import { getSectorById } from "@/data/sectors/taxonomy";
 import { getStockName } from "@/lib/stocks/metadata";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   cpu: Cpu,
@@ -39,7 +40,7 @@ export function TrendSectorsCard() {
   const validSectors = sectors.filter(sector => getSectorById(sector.sectorId || sector.id));
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
+    <SurfaceCard className="flex flex-col h-full">
       <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
         <Layers className="w-5 h-5 text-teal-500" />
         지금 주목받는 섹터
@@ -104,6 +105,6 @@ export function TrendSectorsCard() {
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10px] text-slate-400 text-center">
         기준: 대표 종목 동조성, 소스 근거 수, KIS 시세 흐름. 투자 참고용입니다.
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { formatNumber } from "@/lib/utils";
 import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { GitBranch, Layers, FileText, Sparkles } from "lucide-react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 const RELATION_LABEL: Record<RelationType, string> = {
   sector_peer: "동종 섹터",
@@ -77,7 +78,7 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
+    <SurfaceCard>
       <h3 className="font-bold text-slate-900 dark:text-zinc-50 mb-1">연관 종목</h3>
       <p className="text-[10px] text-slate-400 mb-4">섹터 동종·이슈 기반으로 선정. 투자 권유 아님.</p>
 
@@ -145,6 +146,6 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
           })}
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

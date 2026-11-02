@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { IssueCluster } from "@/types/research";
 import { Clock, Newspaper, FileText } from "lucide-react";
 import { formatResearchDate } from "@/lib/date-format";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 function formatClusterDate(ts: string): string {
   const date = new Date(ts);
@@ -34,7 +35,7 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent flex flex-col h-full max-h-[400px]">
+    <SurfaceCard className="flex flex-col h-full max-h-[400px]">
       <div className="flex items-center justify-between mb-6">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           최근 핵심 이슈
@@ -53,7 +54,7 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             <div key={i} className="pl-4 border-l-2 border-slate-100 dark:border-zinc-800 pb-2">
               <div className="h-3 bg-slate-100 dark:bg-zinc-800 rounded w-1/4 mb-2 animate-pulse" />
               <div className="h-4 bg-slate-100 dark:bg-zinc-800 rounded w-3/4 mb-1 animate-pulse" />
-              <div className="h-3 bg-slate-50 dark:bg-zinc-850 rounded w-2/3 animate-pulse" />
+              <div className="h-3 bg-slate-50 dark:bg-zinc-800/60 rounded w-2/3 animate-pulse" />
             </div>
           ))}
         </div>
@@ -116,6 +117,6 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
         ))}
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { SourceItem } from "@/types/research";
 import { Link2, Clock, CheckCircle2, Newspaper, FileText, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { formatResearchDate } from "@/lib/date-format";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 const QUALITY_BADGE: Record<string, { label: string; cls: string }> = {
   high:   { label: "근거 충분", cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30" },
@@ -119,7 +120,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
   const newsCount = sources.filter(s => s.sourceType === "news").length;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent">
+    <SurfaceCard>
       <div className="flex items-center justify-between mb-1">
         <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           분석 근거 소스
@@ -259,6 +260,6 @@ export function SourceListCard({ symbol }: { symbol: string }) {
       </p>
         </>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

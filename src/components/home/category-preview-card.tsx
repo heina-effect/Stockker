@@ -1,4 +1,5 @@
 import { TrendingUp, Newspaper, Lightbulb, Zap } from "lucide-react";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 interface CategoryPreviewCardProps {
   title: string;
@@ -15,7 +16,7 @@ export function CategoryPreviewCard({ title, description, icon }: CategoryPrevie
   }[icon];
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full">
+    <SurfaceCard className="hover:shadow-md transition-shadow cursor-pointer group flex flex-col h-full">
       <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
         <IconComponent className="w-5 h-5" />
       </div>
@@ -28,6 +29,6 @@ export function CategoryPreviewCard({ title, description, icon }: CategoryPrevie
           살펴보기 &rarr;
         </span>
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

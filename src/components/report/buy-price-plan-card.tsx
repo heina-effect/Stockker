@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Calculator } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
 import { LocalStorageAdapter } from "@/lib/user-storage/local-adapter";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 // 금액의 한글 표기 변환기
 function getKoreanAmountHelper(amount: number): string {
@@ -90,7 +91,7 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-transparent relative overflow-hidden">
+    <SurfaceCard className="relative overflow-hidden">
       <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 dark:bg-indigo-900/10 rounded-bl-full -z-10" />
       
       <div className="flex items-center justify-between mb-4">
@@ -189,6 +190,6 @@ export function BuyPricePlanCard({ symbol }: { symbol: string }) {
           </div>
         </div>
       )}
-    </div>
+    </SurfaceCard>
   );
 }

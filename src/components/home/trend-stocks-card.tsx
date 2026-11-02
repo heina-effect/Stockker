@@ -3,6 +3,7 @@ import { Activity } from "lucide-react";
 import Link from "next/link";
 
 import { useHomeIntelligence } from "./home-intelligence-provider";
+import { SurfaceCard } from "@/components/common/surface-card";
 
 function StocksSkeleton() {
   return (
@@ -25,7 +26,7 @@ export function TrendStocksCard() {
   const trending: any[] = data?.stocks || [];
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-transparent shadow-sm flex flex-col h-full">
+    <SurfaceCard className="flex flex-col h-full">
       <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
         <Activity className="w-5 h-5 text-rose-500" />
         지금 주목받는 종목
@@ -66,6 +67,6 @@ export function TrendStocksCard() {
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800 text-[10px] text-slate-400 text-center">
         기준: 출처 근거 수와 최근 이슈 밀도 중심. 투자 참고용입니다.
       </div>
-    </div>
+    </SurfaceCard>
   );
 }
