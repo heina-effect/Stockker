@@ -31,8 +31,12 @@ import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening
  *
  * 저장 시간대 가드: 15:30 이전(장중, Phase 42 10/8 실험으로 확인)과 16:00 이후(애프터마켓 중·후,
  * 2026-11-02 전수 점검과 11/03 대조로 확인)에는 당일 종가가 확정값이 아니라, 당일 몫은 쓰지 않고 그 이전까지의
- * 공백만 처리한다. 판정은 스크리닝 라우트와 같은 getKSTPersistWindow 를 쓴다. 당일 처리는 다음
- * 허용 구간 실행에서 자연스럽게 따라잡힌다.
+ * 공백만 처리한다. 판정은 스크리닝 라우트와 같은 getKSTPersistWindow 를 쓴다.
+ *
+ * 일봉은 그룹마다 따로 받으므로, 실행 시작 때 한 번 판정한 결과만 믿으면 실행이 16:00 을 넘긴 뒤 받은
+ * 그룹의 당일 종가가 애프터마켓 체결가로 저장된다. 그래서 당일 행은 조회 직전과 쓰기 직전에 그 시각으로
+ * 다시 판정하고, 창이 닫혔으면 당일 행만 건너뛴다(전일까지의 공백 메우기는 계속한다, 2026-11-03).
+ * 건너뛴 당일 행은 다음 날 실행이 "마지막 저장일 다음 날부터" 쓰면서 메운다. 그때는 확정 일봉이라 오히려 낫다.
  */
 
 export const TRACKING_WINDOW_DAYS_AFTER = 32; // 추적 유지 구간: days_after 0 ~ 31
@@ -57,6 +61,18 @@ interface TargetCandidate {
   discoveryDate: string;
   entryClose: number;
   lastStored: string | null; // 마지막으로 저장된 trade_date(행이 없으면 null)
+  tradingDays: string[]; // 발굴일~effectiveToday 거래일(캘린더 기준)
+  discIndex: number;
+  toProcess: string[]; // 이번 실행이 쓸 거래일(마지막 저장일 다음 날 ~ effectiveToday, days_after 31 이하)
+}
+
+export interface TrajectoryUpdateResult {
+  processed: number;
+  skipped: number;
+  targets: number;
+  candidates: number;
+  /** 실행 도중 저장 창이 닫혀 당일 행만 건너뛴 그룹·종목 수. 다음 날 실행이 확정값으로 메운다 */
+  todaySkipped: { groups: number; symbols: number; reason: string | null };
 }
 
 /**
@@ -76,12 +92,12 @@ export function compareTrajectoryTargets(
   return a.discoveryDate.localeCompare(b.discoveryDate);
 }
 
-export async function runDailyTrajectoryUpdate(): Promise<void> {
+export async function runDailyTrajectoryUpdate(): Promise<TrajectoryUpdateResult | null> {
   const startedAt = Date.now();
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     console.warn("[Trajectory Update] Supabase 미구성 — 건너뜀");
-    return;
+    return null;
   }
 
   const todayKey = formatKSTDateCompact(new Date());
@@ -97,7 +113,8 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
   }
 
   // 저장 허용 구간이 아니거나 오늘이 거래일이 아니면, 이번 실행에서는 "오늘"을 처리 대상에 포함하지
-  // 않는다 — 캘린더에서 오늘보다 이전의 가장 최근 거래일까지만 따라잡는다.
+  // 않는다 — 캘린더에서 오늘보다 이전의 가장 최근 거래일까지만 따라잡는다. 시작 때 열려 있었어도
+  // 실행 중에 닫힐 수 있어, 당일 행은 아래 루프에서 다시 판정한다.
   const includeToday = getKSTPersistWindow().allowed && todayIsTradingDay;
   const recentTradingDays = await getTradingDaysBetween(lookbackKey, todayKey);
   const effectiveToday = includeToday
@@ -145,25 +162,39 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
     ((favRes.data || []) as any[]).map((r) => `${r.symbol}::${r.discovery_date}`)
   );
 
-  // 추적 대상 후보: 기존 저장값 기준 32영업일 미만 & 처리 대상일 기준 미완료
+  // 추적 대상 후보: 기존 저장값 기준 32영업일 미만 & 이번 실행에서 쓸 거래일이 있는 그룹만.
+  // 쓸 것 없는 그룹(이미 처리 대상일까지 저장, 캘린더에 발굴일 없음)은 여기서 빼서 MAX_TARGETS 슬롯을 먹지 않게 한다.
   const seen = new Set<string>();
   const candidates: TargetCandidate[] = [];
   for (const item of (screeningRes.data || []) as any[]) {
     const key = `${item.symbol}::${item.date}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const lastStored = lastStoredTradeDateMap.get(key);
+    const lastStored = lastStoredTradeDateMap.get(key) ?? null;
     if (lastStored && lastStored >= effectiveToday) continue; // 이미 처리 대상일까지 완료
 
     const maxDaysAfter = maxDaysAfterMap.get(key) ?? -1;
     if (maxDaysAfter >= TRACKING_WINDOW_DAYS_AFTER - 1) continue; // 32영업일(days_after 0~31) 도달, 추적 종료
+
+    // 발굴일~effectiveToday 사이 실제 거래일 목록(캘린더 기준). lookbackKey가 TRACKING_WINDOW_DAYS_AFTER를
+    // 넉넉히 포함하므로 발굴일은 보통 이 배열에 있다. 없으면(캘린더가 발굴일까지 못 채워졌거나 거래일로 안 잡힘) 제외.
+    const tradingDays = recentTradingDays.filter((d) => d >= item.date);
+    const discIndex = tradingDays.indexOf(item.date);
+    if (discIndex === -1) continue;
+    const toProcess = tradingDays.filter(
+      (d, i) => d > (lastStored ?? "00000000") && d <= effectiveToday && i - discIndex <= TRACKING_WINDOW_DAYS_AFTER - 1
+    );
+    if (toProcess.length === 0) continue;
 
     candidates.push({
       symbol: item.symbol,
       name: item.name,
       discoveryDate: item.date,
       entryClose: Number(item.entry_close || 0),
-      lastStored: lastStored ?? null,
+      lastStored,
+      tradingDays,
+      discIndex,
+      toProcess,
     });
   }
 
@@ -177,25 +208,27 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
   let processed = 0;
   let skipped = 0;
   const day0Written: { symbol: string; date: string }[] = []; // 불변식 검사 대상(day0 행을 이 실행이 새로 쓴 그룹)
+  const todaySkippedKeys = new Set<string>();
+  const todaySkippedSymbols = new Set<string>();
+  let todaySkipReason: string | null = null;
+  // 당일 행을 쓸 수 있는지 지금 시각으로 다시 판정한다. 닫혔으면 건너뛴 그룹·종목과 사유를 남긴다
+  const todayStillAllowed = (target: TargetCandidate): boolean => {
+    const w = getKSTPersistWindow(new Date());
+    if (w.allowed) return true;
+    todaySkippedKeys.add(`${target.symbol}::${target.discoveryDate}`);
+    todaySkippedSymbols.add(target.symbol);
+    todaySkipReason = w.reason;
+    return false;
+  };
 
   for (const target of targets) {
     try {
-      const lastStored = target.lastStored;
+      const { tradingDays: tradingDaysForTarget, discIndex } = target;
 
-      // 발굴일~effectiveToday 사이 실제 거래일 목록(캘린더 기준). lookbackKey가
-      // TRACKING_WINDOW_DAYS_AFTER를 넉넉히 포함하므로, 모든 후보의 discoveryDate는 이
-      // 배열에 포함돼 있다고 가정한다(벗어나면 스킵).
-      const tradingDaysForTarget = recentTradingDays.filter((d) => d >= target.discoveryDate);
-      const discIndex = tradingDaysForTarget.indexOf(target.discoveryDate);
-      if (discIndex === -1) {
-        // 캘린더가 아직 발굴일까지 못 채워졌거나(초기 상태) 발굴일 자체가 거래일로 안 잡힘
-        skipped++;
-        continue;
-      }
-
-      const toProcess = tradingDaysForTarget.filter(
-        (d) => d > (lastStored ?? "00000000") && d <= effectiveToday
-      );
+      // 조회 전에 한 번 판정해, 남은 일이 당일 행뿐인데 창이 닫혔으면 KIS 를 부르지 않는다
+      const toProcess = target.toProcess.includes(todayKey) && !todayStillAllowed(target)
+        ? target.toProcess.filter((d) => d !== todayKey)
+        : target.toProcess;
       if (toProcess.length === 0) {
         skipped++;
         continue;
@@ -213,6 +246,8 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
       for (const tradeDate of toProcess) {
         const daysAfter = tradingDaysForTarget.indexOf(tradeDate) - discIndex;
         if (daysAfter > TRACKING_WINDOW_DAYS_AFTER - 1) break; // 윈도우 초과분은 쓰지 않음(추적 종료)
+        // 쓰기 직전에 다시 판정 — 조회가 16:00 을 넘겨 끝났으면 받은 당일 종가는 애프터마켓 체결가다
+        if (tradeDate === todayKey && !todayStillAllowed(target)) continue;
 
         const candle = candleByDate.get(tradeDate);
         if (!candle) continue; // 이 날짜 캔들이 응답에 없음(이례적) — 다음 날짜로 계속
@@ -271,8 +306,18 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
   await warnEntryDay0Mismatches(supabase, day0Written, "trajectory-update");
 
   const durationMs = Date.now() - startedAt;
+  const result: TrajectoryUpdateResult = {
+    processed,
+    skipped,
+    targets: targets.length,
+    candidates: candidates.length,
+    todaySkipped: { groups: todaySkippedKeys.size, symbols: todaySkippedSymbols.size, reason: todaySkipReason },
+  };
   console.log(
     `[Trajectory Update] 처리 ${processed}건 / 건너뜀 ${skipped}건 / 대상 ${targets.length}건 (전체 후보 ${candidates.length}건) / ` +
-    `effectiveToday=${effectiveToday}(오늘자 포함=${includeToday}) / 소요 ${durationMs}ms`
+    `effectiveToday=${effectiveToday}(오늘자 포함=${includeToday}) / ` +
+    `실행 중 창 닫힘으로 당일 행 건너뜀 ${result.todaySkipped.groups}그룹·${result.todaySkipped.symbols}종목` +
+    `${todaySkipReason ? `(${todaySkipReason})` : ""} / 소요 ${durationMs}ms`
   );
+  return result;
 }

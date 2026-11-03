@@ -88,6 +88,8 @@ export async function GET(req: Request) {
   let reduceWeight = false;
   let kosdaqClose = 0;
   let latestTradingDate = "";
+  // 조회 시작 시각의 저장 창. 저장 판정은 이것과 저장 직전 시각 둘 다 본다(아래 저장 시간대 제한 참고)
+  const fetchStartWindow = getKSTPersistWindow();
 
   try {
     // [0단계] 거시 필터 - 코스닥(1001) + 코스피(0001) 정배열/역배열 판정 (병렬 조회)
@@ -699,10 +701,28 @@ export async function GET(req: Request) {
     // day0·궤적을 남기지 않는다. 10/6~10/20 장중 실행분 29건, 마감 후 애프터마켓 구간 실행분 178행이 틀린 종가로
     // 저장된 원인(docs/release/known-issues.md). 조회·응답은 그대로 한다. 판정은 getKSTPersistWindow 하나만 쓴다.
     // 휴장일·주말은 위 거래일 가드가 이미 건너뛴다.
-    const persistWindow = getKSTPersistWindow();
+    //
+    // 실행 중 창 재판정(2026-11-03): 종목별 일봉은 위 루프에서 차례로 받는다. 조회 시작과 저장 직전 두 시각이
+    // 모두 창 안이어야 그 사이 받은 모든 종목이 창 안에서 받은 값이다. 15:29 에 시작해 15:30 을 넘긴 실행은 장중
+    // 잠정 종가를, 16:00 을 넘긴 실행은 뒤쪽 종목의 애프터마켓 체결가를 담고 있을 수 있어 둘 다 저장하지 않는다.
+    // 종목별로 나눠 일부만 저장하지 않는 이유: saveScreeningResult 는 그날 항목 전체를 지우고 다시 넣으며 빠진
+    // 종목의 궤적까지 지운다. 일부만 저장하면 앞선 정상 실행의 기록이 지워진다. 건너뛴 day0 는 다음 날 궤적 갱신이
+    // 확정 일봉으로 메운다(앞선 실행이 저장한 항목이 있을 때).
+    const persistWindow = fetchStartWindow.allowed ? getKSTPersistWindow() : fetchStartWindow;
     const persisted = persistWindow.allowed;
+    const allBucketsForPersist = [...normalBucket, ...aggressiveBucket, ...excludeBucket];
+    const unsaved = persisted
+      ? null
+      : {
+          items: allBucketsForPersist.length + excludedNotice.length,
+          day0: allBucketsForPersist.filter((i) => i.metrics?.day0Close !== undefined).length,
+          closedDuringRun: fetchStartWindow.allowed,
+        };
     if (!persistWindow.allowed) {
-      console.log(`[Overnight API] Persist window closed (${persistWindow.reason}) — screening/trajectory persist skipped (view only).`);
+      console.log(
+        `[Overnight API] Persist window closed (${persistWindow.reason}${unsaved?.closedDuringRun ? ", 실행 중 닫힘" : ""}) — ` +
+        `screening ${unsaved?.items ?? 0}건 / day0 ${unsaved?.day0 ?? 0}건 저장 안 함 (view only).`
+      );
     }
 
     // 백테스트 집계를 위해 당일 스크리닝 결과를 영속 저장 (Redis 우선, 폴백 단계는 storage.ts 참고)
@@ -787,8 +807,9 @@ export async function GET(req: Request) {
     }
 
     // 발굴 종목 궤적(stock_trajectory) 일일 갱신 — 실패해도 스크리닝 응답을 막지 않는다
+    let trajectoryUpdate: Awaited<ReturnType<typeof runDailyTrajectoryUpdate>> = null;
     if (persisted) try {
-      await runDailyTrajectoryUpdate();
+      trajectoryUpdate = await runDailyTrajectoryUpdate();
     } catch (e) {
       console.error("[Overnight API] Trajectory update failed:", (e as Error)?.message || e);
     }
@@ -796,7 +817,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       persisted,
-      ...(persistWindow.allowed ? {} : { persistSkippedReason: persistWindow.reason }),
+      ...(persistWindow.allowed ? {} : { persistSkippedReason: persistWindow.reason, unsaved }),
+      ...(trajectoryUpdate ? { trajectoryUpdate } : {}),
       kosdaqState: {
         value: kosdaqClose,
         maState: kosdaqMAState,

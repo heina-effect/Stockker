@@ -167,6 +167,26 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
     expect(h.trajectory).toHaveBeenCalledTimes(1);
   });
 
+  // 실행 중 창 재판정(2026-11-03) — 종목 일봉을 받는 동안 시각이 창 경계를 넘으면 저장하지 않는다
+  it.each([
+    ["15:29:50 시작 → 15:30 을 넘김", "2026-10-30T06:29:50Z", "before_market_close", false],
+    ["15:59:50 시작 → 16:00 을 넘김", "2026-10-30T06:59:50Z", "after_hours_session", true],
+  ])("%s 이면 저장하지 않고 저장 안 한 건수를 응답한다", async (_, iso, reason, closedDuringRun) => {
+    vi.setSystemTime(new Date(iso));
+    h.stockDaily.mockImplementation(async () => {
+      vi.setSystemTime(new Date(Date.now() + 10_000)); // 조회마다 10초 경과
+      return candles;
+    });
+    const r = await call();
+    expect(r.body).toMatchObject({ ok: true, persisted: false, persistSkippedReason: reason });
+    expect(r.body.unsaved).toMatchObject({ closedDuringRun });
+    expect(r.body.unsaved.items).toBeGreaterThan(0);
+    expect(r.body.unsaved.day0).toBeGreaterThan(0);
+    expect(h.save).not.toHaveBeenCalled();
+    expect(h.upsert).not.toHaveBeenCalled();
+    expect(h.trajectory).not.toHaveBeenCalled();
+  });
+
   // 불변식(2026-11-02): 같은 실행이 저장하는 스크리닝 항목 entry_close 와 day0 종가는 같은 값이다.
   it("저장하는 entry_close 와 day0 종가가 같고, 저장 직후 불변식 검사를 부른다", async () => {
     vi.setSystemTime(new Date("2026-10-30T06:40:00Z")); // KST 15:40
