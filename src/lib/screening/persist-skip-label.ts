@@ -3,6 +3,7 @@
 const LABELS: Record<string, { title: string; detail: string }> = {
   before_market_close: { title: "장중 조회 — 저장되지 않음", detail: "15:30 이전 값은 종가 확정 전이라 기록에 남기지 않습니다" },
   after_hours_session: { title: "애프터마켓 중 조회 — 저장되지 않음", detail: "16:00~20:00 에는 당일 종가 자리에 애프터마켓 체결가가 섞여 기록에 남기지 않습니다" },
+  after_market_close: { title: "애프터마켓 종료 후 조회 — 저장되지 않음", detail: "20:00 이후에도 당일 종가 자리에 애프터마켓 마지막 체결가가 남아 기록에 남기지 않습니다. 저장은 15:30~16:00 에만 합니다" },
 };
 
 export function persistSkipLabel(reason: string | undefined): { title: string; detail: string } {

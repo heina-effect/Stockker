@@ -695,7 +695,7 @@ export async function GET(req: Request) {
       return screeningFailed("no_symbols_analyzed", sanitizeError(firstStockErrorMsg) || undefined);
     }
 
-    // 저장 시간대 제한(2026-11-02) — 15:30 이전(장중 잠정 종가)과 16:00~20:00(애프터마켓)에는
+    // 저장 시간대 제한(2026-11-02, 11/03 개정) — 15:30~16:00 밖에서는(장중 잠정 종가, 애프터마켓 중·후 종가 오염)
     // day0·궤적을 남기지 않는다. 10/6~10/20 장중 실행분 29건, 마감 후 애프터마켓 구간 실행분 178행이 틀린 종가로
     // 저장된 원인(docs/release/known-issues.md). 조회·응답은 그대로 한다. 판정은 getKSTPersistWindow 하나만 쓴다.
     // 휴장일·주말은 위 거래일 가드가 이미 건너뛴다.

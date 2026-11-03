@@ -4,6 +4,7 @@ import { kisConfig } from "@/server/kis/config";
 import { getDomesticStockDailyAround } from "@/server/kis/rest-client";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
+import { TRACKING_WINDOW_DAYS_AFTER } from "@/server/screening/trajectory-update";
 import { withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 
 export const runtime = "nodejs";
@@ -57,7 +58,7 @@ interface BackfillRequestBody {
  * 발굴 종목 궤적(trajectory) 소급 수집 (관리자/내부 호출용, 조회 전용 — 매매 실행 없음).
  *
  * overnight_screening_items에서 발굴된 (symbol, discovery_date) 조합마다 발굴일 기준
- * -60거래일 ~ +30거래일치 일봉을 KIS에서 조회해 stock_trajectory에 upsert한다. 발굴일
+ * -60거래일 ~ +31거래일치 일봉을 KIS에서 조회해 stock_trajectory에 upsert한다. 발굴일
  * 이전 구간(days_after < 0, is_pre_discovery = true)은 RSI(14)/MACD(26+9)/MA60 등
  * 기술지표 계산에 필요한 히스토리 확보 목적이며 실제 보유 구간이 아니다.
  */
@@ -130,9 +131,10 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // 발굴일 -60거래일 ~ +30거래일 (지표 계산용 히스토리 + 기존 추적 구간)
+      // 발굴일 -60거래일 ~ +31거래일 (지표 계산용 히스토리 + 궤적 갱신과 같은 추적 구간 days_after 0~31).
+      // 2026-11-03 전에는 +30 까지만 써서, 백필 직후 조회 범위를 벗어난 그룹이 31일차 없이 끝났다.
       const startIdx = Math.max(0, discIndex - 60);
-      const endIdx = Math.min(allCandles.length, discIndex + 31);
+      const endIdx = Math.min(allCandles.length, discIndex + TRACKING_WINDOW_DAYS_AFTER);
 
       const rows = [];
       for (let i = startIdx; i < endIdx; i++) {

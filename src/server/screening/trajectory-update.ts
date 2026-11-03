@@ -29,8 +29,8 @@ import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening
  * "마지막 저장일 다음날부터 처리 대상일까지 전부" upsert로 넓혀, 데이터 공백 자체도 함께
  * 메운다(단, KIS 응답에 해당 날짜 캔들이 없으면 그 날짜만 건너뛴다).
  *
- * 저장 시간대 가드: 15:30 이전(장중, Phase 42 10/8 실험으로 확인)과 16:00~20:00(애프터마켓,
- * 2026-11-02 전수 점검으로 확인)에는 당일 종가가 확정값이 아니라, 당일 몫은 쓰지 않고 그 이전까지의
+ * 저장 시간대 가드: 15:30 이전(장중, Phase 42 10/8 실험으로 확인)과 16:00 이후(애프터마켓 중·후,
+ * 2026-11-02 전수 점검과 11/03 대조로 확인)에는 당일 종가가 확정값이 아니라, 당일 몫은 쓰지 않고 그 이전까지의
  * 공백만 처리한다. 판정은 스크리닝 라우트와 같은 getKSTPersistWindow 를 쓴다. 당일 처리는 다음
  * 허용 구간 실행에서 자연스럽게 따라잡힌다.
  */
@@ -56,6 +56,24 @@ interface TargetCandidate {
   name: string;
   discoveryDate: string;
   entryClose: number;
+  lastStored: string | null; // 마지막으로 저장된 trade_date(행이 없으면 null)
+}
+
+/**
+ * 처리 순서: 즐겨찾기 → 가장 뒤처진 그룹(마지막 저장일이 오래된 순, 동률이면 발굴일이 오래된 순).
+ * 최신 그룹은 day0 가 이미 저장돼 있어 하루 밀려도 다음 실행에서 따라잡지만, 오래된 그룹은 밀리다
+ * 조회 범위(LOOKBACK_CALENDAR_DAYS) 밖으로 나가면 궤적이 영구히 미완성으로 끝난다. 손실이
+ * 비대칭이라 오래된 쪽을 먼저 처리한다. 저장 허용 구간이 15:30~16:00 으로 좁아져 하루 실행
+ * 횟수가 줄어든 것도 이유다(2026-11-03, 이전에는 발굴일 최신순).
+ */
+export function compareTrajectoryTargets(
+  a: Pick<TargetCandidate, "discoveryDate" | "lastStored"> & { favorite: boolean },
+  b: Pick<TargetCandidate, "discoveryDate" | "lastStored"> & { favorite: boolean }
+): number {
+  if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+  const byLast = (a.lastStored ?? "").localeCompare(b.lastStored ?? "");
+  if (byLast !== 0) return byLast;
+  return a.discoveryDate.localeCompare(b.discoveryDate);
 }
 
 export async function runDailyTrajectoryUpdate(): Promise<void> {
@@ -145,16 +163,15 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
       name: item.name,
       discoveryDate: item.date,
       entryClose: Number(item.entry_close || 0),
+      lastStored: lastStored ?? null,
     });
   }
 
-  // 우선순위: 즐겨찾기 무조건 포함 → 발굴일 최신순. 상한 초과분은 이번 회차 제외(다음날 재시도)
-  candidates.sort((a, b) => {
-    const aFav = favoriteKeys.has(`${a.symbol}::${a.discoveryDate}`);
-    const bFav = favoriteKeys.has(`${b.symbol}::${b.discoveryDate}`);
-    if (aFav !== bFav) return aFav ? -1 : 1;
-    return b.discoveryDate.localeCompare(a.discoveryDate);
-  });
+  // 우선순위는 compareTrajectoryTargets 참고. 상한 초과분은 이번 회차 제외(다음 실행에서 재시도)
+  const isFav = (c: TargetCandidate) => favoriteKeys.has(`${c.symbol}::${c.discoveryDate}`);
+  candidates.sort((a, b) =>
+    compareTrajectoryTargets({ ...a, favorite: isFav(a) }, { ...b, favorite: isFav(b) })
+  );
   const targets = candidates.slice(0, MAX_TARGETS);
 
   let processed = 0;
@@ -163,8 +180,7 @@ export async function runDailyTrajectoryUpdate(): Promise<void> {
 
   for (const target of targets) {
     try {
-      const key = `${target.symbol}::${target.discoveryDate}`;
-      const lastStored = lastStoredTradeDateMap.get(key) ?? null;
+      const lastStored = target.lastStored;
 
       // 발굴일~effectiveToday 사이 실제 거래일 목록(캘린더 기준). lookbackKey가
       // TRACKING_WINDOW_DAYS_AFTER를 넉넉히 포함하므로, 모든 후보의 discoveryDate는 이

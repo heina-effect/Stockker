@@ -15,7 +15,7 @@ interface IndexState {
 
 interface ScreeningData {
   ok: boolean;
-  // false = 저장 허용 시간대(15:30~16:00, 20:00 이후) 밖 조회라 DB 에 저장하지 않았다(2026-11-02)
+  // false = 저장 허용 시간대(15:30~16:00) 밖 조회라 DB 에 저장하지 않았다(2026-11-02, 11/03 개정)
   persisted?: boolean;
   persistSkippedReason?: string;
   kosdaqState: IndexState;

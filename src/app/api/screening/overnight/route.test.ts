@@ -101,7 +101,7 @@ describe("GET /api/screening/overnight — 실패 경로", () => {
   });
 });
 
-// 저장 시간대 제한(2026-11-02) — 15:30 이전·16:00~20:00 에는 조회·응답만 하고 DB 에 쓰지 않는다.
+// 저장 시간대 제한(2026-11-02) — 15:30~16:00 밖에서는 조회·응답만 하고 DB 에 쓰지 않는다.
 describe("GET /api/screening/overnight — 장중 저장 차단", () => {
   // 130봉 일봉/주봉 — 분석 성공(analyzedSymbols ≥ 1)까지만 가면 된다
   const candles = Array.from({ length: 130 }, (_, i) => ({
@@ -140,11 +140,14 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
     expect(h.trajectory).not.toHaveBeenCalled();
   });
 
-  it("KST 16:01 애프터마켓 중에는 after_hours_session 으로 건너뛴다", async () => {
-    vi.setSystemTime(new Date("2026-10-30T07:01:00Z")); // KST 16:01
+  it.each([
+    ["16:01", "2026-10-30T07:01:00Z", "after_hours_session"],
+    ["20:01", "2026-10-30T11:01:00Z", "after_market_close"],
+  ])("KST %s 에는 %s 로 건너뛴다", async (_, iso, reason) => {
+    vi.setSystemTime(new Date(iso));
     const r = await call();
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, persisted: false, persistSkippedReason: "after_hours_session" });
+    expect(r.body).toMatchObject({ ok: true, persisted: false, persistSkippedReason: reason });
     expect(r.body.results).toBeDefined();
     expect(h.save).not.toHaveBeenCalled();
     expect(h.upsert).not.toHaveBeenCalled();
@@ -153,7 +156,7 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
 
   it.each([
     ["15:40", "2026-10-30T06:40:00Z"],
-    ["20:01", "2026-10-30T11:01:00Z"],
+    ["15:59", "2026-10-30T06:59:00Z"],
   ])("KST %s 에는 저장한다", async (_, iso) => {
     vi.setSystemTime(new Date(iso));
     const r = await call();

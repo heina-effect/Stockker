@@ -6,6 +6,7 @@ import path from "node:path";
 import { kisConfig } from "@/server/kis/config";
 import { getDomesticStockDailyEndingAt } from "@/server/kis/rest-client";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
+import { classifyStoredBar, type StoredBar } from "@/server/screening/bar-audit";
 import { fetchAllRows } from "@/server/screening/paginate";
 import { withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 
@@ -142,11 +143,10 @@ export async function POST(request: NextRequest) {
     };
     const base = { symbol: t.symbol, name: t.name, discoveryDate: t.discovery_date, createdAtKst: kstHHMM(t.created_at) };
 
-    // DB 내부 대조 — 유효한(isValidPeer) 다른 그룹 행의 O/H/L/C가 KIS와 같아야 한다(거래량은 시간외 차이로 제외).
+    // DB 내부 대조 — 유효한(isValidPeer) 다른 그룹 행의 O/H/L/C가 KIS와 같아야 한다. 거래량 차이는 판정하지 않는다
+    // (당일 저장분은 정규장 거래량이 정상 — classifyStoredBar, 2026-11-03).
     const peerRows = peers.get(key) ?? [];
-    const peerMismatch = peerRows.filter((p) =>
-      Number(p.open) !== next.open || Number(p.high) !== next.high || Number(p.low) !== next.low || Number(p.close) !== next.close
-    );
+    const peerMismatch = peerRows.filter((p) => classifyStoredBar(p as StoredBar, next) === "price_mismatch");
     const verification = peerRows.length === 0 ? "대조 행 없음" : peerMismatch.length === 0 ? `일치(${peerRows.length}행)` : "불일치";
     if (peerMismatch.length > 0) {
       results.push({ ...base, status: "skipped", reason: "유효한 대조 행(다른 그룹)과 KIS 값 불일치",
