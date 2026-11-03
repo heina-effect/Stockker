@@ -40,7 +40,10 @@ import { ensureTodayInCalendar, getTradingDaysBetween } from "@/server/screening
  */
 
 export const TRACKING_WINDOW_DAYS_AFTER = 32; // 추적 유지 구간: days_after 0 ~ 31
-const MAX_TARGETS = 60;
+// 한 실행에서 처리하는 그룹 상한(2026-11-03, 60 → 250). 11/03 필요량 187그룹. 실측 그룹당 보통 0.4~0.6초면
+// 250그룹 약 125초, 최악 관측(10/22, 그룹당 2.9초)이어도 약 725초로 15:40 실행부터 16:00 까지(약 1,190초) 안에 든다.
+// 상한은 KIS 멈춤이 반복될 때의 안전판으로 남긴다. 활성 그룹이 200에 가까워지면 재검토한다.
+const MAX_TARGETS = 250;
 const LOOKBACK_CALENDAR_DAYS = 55; // 32영업일을 넉넉히 포함하는 캘린더일 여유분
 
 // YYYYMMDD + days → YYYYMMDD (KST 기준, UTC 자정 연산으로 충분. backfill-trajectory/route.ts와 동일 로직)
