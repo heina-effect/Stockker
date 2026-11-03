@@ -120,7 +120,7 @@ const QUANT_SIGNAL_META = {
 };
 
 // 목표 표본(종전 60종목)은 산출 근거가 없었고 검증도 종료돼 제거했다(2026-11-02). 헤드라인은 표본 종목 수만 쓴다
-// — n은 quant_signal 이벤트 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
+// — n은 A트랙 발굴 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
 
 /**
  * 섹션 헤더에 표시하는 정렬 기준 문구 (하드코딩 상수, 섹션당 1회만 표시). 회복률 등 수치 근거는 싣지 않는다
@@ -1072,16 +1072,18 @@ export default function TrackingPage() {
 
         <ReadGuide />
 
-        {/* 퀀트 신호 트래커 — 칸반(포착 종목 전체 관찰)과 완전히 분리된 별도 트랙. "우리가 검증한
-            진입 조건이 실제로 맞는지"를 기간 제한 없이 영구히 추적한다. 3일 미만은 "판단 대기",
-            3일 이상은 "결과 확인 중"으로 나눠 보여준다. 항목 없으면 섹션 자체를 그리지 않는다. */}
+        {/* 퀀트 신호 트래커 — 칸반(포착 종목 전체 관찰)과 완전히 분리된 별도 트랙. 발굴일 저장 지표
+            (stock_trajectory day0 rsi14·vol_ratio_20)가 조건에 걸린 건을 기간 제한 없이 영구히
+            추적한다 — quant_signal 컬럼 기준이 아니며, 진행 중인 아웃오브샘플 관측이다.
+            3일 미만은 "판단 대기", 3일 이상은 "결과 확인 중"으로 나눠 보여준다. 항목 없으면 섹션 자체를 그리지 않는다. */}
         {quantSignalItemsFavFiltered.length > 0 && (
           <section className="mb-8 bg-amber-50/40 dark:bg-amber-950/10 rounded-3xl p-5">
             <h2 className="text-lg font-bold text-slate-900 dark:text-zinc-50">
               ⚡ 퀀트 신호 트래커{!isSearching && ` ${quantSignalStats.totalCount}건`}
             </h2>
+            {/* 선정 기준 한 줄 — 서버 A트랙 쿼리 조건(tracking/route.ts)과 같아야 한다. */}
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              RSI·거래량 조건이 뜬 종목의 기록 — 참고용 관찰
+              RSI 50~60 · 거래량비 200~400% (발굴일 저장 지표 기준) — 참고용 관찰
             </p>
             {/* 헤드라인(2026-10-29) — 백테스트 검증 종료 결론(analysis/hypothesis-log.md 최종 정리)을
                 고정 문구로 둔다. 실시간 기대값으로 상태를 바꾸지 않는다. */}

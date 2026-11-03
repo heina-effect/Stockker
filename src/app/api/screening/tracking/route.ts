@@ -25,14 +25,15 @@ export const dynamic = "force-dynamic";
 const PRIMARY_STAGE_DAYS_AFTER = 10;
 const CYCLE_RESET_DAYS_AFTER = 30;
 
-// 퀀트 신호 트래커(A)와 전체 관찰 칸반(B)은 완전히 분리된 별도 체계다. quant_signal=true인
-// 발굴 건은 quant_signal 여부와 무관한 B의 판정 로직(verdict)과 절대 섞이지 않고, A에서
-// daysAfter와 무관하게 영구히(발생 시점부터 계속) 추적된다.
+// 퀀트 신호 트래커(A)와 전체 관찰 칸반(B)은 완전히 분리된 별도 체계다. A 대상(아래 "A." 블록의
+// 선정 조건 — stock_trajectory day0 저장 지표 기준이며 quant_signal 컬럼이 아니다)인 발굴 건은
+// B의 판정 로직(verdict)과 절대 섞이지 않고, A에서 daysAfter와 무관하게 영구히(발생 시점부터
+// 계속) 추적된다.
 //
 // QUANT_SIGNAL_FRESH_DAYS: A 트랙 내에서 "판단 대기"(신호 발생 후 이 값 미만 경과, RSI/거래량만
 // 표시)와 "결과 확인 중"(이 값 이상 경과, 3일차 확정 수익률+현재까지 최고수익률 표시)을 가르는
-// 기준. 여기서 daysAfter는 4컬럼의 "최초 등장" 기준이 아니라, quant_signal이 뜬 "그 발굴 건"
-// 자체의 경과일이다(RSI/거래량 조건은 그날의 스냅샷이므로, 신호가 뜬 날로부터 며칠 지났는지가
+// 기준. 여기서 daysAfter는 4컬럼의 "최초 등장" 기준이 아니라, A 선정 조건에 걸린 "그 발굴 건"
+// 자체의 경과일이다(RSI/거래량 조건은 그날의 스냅샷이므로, 그 발굴일로부터 며칠 지났는지가
 // 기준). "3일차 규칙" 승률/손익비/기대값 계산은 이 상수를 그대로 쓰며 이번 변경 대상이 아니다.
 const QUANT_SIGNAL_FRESH_DAYS = 3;
 
@@ -97,10 +98,17 @@ export async function GET() {
 
   // ============================================================================
   // A. 퀀트 신호 트래커 — B(전체 관찰 칸반)와 완전히 분리된 별도 체계.
-  // overnight_screening_items의 quant_signal=true 전체 이력(기간 제한 없음)을 대상으로 하며,
-  // 같은 symbol이 여러 번 신호를 냈어도 각 발굴 건을 독립된 신호 이벤트로 전부 추적한다
-  // (대표 1건만 뽑지 않음 — "이 조건이 실제로 맞는지" 검증이 목적이라 매 발생이 독립 표본).
-  // 한 번 이 트랙에 들어온 건은 daysAfter가 얼마든 영구히 여기서만 표시된다.
+  // 선정 조건(기간 제한 없음): stock_trajectory WHERE days_after = 0
+  //   AND rsi14 BETWEEN 50 AND 60 AND vol_ratio_20 BETWEEN 200 AND 400
+  // 즉 발굴일(day0)에 저장된 지표로 거른다. overnight_screening_items.quant_signal 컬럼은 쓰지
+  // 않는다 — quant_signal은 스크리닝 시점 실시간 지표(130봉 RSI)로, 여기 rsi14는 저장 시점 61봉
+  // RSI로 판정되므로 두 집합이 같다는 보장이 없다(RSI 기준 차이로 신호 판정 약 4.79% 불일치,
+  // docs/release/known-issues.md "A트랙 선정 지표 편향").
+  // 이 조건은 2026년 아웃오브샘플 표본을 쌓는 중이라 관측 도중 바꾸지 않는다(바꾸면 쌓인 표본을
+  // 쓸 수 없다). QUANT_SIGNAL_CRITERIA도 import하지 않고 값을 여기 고정한다.
+  // 같은 symbol이 여러 번 조건에 걸렸어도 각 발굴 건을 독립 이벤트로 전부 추적한다(대표 1건만
+  // 뽑지 않음 — 매 발생이 독립 표본). 한 번 이 트랙에 들어온 건은 daysAfter가 얼마든 영구히
+  // 여기서만 표시된다.
   // ============================================================================
   let quantSignalRows: {
     symbol: string;
@@ -135,7 +143,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }
 
-  // quant_signal 종목들의 stock_trajectory를 discovery_date 구분 없이 전부 모아 symbol별
+  // A 대상 종목들의 stock_trajectory를 discovery_date 구분 없이 전부 모아 symbol별
   // trade_date → close 맵을 만든다(4컬럼과 동일한 원리 — 개별 발굴 건의 궤적은 15영업일 갱신
   // 후 멈추므로, 그 symbol의 다른 재발굴 궤적들을 이어붙여야 오늘까지의 실제가가 빠짐없이 채워짐).
   // B의 trackedSymbols(15영업일 게이트를 통과한 것)와 무관하게 독립적으로 조회한다 — A는 게이트가
@@ -196,7 +204,7 @@ export async function GET() {
     }
   }
 
-  // "최근 재포착" 표시용(§UI 개선) — quant_signal=true로 독립 추적 중인 symbol이 신호일 이후
+  // "최근 재포착" 표시용(§UI 개선) — A 선정 조건으로 독립 추적 중인 symbol이 신호일 이후
   // 다시 스크리닝에 포착됐지만 조건을 재충족하지 못한 이력이 있는지 확인한다. 신호 판정/통계
   // 계산에는 전혀 영향을 주지 않는 순수 표시용 부가 정보다. KIS 호출 없이 기존 조회(allHistory,
   // historyBySymbol)와 아래 추가 Supabase 조회(days_after=0 전체, 범위 필터 없음)만으로 계산한다.

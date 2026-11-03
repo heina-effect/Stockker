@@ -21,7 +21,7 @@ interface BackfillQuantSignalBody {
  *      rsi14를 가져와 overnight_screening_items.rsi14에 채운다.
  *   3. quant_signal 판정의 거래량 비율도 stock_trajectory의 vol_ratio_20(당일 포함 20일 평균
  *      기준, indicators.ts 산출)을 쓴다 — overnight_screening_items.volume_ratio(당일 제외
- *      기준, 화면 표시용)는 궤적 추적 화면(tracking/route.ts)의 퀀트 신호 판정 기준과 정의가
+ *      기준, 화면 표시용)는 궤적 추적 화면(tracking/route.ts) A트랙이 쓰는 vol_ratio_20과 정의가
  *      달라 여기서는 사용하지 않는다(overnight_screening_items.volume_ratio 컬럼 자체는 변경
  *      없이 화면 표시용으로만 유지).
  *   4. quant_signal 판정은 `@/server/screening/quant-signal`의 `isQuantSignal`(=
@@ -30,6 +30,10 @@ interface BackfillQuantSignalBody {
  *      분석)은 2026-09-03 RSI 평활 방식이 Wilder로 교체되며 폐기됐다 — 두 라우트가 서로 다른
  *      기준을 쓰면 이 라우트를 재실행했을 때 일일 스크리닝과 다른 quant_signal 값으로 덮어써
  *      데이터가 어긋나는 문제가 있어 공용 상수로 통합했다(2026-09-10).
+ *
+ * 주의: tracking/route.ts의 A트랙(퀀트 신호 트래커)은 이 라우트가 채우는 quant_signal 컬럼을
+ * 읽지 않는다. stock_trajectory day0의 rsi14·vol_ratio_20에 같은 범위를 직접 걸어 고른다.
+ * 일일 스크리닝이 실시간 지표로 기록한 quant_signal과 그 집합은 다를 수 있다.
  *
  * recalculate=true는 stock_trajectory의 rsi14 계산식이 바뀌었을 때(예: RSI 평활 방식 변경)
  * 이미 채워진 행도 최신 값으로 다시 동기화하기 위한 용도다(기본값 false는 NULL만 채움,
