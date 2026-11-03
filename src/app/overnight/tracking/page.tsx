@@ -123,8 +123,8 @@ const QUANT_SIGNAL_META = {
 // — n은 quant_signal 이벤트 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
 
 /**
- * 섹션 헤더에 표시하는 정렬 기준 문구 (하드코딩 상수, 섹션당 1회만 표시). 상세 수치 근거(회복률 등)는
- * 상시 노출하지 않고 ReadGuide(상단 "판정 기준" 토글)의 evidence로만 제공한다.
+ * 섹션 헤더에 표시하는 정렬 기준 문구 (하드코딩 상수, 섹션당 1회만 표시). 회복률 등 수치 근거는 싣지 않는다
+ * — 3일차 기준 수치라 매일 갱신되는 판정과 대상이 다르고, 가설 검증이 알파 없음으로 종료됐다(2026-11-03).
  */
 const SECTION_META: Record<
   Verdict,
@@ -163,20 +163,13 @@ const SECTION_META: Record<
 const SECTION_ORDER: Verdict[] = ["watching", "neutral", "hold", "stopLoss"];
 
 /** 판정 규칙 정의 (하드코딩 상수). 제작자 본인 대상 화면이라 용어 설명·목적 서술은 생략하고
- * 판정 규칙과 수치 근거만 간결하게 제공한다. */
+ * 판정 규칙만 간결하게 제공한다. */
 const READ_GUIDE = {
   criteria: [
-    { verdict: "약세 전환", condition: "2일차 이후 -10% 초과 하락", meaning: "회복 확률이 낮은 구간" },
-    { verdict: "강세 지속", condition: "2일차 이후 +10% 초과 상승", meaning: "추가 상승 가능성이 높은 구간" },
+    { verdict: "약세 전환", condition: "포착 후 2거래일차부터 -10% 초과 하락", meaning: "회복 확률이 낮은 구간" },
+    { verdict: "강세 지속", condition: "포착 후 2거래일차부터 +10% 초과 상승", meaning: "추가 상승 가능성이 높은 구간" },
     { verdict: "혼조", condition: "그 사이", meaning: "방향성 불명확" },
     { verdict: "판단 대기", condition: "아직 2일 미도달", meaning: "판단 유보" },
-  ],
-  evidenceIntro:
-    "2026 6~8월 포착 250건(102종목) · 30거래일 궤적 기준. 역배열 하락장 데이터라 국면 전환 시 재검증 필요.",
-  evidence: [
-    "3일차 +10% 이상: 회복률 63~69%, 최대 +25~60%, 최대 낙폭 -8%",
-    "3일차 -10% 이하: 회복률 28~37%, 최대 낙폭 -27~-40%",
-    "그 사이: 회복률 38~52%",
   ],
 };
 
@@ -840,19 +833,6 @@ function ReadGuide() {
               ))}
             </tbody>
           </table>
-        </div>
-
-        <div>
-          <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed mb-1.5">
-            {READ_GUIDE.evidenceIntro}
-          </p>
-          <ul className="list-disc pl-4 space-y-0.5">
-            {READ_GUIDE.evidence.map((line, idx) => (
-              <li key={idx} className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
-                {line}
-              </li>
-            ))}
-          </ul>
         </div>
       </CollapsibleSection>
     </div>
