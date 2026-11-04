@@ -194,7 +194,7 @@
 
 **현상**: 같은 종목·같은 날을 두 테이블에서 대조하면 값이 다를 수 있다. 버그가 아니다.
 - `stock_trajectory` — 확정값 기록. 발견 이후 거래일별 OHLCV·지표를 마감 후 값으로 쌓는다(day0 장중값은 10/30 교정, 11/2부터 장중 저장 차단).
-- `overnight_screening_items` — 실행 시점 로그. 그날 스크리너가 본 판단 입력(`tail_ratio`·`volume_ratio`·`classification`·`reasons`·`rsi14`·`quant_signal`)을 그대로 남긴다. 10/30 교정 때도 판단 입력은 바꾸지 않았다(`entry_close`·`open_return`·`close_return`만 교정).
+- `overnight_screening_items` — 실행 시점 로그. 그날 스크리너가 본 판단 입력(`tail_ratio`·`volume_ratio`·`classification`·`reasons`·`rsi14`·`quant_signal`)을 그대로 남긴다 — 단, `quant_signal` 은 예외다. 10/14 `backfill-quant-signal`(recalculate=true)이 저장 지표로 468행을 재계산했다(false→true 32건). 실행 시점 판정이 아니다([quant_signal 컬럼은 스크리닝 당시 판정이 아니다](#p2-quant_signal-컬럼은-스크리닝-당시-판정이-아니다-2026-10-14) 참고). 10/30 교정 때도 판단 입력은 바꾸지 않았다(`entry_close`·`open_return`·`close_return`만 교정).
 **대응**: 두 테이블을 맞추려 하지 않는다. 대조 결과가 다르면 위 정의부터 확인한다.
 
 ### P3: day0 지표 복구 불가 — 신규상장 5건 (2026-10-30)

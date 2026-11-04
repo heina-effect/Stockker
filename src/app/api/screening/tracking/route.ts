@@ -101,9 +101,11 @@ export async function GET() {
   // 선정 조건(기간 제한 없음): stock_trajectory WHERE days_after = 0
   //   AND rsi14 BETWEEN 50 AND 60 AND vol_ratio_20 BETWEEN 200 AND 400
   // 즉 발굴일(day0)에 저장된 지표로 거른다. overnight_screening_items.quant_signal 컬럼은 쓰지
-  // 않는다 — quant_signal은 스크리닝 시점 실시간 지표(130봉 RSI)로, 여기 rsi14는 저장 시점 61봉
-  // RSI로 판정되므로 두 집합이 같다는 보장이 없다(RSI 기준 차이로 신호 판정 약 4.79% 불일치,
-  // docs/release/known-issues.md "A트랙 선정 지표 편향").
+  // 않는다. 11/03 실측으로 두 기준은 거의 일치한다(발굴 557건 중 quant_signal 51 / 인라인 조건 52 /
+  // 교집합 51). 이 일치는 규칙이 같다는 뜻이 아니다 — 10/14 backfill-quant-signal(recalculate=true)이
+  // 그때까지의 468행을 저장 지표로 재계산해, 그 행들의 컬럼은 스크리닝 시점 판정을 보존하지 않는다.
+  // 그래서 그 구간의 "실시간 판정과의 차이"는 지금 이 컬럼으로 측정할 수 없다.
+  // docs/release/known-issues.md "quant_signal 컬럼은 스크리닝 당시 판정이 아니다", "A트랙 선정 지표 편향" 참고.
   // 이 조건은 2026년 아웃오브샘플 표본을 쌓는 중이라 관측 도중 바꾸지 않는다(바꾸면 쌓인 표본을
   // 쓸 수 없다). QUANT_SIGNAL_CRITERIA도 import하지 않고 값을 여기 고정한다.
   // 같은 symbol이 여러 번 조건에 걸렸어도 각 발굴 건을 독립 이벤트로 전부 추적한다(대표 1건만
