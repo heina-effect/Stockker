@@ -304,6 +304,33 @@ export async function getDomesticStockDaily(symbol: string): Promise<any> {
 }
 
 /**
+ * 최근 일봉(수정주가) 1페이지 조회 — 자본변동 재발 감지 전용(corporate-actions.ts).
+ * 궤적의 비수정주가 봉과 대조만 하므로 캐시와 페이지네이션을 쓰지 않는다.
+ */
+export async function getDomesticStockDailyAdjustedRecent(
+  symbol: string,
+  endDateYYYYMMDD: string,
+  windowDays = 30
+): Promise<any[]> {
+  const y = Number(endDateYYYYMMDD.slice(0, 4));
+  const m = Number(endDateYYYYMMDD.slice(4, 6)) - 1;
+  const d = Number(endDateYYYYMMDD.slice(6, 8));
+  const start = new Date(Date.UTC(y, m, d - windowDays)).toISOString().slice(0, 10).replace(/-/g, "");
+  const res = await callKisApi<KisRawResponse>(
+    `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?${new URLSearchParams({
+      FID_COND_MRKT_DIV_CODE: "J",
+      FID_INPUT_ISCD: symbol,
+      FID_INPUT_DATE_1: start,
+      FID_INPUT_DATE_2: endDateYYYYMMDD,
+      FID_PERIOD_DIV_CODE: "D",
+      FID_ORG_ADJ_PRC: "0", // 0: 수정주가
+    }).toString()}`,
+    { method: "GET", trId: "FHKST03010100", useQuoteCreds: true }
+  );
+  return ((res.output2 || res.output) as unknown as any[]) || [];
+}
+
+/**
  * 국내 주식 일봉 조회 — getDomesticStockDaily와 같은 조건(수정주가, 130봉 목표·최대 3페이지·
  * 페이지당 150 캘린더일)으로, 페이지네이션 시작점만 "오늘" 대신 endDate로 옮긴 것.
  * 스크리닝이 그날 계산한 day0 지표를 사후에 같은 방식으로 재현하는 백필 전용이다

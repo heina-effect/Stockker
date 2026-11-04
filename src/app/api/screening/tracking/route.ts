@@ -4,6 +4,7 @@ import { formatKSTDateCompact } from "@/server/screening/storage";
 import { fetchAllRows } from "@/server/screening/paginate";
 import { getTradingDaysBetween } from "@/server/screening/trading-calendar";
 import { TRACKING_WINDOW_DAYS_AFTER } from "@/server/screening/trajectory-update";
+import { findCorporateActionInRange, type CorporateAction } from "@/server/screening/corporate-actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -288,6 +289,7 @@ export async function GET() {
     haltIncomplete: boolean; // 거래정지로 day3 종가 없이 상한 초과로 종료된 건(통계 제외, "관측 미완")
     isRecentlyActive: boolean; // 관찰 지속성 보조표시(§1, 참고용 — 규칙 아님). daysAfter<30이면 항상 false.
     recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
+    corporateAction: CorporateAction | null; // 발굴일 뒤 자본변동 — 있으면 수익률을 계산하지 않고 통계에서 뺀다
   }
 
   const quantSignalItems: QuantSignalItem[] = [];
@@ -324,6 +326,8 @@ export async function GET() {
         : daysAfter;
     const currentClose = tradeDateMap.get(validDatesForReturn[validDatesForReturn.length - 1])!.close;
     const group: "pending" | "result" = validDatesForReturn.length - 1 < QUANT_SIGNAL_FRESH_DAYS ? "pending" : "result";
+    // 가격 시계열이 종목 단위로 합쳐지므로 이 건의 궤적이 아니라 합친 시계열의 끝까지 본다
+    const corporateAction = findCorporateActionInRange(row.symbol, row.discovery_date, sortedDates[sortedDates.length - 1]);
 
     let day3ReturnPct: number | null = null;
     let maxReturnSoFarPct: number | null = null;
@@ -336,7 +340,7 @@ export async function GET() {
     let endClose: number | null = null;
     let endReturnPct: number | null = null;
 
-    if (group === "result") {
+    if (group === "result" && !corporateAction) {
       const day3Close = tradeDateMap.get(validDatesForReturn[QUANT_SIGNAL_FRESH_DAYS])!.close;
       day3ReturnPct = Number((((day3Close - entryClose) / entryClose) * 100).toFixed(2));
 
@@ -400,7 +404,7 @@ export async function GET() {
     // 등락폭(recent_range)과 평균 거래량비율(recent_vol)로 "최근에도 변동성 지속 중"인지 참고
     // 판단한다. 승/패 판정이나 집계 통계와는 무관한 순수 참고 표시 — 3일차 규칙 계산에 영향 없음.
     let isRecentlyActive = false;
-    if (daysAfter >= 30) {
+    if (daysAfter >= 30 && !corporateAction) {
       const windowDates = sortedDates.slice(26, 31); // days_after 26~30(최근 5거래일)
       if (windowDates.length > 0) {
         const windowReturns = windowDates.map((d) => {
@@ -419,8 +423,8 @@ export async function GET() {
     // 관찰 중/종료(2026-10-30 통일) — 판정 기준이 3일차 종가 청산이므로 day3 종가가 있으면 종료.
     // 3일차 이내 거래정지로 day3 종가가 영영 안 생기는 건은 경과 거래일이 추적 상한을 넘으면
     // 유효일 수와 무관하게 "거래정지로 관측 미완"으로 종료한다(무한 관찰 중 방지).
-    const haltIncomplete = exitDay3Pct == null && elapsedTradingDays > TRACKING_WINDOW_DAYS_AFTER;
-    const observationEnded = exitDay3Pct != null || haltIncomplete;
+    const haltIncomplete = !corporateAction && exitDay3Pct == null && elapsedTradingDays > TRACKING_WINDOW_DAYS_AFTER;
+    const observationEnded = corporateAction != null || exitDay3Pct != null || haltIncomplete;
 
     quantSignalItems.push({
       symbol: row.symbol,
@@ -449,6 +453,7 @@ export async function GET() {
       haltIncomplete,
       isRecentlyActive,
       recentRecapture: recentRecaptureBySymbol.get(row.symbol) ?? null,
+      corporateAction,
     });
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
@@ -460,7 +465,9 @@ export async function GET() {
   const resultItems = quantSignalItems.filter((i) => i.exitDay3Pct != null);
   // 통계에서 제외된 관측 중(day3 미도달) 건수 — 거래정지로 관측 미완 종료된 건은 따로 센다.
   const haltIncompleteCount = quantSignalItems.filter((i) => i.haltIncomplete).length;
-  const observingExcludedCount = quantSignalItems.length - resultItems.length - haltIncompleteCount;
+  const corporateActionExcludedCount = quantSignalItems.filter((i) => i.corporateAction).length;
+  const observingExcludedCount =
+    quantSignalItems.length - resultItems.length - haltIncompleteCount - corporateActionExcludedCount;
   const avgDay3ReturnPct =
     resultItems.length > 0
       ? Number(
@@ -531,6 +538,7 @@ export async function GET() {
     resultCount: resultItems.length,
     observingExcludedCount,
     haltIncompleteCount,
+    corporateActionExcludedCount,
     roundTripCostPct: ROUND_TRIP_COST_PCT, // 감사용 — 화면에 그대로 노출
     stopLossThresholdPct: STOP_LOSS_THRESHOLD_PCT,
     avgDay3ReturnPct,
@@ -546,7 +554,7 @@ export async function GET() {
   if (trackedSymbols.length === 0) {
     return NextResponse.json({
       ok: true,
-      summary: { total: 0, stopLoss: 0, hold: 0, watching: 0 },
+      summary: { total: 0, stopLoss: 0, hold: 0, watching: 0, corporateActionExcluded: 0 },
       stageCounts: { primary: 0, secondary: 0, ended: 0 },
       items: [],
       quantSignalItems,
@@ -670,14 +678,15 @@ export async function GET() {
     daysAfter: number;
     entryClose: number;
     currentClose: number;
-    returnPct: number;
-    verdict: Verdict;
+    returnPct: number | null; // 자본변동이 끼면 null
+    verdict: Verdict | null; // 자본변동이 끼면 null
+    corporateAction: CorporateAction | null;
     isFavorite: boolean;
     captureCount: number;
     captureDates: string[];
     captureHistory: { date: string; entryClose: number }[];
-    maxReturnPct: number;
-    minReturnPct: number;
+    maxReturnPct: number | null;
+    minReturnPct: number | null;
     stage: "primary" | "secondary" | "ended";
     cycleNumber: number;
     priorCycleCount: number;
@@ -707,10 +716,14 @@ export async function GET() {
     const daysAfterRange = calendarDays.filter((d) => d >= latestCycle.entryDate && d <= lastAvailableDate);
     const daysAfter = daysAfterRange.length > 0 ? daysAfterRange.length - 1 : sortedTradeDates.length - 1;
     const currentClose = Number(tradeDateMap.get(lastAvailableDate) || 0);
-    const returnPct = Number((((currentClose - entryClose) / entryClose) * 100).toFixed(2));
+    // 사이클 시작 뒤 자본변동이 끼면 진입가와 이후 종가의 기준이 달라 수익률·판정을 내지 않는다
+    const corporateAction = findCorporateActionInRange(symbol, latestCycle.entryDate, lastAvailableDate);
+    const returnPct = corporateAction ? null : Number((((currentClose - entryClose) / entryClose) * 100).toFixed(2));
 
-    let verdict: Verdict;
-    if (daysAfter < 2) {
+    let verdict: Verdict | null;
+    if (returnPct === null) {
+      verdict = null;
+    } else if (daysAfter < 2) {
       verdict = "watching";
     } else if (returnPct <= -10) {
       verdict = "stopLoss";
@@ -724,8 +737,8 @@ export async function GET() {
       const c = Number(tradeDateMap.get(d) || 0);
       return ((c - entryClose) / entryClose) * 100;
     });
-    const maxReturnPct = Number(Math.max(...returnSeries).toFixed(2));
-    const minReturnPct = Number(Math.min(...returnSeries).toFixed(2));
+    const maxReturnPct = corporateAction ? null : Number(Math.max(...returnSeries).toFixed(2));
+    const minReturnPct = corporateAction ? null : Number(Math.min(...returnSeries).toFixed(2));
 
     let stage: "primary" | "secondary" | "ended";
     if (daysAfter <= PRIMARY_STAGE_DAYS_AFTER) stage = "primary";
@@ -741,6 +754,7 @@ export async function GET() {
       currentClose,
       returnPct,
       verdict,
+      corporateAction,
       isFavorite: favoriteSymbols.has(symbol),
       captureCount: latestCycle.captures.length,
       captureDates: latestCycle.captures.map((h) => h.date),
@@ -756,20 +770,23 @@ export async function GET() {
 
   // 정렬은 대표 행(종목) 기준으로 기존 규칙 유지
   const verdictOrder: Record<Verdict, number> = { stopLoss: 0, hold: 1, neutral: 2, watching: 3 };
+  const orderOf = (v: Verdict | null) => (v === null ? 4 : verdictOrder[v]);
   items.sort((a, b) => {
-    const vo = verdictOrder[a.verdict] - verdictOrder[b.verdict];
+    const vo = orderOf(a.verdict) - orderOf(b.verdict);
     if (vo !== 0) return vo;
     return b.discoveryDate.localeCompare(a.discoveryDate);
   });
 
   // 요약 건수는 "primary" 단계(0~10영업일, 매매 판단 유효기간)만 집계 — 4컬럼 칸반에 실제로
   // 보이는 것과 일치시켜, /overnight 진입 배지가 칸반과 다른 숫자를 보여주지 않게 한다.
-  const primaryItems = items.filter((i) => i.stage === "primary");
+  // 자본변동으로 판정이 없는 건은 빼고, 제외 건수는 단계와 무관하게 따로 낸다.
+  const primaryItems = items.filter((i) => i.stage === "primary" && !i.corporateAction);
   const summary = {
     total: primaryItems.length,
     stopLoss: primaryItems.filter((i) => i.verdict === "stopLoss").length,
     hold: primaryItems.filter((i) => i.verdict === "hold").length,
     watching: primaryItems.filter((i) => i.verdict === "watching").length,
+    corporateActionExcluded: items.filter((i) => i.corporateAction).length,
   };
   const stageCounts = {
     primary: primaryItems.length,

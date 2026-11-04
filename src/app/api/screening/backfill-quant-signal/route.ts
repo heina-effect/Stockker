@@ -33,7 +33,8 @@ interface BackfillQuantSignalBody {
  *
  * 주의: tracking/route.ts의 A트랙(퀀트 신호 트래커)은 이 라우트가 채우는 quant_signal 컬럼을
  * 읽지 않는다. stock_trajectory day0의 rsi14·vol_ratio_20에 같은 범위를 직접 걸어 고른다.
- * 일일 스크리닝이 실시간 지표로 기록한 quant_signal과 그 집합은 다를 수 있다.
+ * 10/14 재실행으로 그때까지의 행은 저장 지표 재계산값이고, 10/15 이후 행만 일일 스크리닝의 실시간
+ * 판정이다. 어느 쪽도 A트랙 집합과 같다는 보장은 없다.
  *
  * recalculate=true는 stock_trajectory의 rsi14 계산식이 바뀌었을 때(예: RSI 평활 방식 변경)
  * 이미 채워진 행도 최신 값으로 다시 동기화하기 위한 용도다(기본값 false는 NULL만 채움,

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getDomesticStockDailyAround, getKSTPersistWindow } from "@/server/kis/rest-client";
+import { warnUnknownCorporateActions } from "@/server/screening/corporate-actions";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { formatKSTDateCompact } from "@/server/screening/storage";
 import { recalculateIndicatorsForDiscovery } from "@/server/screening/indicators";
@@ -224,6 +225,9 @@ export async function runDailyTrajectoryUpdate(): Promise<TrajectoryUpdateResult
     return false;
   };
 
+  // 저장을 마친 뒤 자본변동 재발 감지에 쓴다 — 저장 창을 쓰지 않도록 저장 루프 안에서는 조회하지 않는다.
+  const rawCandlesBySymbol = new Map<string, any[]>();
+
   for (const target of targets) {
     try {
       const { tradingDays: tradingDaysForTarget, discIndex } = target;
@@ -246,6 +250,7 @@ export async function runDailyTrajectoryUpdate(): Promise<TrajectoryUpdateResult
       );
 
       let wroteAny = false;
+      rawCandlesBySymbol.set(target.symbol, candles || []);
       for (const tradeDate of toProcess) {
         const daysAfter = tradingDaysForTarget.indexOf(tradeDate) - discIndex;
         if (daysAfter > TRACKING_WINDOW_DAYS_AFTER - 1) break; // 윈도우 초과분은 쓰지 않음(추적 종료)
@@ -307,6 +312,8 @@ export async function runDailyTrajectoryUpdate(): Promise<TrajectoryUpdateResult
 
   // 불변식: day0 행을 새로 쓴 그룹은 스크리닝 항목 entry_close 와 day0 종가가 같아야 한다(다르면 경고만)
   await warnEntryDay0Mismatches(supabase, day0Written, "trajectory-update");
+  // 재발 감지: 수정주가·비수정주가 종가가 벌어졌는데 자본변동 목록에 없으면 경고만 남긴다
+  await warnUnknownCorporateActions(rawCandlesBySymbol, todayKey, "trajectory-update");
 
   const durationMs = Date.now() - startedAt;
   const result: TrajectoryUpdateResult = {

@@ -12,6 +12,14 @@ type Verdict = "stopLoss" | "hold" | "neutral" | "watching";
 // 기간(판단 대상 아님), 기본 화면에서는 숨고 검색으로만. ended(30일 초과): 완전 종료, 검색으로만.
 type TrackingStage = "primary" | "secondary" | "ended";
 
+interface CorporateActionInfo {
+  symbol: string;
+  date: string;
+  flngClsCode: string;
+}
+
+const CORPORATE_ACTION_NOTICE = "자본변동 발생 — 수익률 계산 불가";
+
 interface TrackingItem {
   symbol: string;
   name: string;
@@ -19,14 +27,15 @@ interface TrackingItem {
   daysAfter: number; // 현재 관찰 사이클 entryDate로부터 경과 거래일수
   entryClose: number; // 포착가 (현재 관찰 사이클 entryDate 종가)
   currentClose: number;
-  returnPct: number; // 예상수익률 (현재 관찰 사이클 포착가 대비)
-  verdict: Verdict; // 현재 관찰 사이클 기준 판정
+  returnPct: number | null; // 예상수익률 (현재 관찰 사이클 포착가 대비). 자본변동이 끼면 null
+  verdict: Verdict | null; // 현재 관찰 사이클 기준 판정. 자본변동이 끼면 null
+  corporateAction: CorporateActionInfo | null;
   isFavorite: boolean;
   captureCount: number; // 현재 관찰 사이클 내 포착(재등장) 횟수
   captureDates: string[]; // 포착일 목록(현재 사이클), 오름차순
   captureHistory: { date: string; entryClose: number }[]; // 포착일+그날 진입가(현재 사이클), 오름차순
-  maxReturnPct: number; // 현재 사이클 포착가 대비 이후 최고 등락률(MFE)
-  minReturnPct: number; // 현재 사이클 포착가 대비 이후 최저 등락률(MAE)
+  maxReturnPct: number | null; // 현재 사이클 포착가 대비 이후 최고 등락률(MFE)
+  minReturnPct: number | null; // 현재 사이클 포착가 대비 이후 최저 등락률(MAE)
   stage: TrackingStage;
   cycleNumber: number; // 이 종목의 몇 번째 관찰 사이클인지(1부터)
   priorCycleCount: number; // 이전에 완전 종료된(30일 초과 후 리셋된) 사이클 수
@@ -67,6 +76,7 @@ interface QuantSignalItem {
   haltIncomplete: boolean;
   isRecentlyActive: boolean; // 관찰 지속성 보조표시(참고용) — daysAfter<30이면 항상 false(변경 없음)
   recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
+  corporateAction: CorporateActionInfo | null; // 발굴일 뒤 자본변동 — 있으면 수익률이 전부 null, 통계 제외
 }
 
 // 청산 규칙 하나에 대한 성과 묶음 — 백엔드 computeExitStats()가 규칙별로 같은 산식으로 만든다.
@@ -85,6 +95,7 @@ interface QuantSignalStats {
   resultCount: number; // = exitDay3 통계의 n(day3 종가 존재 건)
   observingExcludedCount: number; // 관측 중(day3 미도달)으로 통계에서 제외된 건수
   haltIncompleteCount: number; // 거래정지로 관측 미완 종료 — 통계 제외
+  corporateActionExcludedCount: number; // 발굴일 뒤 자본변동 — 통계 제외
   roundTripCostPct: number; // 왕복 비용 가정치(감사용으로 그대로 노출)
   stopLossThresholdPct: number;
   avgDay3ReturnPct: number | null;
@@ -102,7 +113,7 @@ const QUANT_MIN_RELIABLE_N = 100;
 
 interface TrackingResponse {
   ok: boolean;
-  summary: { total: number; stopLoss: number; hold: number; watching: number };
+  summary: { total: number; stopLoss: number; hold: number; watching: number; corporateActionExcluded: number };
   stageCounts: { primary: number; secondary: number; ended: number };
   items: TrackingItem[];
   quantSignalItems: QuantSignalItem[];
@@ -183,9 +194,9 @@ function formatDiscoveryDate(yyyymmdd: string): string {
 function sortSectionItems(verdict: Verdict, sectionItems: TrackingItem[]): TrackingItem[] {
   const sorted = [...sectionItems];
   if (verdict === "stopLoss") {
-    sorted.sort((a, b) => a.returnPct - b.returnPct);
+    sorted.sort((a, b) => (a.returnPct ?? 0) - (b.returnPct ?? 0));
   } else if (verdict === "hold") {
-    sorted.sort((a, b) => b.returnPct - a.returnPct);
+    sorted.sort((a, b) => (b.returnPct ?? 0) - (a.returnPct ?? 0));
   } else {
     sorted.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
   }
@@ -243,15 +254,15 @@ function CaptureInfo({
 }: {
   captureCount: number;
   captureHistory: { date: string; entryClose: number }[];
-  maxReturnPct: number;
-  minReturnPct: number;
+  maxReturnPct: number | null;
+  minReturnPct: number | null;
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
   if (captureCount <= 1) return null;
 
   const showDots = captureCount >= 2;
-  const showMinMax = captureCount >= 3;
+  const showMinMax = captureCount >= 3 && maxReturnPct != null && minReturnPct != null;
   const filledDots = Math.min(captureCount, MAX_DOTS);
   const overflowCount = Math.max(0, captureCount - MAX_DOTS);
 
@@ -350,7 +361,7 @@ function CompactCard({
 }: {
   symbol: string;
   name: string;
-  returnPct: number;
+  returnPct: number | null; // null = 자본변동으로 수익률 계산 불가
   dateLabel: string;
   discoveryDate: string;
   daysAfter: number;
@@ -389,18 +400,28 @@ function CompactCard({
       {/* 상단 2줄: 종목코드 ↔ 예상수익률 (justify-between으로 항상 여백 확보, 겹침 없음) */}
       <div className="flex items-center justify-between gap-2 mt-0.5">
         <span className="text-xs font-mono text-slate-400 dark:text-zinc-500 truncate min-w-0">{symbol}</span>
-        <span className={`text-base font-extrabold flex-shrink-0 ${priceColor}`}>
-          {returnPct >= 0 ? "+" : ""}
-          {returnPct.toFixed(1)}%
-        </span>
+        {returnPct == null ? (
+          <span className="text-xs font-semibold text-right text-amber-600 dark:text-amber-400">{CORPORATE_ACTION_NOTICE}</span>
+        ) : (
+          <span className={`text-base font-extrabold flex-shrink-0 ${priceColor}`}>
+            {returnPct >= 0 ? "+" : ""}
+            {returnPct.toFixed(1)}%
+          </span>
+        )}
       </div>
 
       {/* 중단: 포착일·경과일·가격 (현재가는 예상수익률과 동일한 색상 규칙 적용). dateLine이 오면
           표준 줄 대신 그걸 그린다(퀀트 관찰종료 카드 전용 "발굴일→종료일" 형식). */}
       {dateLine ?? (
         <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1.5">
-          {dateLabel} {formatDiscoveryDate(discoveryDate)} ({daysAfter}일 경과) · {entryClose.toLocaleString()} →{" "}
-          <span className={priceColor}>{currentClose.toLocaleString()}</span>
+          {dateLabel} {formatDiscoveryDate(discoveryDate)} ({daysAfter}일 경과) · {entryClose.toLocaleString()}
+          {/* 자본변동 뒤 현재가는 진입가와 기준이 달라 나란히 두지 않는다 */}
+          {returnPct != null && (
+            <>
+              {" → "}
+              <span className={priceColor}>{currentClose.toLocaleString()}</span>
+            </>
+          )}
         </p>
       )}
 
@@ -671,7 +692,9 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
                   <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
                     {item.name}
                   </Link>
-                  {item.haltIncomplete ? (
+                  {item.corporateAction ? (
+                    <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">{CORPORATE_ACTION_NOTICE}</span>
+                  ) : item.haltIncomplete ? (
                     <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">거래정지로 관측 미완</span>
                   ) : (
                     item.haltStartDaysAfter != null && (
@@ -700,7 +723,12 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
                 )}
                 <td className="px-2 py-1.5 text-center">
                   {win == null ? (
-                    <span className="text-slate-400 dark:text-zinc-500" title="거래정지로 3일차 종가 없음 — 통계 제외">제외</span>
+                    <span
+                      className="text-slate-400 dark:text-zinc-500"
+                      title={item.corporateAction ? `${CORPORATE_ACTION_NOTICE} — 통계 제외` : "거래정지로 3일차 종가 없음 — 통계 제외"}
+                    >
+                      제외
+                    </span>
                   ) : win ? (
                     <span className="text-rose-500 font-bold">승</span>
                   ) : (
@@ -971,6 +999,7 @@ export default function TrackingPage() {
   }
 
   const { summary, quantSignalStats } = data;
+  const corporateActionItems = items.filter((i) => i.corporateAction);
   // 퀀트 신호 카드는 즐겨찾기 개념이 없으므로 "즐겨찾기만" 필터가 켜지면 표시하지 않는다.
   // 헤드라인 통계(승률/손익비 등)는 이 즐겨찾기 필터와 무관하게 항상 전체 표본 기준(data.quantSignalStats)
   // 이므로 아래 favoriteOnly/검색 필터링은 카드 목록 표시에만 영향을 준다.
@@ -989,8 +1018,9 @@ export default function TrackingPage() {
     item.symbol.toLowerCase().includes(quantSearchQuery);
   const quantObservingItems = quantObservingItemsBase.filter(matchesQuantSearch);
   const quantEndedItems = quantEndedItemsBase.filter(matchesQuantSearch);
-  const quantEndedWithDay3Count = quantEndedItems.filter((i) => !i.haltIncomplete).length;
-  const quantHaltIncompleteCount = quantEndedItems.length - quantEndedWithDay3Count;
+  const quantHaltIncompleteCount = quantEndedItems.filter((i) => i.haltIncomplete).length;
+  const quantCorporateActionCount = quantEndedItems.filter((i) => i.corporateAction).length;
+  const quantEndedWithDay3Count = quantEndedItems.length - quantHaltIncompleteCount - quantCorporateActionCount;
 
   // 동일 symbol이 서로 다른 발굴일에 여러 번 독립적으로 퀀트 신호 조건을 만족한 경우(정상 설계,
   // 2026-09-17 검증됨 — 예: 대원전선 7/3·7/14), 카드를 이벤트별로 따로 그리지 않고 종목(symbol)
@@ -1040,6 +1070,9 @@ export default function TrackingPage() {
         <p className="text-sm text-slate-500 dark:text-zinc-400 mb-3">
           추적 중 {summary.total} · 약세전환 {summary.stopLoss} · 강세지속{" "}
           {summary.hold} · 판단대기 {summary.watching}
+          {summary.corporateActionExcluded > 0 && (
+            <span className="text-amber-600 dark:text-amber-400"> · 자본변동 제외 {summary.corporateActionExcluded}</span>
+          )}
         </p>
 
         {/* 검색(§3) + 즐겨찾기 필터 — 둘 다 우측 정렬로 나란히 배치(좁은 화면에서는 줄바꿈 허용).
@@ -1111,6 +1144,12 @@ export default function TrackingPage() {
                     {"  ·  표본 "}
                     {quantSignalStats.sampleSymbolCount}종목
                   </span>
+                  {quantSignalStats.corporateActionExcludedCount > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      {"  ·  자본변동 제외 "}
+                      {quantSignalStats.corporateActionExcludedCount}건
+                    </span>
+                  )}
                 </p>
                 {/* 2줄: 평균 최고 → 3일차 (고점 반납) */}
                 {quantSignalStats.avgMaxReturnSoFarPct != null && quantSignalStats.avgDay3ReturnPct != null && (
@@ -1178,6 +1217,11 @@ export default function TrackingPage() {
                   {quantHaltIncompleteCount > 0 && (
                     <span className="ml-1 text-xs font-normal text-amber-600 dark:text-amber-400">
                       + 거래정지로 관측 미완 {quantHaltIncompleteCount}건(통계 제외)
+                    </span>
+                  )}
+                  {quantCorporateActionCount > 0 && (
+                    <span className="ml-1 text-xs font-normal text-amber-600 dark:text-amber-400">
+                      + 자본변동 {quantCorporateActionCount}건(통계 제외)
                     </span>
                   )}
                 </h3>
@@ -1366,6 +1410,32 @@ export default function TrackingPage() {
                 );
               })}
             </div>
+
+            {/* 자본변동 건은 판정이 없어 칸반 어디에도 속하지 않는다 — 데스크톱·모바일 공통으로 따로 둔다 */}
+            {corporateActionItems.length > 0 && (
+              <section className="mt-4">
+                <h2 className="text-sm font-bold text-slate-700 dark:text-zinc-300 mb-2">
+                  자본변동 제외 {corporateActionItems.length}건
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {corporateActionItems.map((item) => (
+                    <CompactCard
+                      key={item.symbol}
+                      symbol={item.symbol}
+                      name={item.name}
+                      returnPct={item.returnPct}
+                      dateLabel="현재 사이클 시작"
+                      discoveryDate={item.discoveryDate}
+                      daysAfter={item.daysAfter}
+                      entryClose={item.entryClose}
+                      currentClose={item.currentClose}
+                      stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
+                      trackTone="kanban"
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
         </div>

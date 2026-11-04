@@ -29,6 +29,7 @@ vi.mock("@/server/screening/storage", () => ({
 }));
 vi.mock("@/server/screening/indicators", () => ({ recalculateIndicatorsForDiscovery: vi.fn() }));
 vi.mock("@/server/screening/entry-invariant", () => ({ warnEntryDay0Mismatches: vi.fn() }));
+vi.mock("@/server/screening/corporate-actions", () => ({ warnUnknownCorporateActions: vi.fn() }));
 vi.mock("@/server/screening/paginate", () => ({ fetchAllRows: async () => h.traj }));
 vi.mock("@/server/screening/rate-limit-retry", () => ({ withRateLimitRetry: (fn: () => unknown) => fn() }));
 vi.mock("@/server/screening/trading-calendar", () => ({
