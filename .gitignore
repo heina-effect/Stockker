@@ -68,14 +68,14 @@ supabase/.temp/
 backup_*.sql
 backup_*.json
 backup_*.csv
-supabase/.temp/
 scratch/
-docs/quant-hypothesis.md
-docs/phases/phase-41-report.md
-docs/phases/phase-42-report.md
+# 비공개 문서 — 전략 수치·개인 자금 배분 원칙 포함. 공개 저장소 대비(2026-10-08 결정)
 docs/quant-hypothesis.md
 docs/phases/phase-41-report.md
 docs/phases/phase-42-report.md
 
 # 배포하지 않음 (2026-10-29 결정) — 로컬 전용
 vercel.json
+
+# 작업 메모·보고 (로컬 전용)
+.work/
