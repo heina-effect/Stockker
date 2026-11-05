@@ -6,44 +6,99 @@ vi.mock("@/server/screening/rate-limit-retry", () => ({ withRateLimitRetry: (fn:
 import { getDomesticStockDailyAdjustedRecent } from "@/server/kis/rest-client";
 import {
   CORPORATE_ACTIONS,
-  findCorporateActionInRange,
+  corporateAdjustmentLabel,
+  findCorporateActionsInRange,
   findLatestAdjustedRawGap,
+  lastDateUsedByQuantItem,
+  priceAdjustmentFactor,
   warnUnknownCorporateActions,
 } from "./corporate-actions";
 
 const bar = (date: string, close: number) => ({ stck_bsop_date: date, stck_clpr: String(close) });
 
-describe("findCorporateActionInRange", () => {
-  const actions = [{ symbol: "111111", date: "20260731", flngClsCode: "00" }];
+describe("findCorporateActionsInRange", () => {
+  const actions = [
+    { symbol: "111111", date: "20260731", flngClsCode: "00", adjustment: { kind: "merge", ratio: 5 }, rceptNo: "1" },
+  ] as const;
+  const dates = (s: string, entry: string, last: string) =>
+    findCorporateActionsInRange(s, entry, last, actions).map((a) => a.date);
 
-  it("발굴일 뒤, 마지막 저장일까지의 이벤트를 찾는다", () => {
-    expect(findCorporateActionInRange("111111", "20260707", "20260731", actions)?.date).toBe("20260731");
-    expect(findCorporateActionInRange("111111", "20260707", "20260820", actions)?.date).toBe("20260731");
+  it("발굴일 뒤, 마지막 날짜까지의 이벤트를 찾는다", () => {
+    expect(dates("111111", "20260707", "20260731")).toEqual(["20260731"]);
+    expect(dates("111111", "20260707", "20260820")).toEqual(["20260731"]);
   });
 
-  it("발굴일 당일·이전 이벤트와 마지막 저장일 이후 이벤트는 해당하지 않는다", () => {
-    expect(findCorporateActionInRange("111111", "20260731", "20260820", actions)).toBeNull();
-    expect(findCorporateActionInRange("111111", "20260801", "20260820", actions)).toBeNull();
-    expect(findCorporateActionInRange("111111", "20260707", "20260730", actions)).toBeNull();
+  it("발굴일 당일·이전 이벤트와 마지막 날짜 이후 이벤트, 다른 종목은 해당하지 않는다", () => {
+    expect(dates("111111", "20260731", "20260820")).toEqual([]);
+    expect(dates("111111", "20260707", "20260730")).toEqual([]);
+    expect(dates("222222", "20260707", "20260820")).toEqual([]);
   });
+});
 
-  it("다른 종목은 해당하지 않는다", () => {
-    expect(findCorporateActionInRange("222222", "20260707", "20260820", actions)).toBeNull();
-  });
-
-  it("조사한 왜곡 5그룹이 기본 목록으로 걸리고, 이벤트에 닿지 않은 그룹은 걸리지 않는다", () => {
+describe("등재한 이벤트", () => {
+  it("207940 만 비율이 없고, 나머지는 접수번호가 있다", () => {
     expect(CORPORATE_ACTIONS).toHaveLength(9);
-    for (const [s, entry, last] of [
-      ["001210", "20260707", "20260820"],
-      ["001210", "20260708", "20260821"],
-      ["001210", "20260709", "20260824"],
-      ["225190", "20260812", "20260928"],
-      ["225190", "20260813", "20260929"],
-    ]) {
-      expect(findCorporateActionInRange(s, entry, last)).not.toBeNull();
-    }
-    expect(findCorporateActionInRange("018000", "20260827", "20261015")).toBeNull();
-    expect(findCorporateActionInRange("001210", "20261012", "20261103")).toBeNull();
+    expect(CORPORATE_ACTIONS.filter((a) => !a.adjustment).map((a) => a.symbol)).toEqual(["207940"]);
+    expect(CORPORATE_ACTIONS.filter((a) => a.adjustment && !a.rceptNo)).toEqual([]);
+  });
+});
+
+describe("priceAdjustmentFactor", () => {
+  it("병합 전 가격은 비율을 곱하고, 이벤트 당일부터는 1이다", () => {
+    expect(priceAdjustmentFactor("225190", "20260923")).toBe(5);
+    expect(priceAdjustmentFactor("225190", "20260928")).toBe(1);
+  });
+
+  it("권리락은 기준가/전일 종가로 맞춰 KIS 수정주가와 같아진다", () => {
+    expect(Math.round(347000 * priceAdjustmentFactor("196170", "20260804"))).toBe(267000);
+    expect(Math.round(2040 * priceAdjustmentFactor("321370", "20260706"))).toBe(1851);
+  });
+
+  it("비율이 없는 이벤트는 배율을 만들지 않는다", () => {
+    expect(priceAdjustmentFactor("207940", "20261001")).toBe(1);
+  });
+
+  it("LK삼양 8/12 진입가 1,131 대비 9/28 종가 4,215 는 보정하면 손실이다", () => {
+    const entry = 1131 * priceAdjustmentFactor("225190", "20260812");
+    const close = 4215 * priceAdjustmentFactor("225190", "20260928");
+    expect(Number((((close - entry) / entry) * 100).toFixed(1))).toBe(-25.5);
+  });
+});
+
+describe("corporateAdjustmentLabel", () => {
+  it("병합은 비율, 권리락은 사유로 표시하고 비율 없는 이벤트는 표시하지 않는다", () => {
+    const of = (s: string) => CORPORATE_ACTIONS.filter((a) => a.symbol === s);
+    expect(corporateAdjustmentLabel(of("225190"))).toBe("5:1");
+    expect(corporateAdjustmentLabel(of("196170"))).toBe("권리락 무상증자");
+    expect(corporateAdjustmentLabel(of("207940"))).toBeNull();
+  });
+});
+
+describe("A트랙 제외 범위", () => {
+  // 001210 7/7: 7/15 거래정지 시작으로 유효 구간이 7/14 에서 끊긴다. 합친 시계열은 이벤트(7/31)를 지난다.
+  const haltedValid = ["20260707", "20260708", "20260709", "20260710", "20260713", "20260714"];
+  const days = Array.from({ length: 21 }, (_, i) => `202609${String(i + 1).padStart(2, "0")}`);
+
+  it("001210 7/7 은 계산 구간이 이벤트 앞이라 걸리지 않는다", () => {
+    const last = lastDateUsedByQuantItem(haltedValid, 32.83, 10, 10);
+    expect(last).toBe("20260714");
+    expect(findCorporateActionsInRange("001210", "20260707", last)).toEqual([]);
+  });
+
+  it("day3 가 임계값 미만이면 0~10일 창의 끝까지만 본다", () => {
+    expect(lastDateUsedByQuantItem(days, 3, 10, 10)).toBe("20260911");
+  });
+
+  it("day3 가 임계값 이상이면 최고점 상한이 보는 유효 구간 끝까지 본다", () => {
+    expect(lastDateUsedByQuantItem(days, 10, 10, 10)).toBe("20260921");
+  });
+
+  it("3일차 전이면 유효 구간 끝까지 본다", () => {
+    expect(lastDateUsedByQuantItem(["20260901", "20260902"], null, 10, 10)).toBe("20260902");
+  });
+
+  it("225190 8/12 사이클은 합친 시계열 끝까지 보는 B트랙 판정에 걸린다", () => {
+    expect(findCorporateActionsInRange("225190", "20260812", "20260929").map((a) => a.date)).toEqual(["20260928"]);
   });
 });
 

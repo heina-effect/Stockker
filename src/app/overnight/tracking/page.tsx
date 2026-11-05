@@ -19,6 +19,7 @@ interface CorporateActionInfo {
 }
 
 const CORPORATE_ACTION_NOTICE = "자본변동 발생 — 수익률 계산 불가";
+const corporateAdjustmentNotice = (label: string) => `자본변동 보정(${label}, DART 공시 기준)`;
 
 interface TrackingItem {
   symbol: string;
@@ -27,9 +28,10 @@ interface TrackingItem {
   daysAfter: number; // 현재 관찰 사이클 entryDate로부터 경과 거래일수
   entryClose: number; // 포착가 (현재 관찰 사이클 entryDate 종가)
   currentClose: number;
-  returnPct: number | null; // 예상수익률 (현재 관찰 사이클 포착가 대비). 자본변동이 끼면 null
-  verdict: Verdict | null; // 현재 관찰 사이클 기준 판정. 자본변동이 끼면 null
+  returnPct: number | null; // 예상수익률 (현재 관찰 사이클 포착가 대비). 비율 미확인 자본변동이 끼면 null
+  verdict: Verdict | null; // 현재 관찰 사이클 기준 판정. 비율 미확인 자본변동이 끼면 null
   corporateAction: CorporateActionInfo | null;
+  corporateAdjustmentLabel: string | null; // 있으면 수익률·판정이 자본변동 보정값
   isFavorite: boolean;
   captureCount: number; // 현재 관찰 사이클 내 포착(재등장) 횟수
   captureDates: string[]; // 포착일 목록(현재 사이클), 오름차순
@@ -76,7 +78,8 @@ interface QuantSignalItem {
   haltIncomplete: boolean;
   isRecentlyActive: boolean; // 관찰 지속성 보조표시(참고용) — daysAfter<30이면 항상 false(변경 없음)
   recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
-  corporateAction: CorporateActionInfo | null; // 발굴일 뒤 자본변동 — 있으면 수익률이 전부 null, 통계 제외
+  corporateAction: CorporateActionInfo | null; // 계산 구간 안의 비율 미확인 자본변동 — 수익률이 전부 null, 통계 제외
+  corporateAdjustmentLabel: string | null; // 있으면 수익률이 자본변동 보정값
 }
 
 // 청산 규칙 하나에 대한 성과 묶음 — 백엔드 computeExitStats()가 규칙별로 같은 산식으로 만든다.
@@ -95,7 +98,7 @@ interface QuantSignalStats {
   resultCount: number; // = exitDay3 통계의 n(day3 종가 존재 건)
   observingExcludedCount: number; // 관측 중(day3 미도달)으로 통계에서 제외된 건수
   haltIncompleteCount: number; // 거래정지로 관측 미완 종료 — 통계 제외
-  corporateActionExcludedCount: number; // 발굴일 뒤 자본변동 — 통계 제외
+  corporateActionExcludedCount: number; // 비율 미확인 자본변동 — 통계 제외
   roundTripCostPct: number; // 왕복 비용 가정치(감사용으로 그대로 노출)
   stopLossThresholdPct: number;
   avgDay3ReturnPct: number | null;
@@ -356,6 +359,7 @@ function CompactCard({
   favorite,
   footer,
   stageBadge,
+  adjustmentLabel,
   trackTone,
   dateLine,
 }: {
@@ -370,6 +374,7 @@ function CompactCard({
   favorite?: { isFavorite: boolean; pending: boolean; onToggle: () => void };
   footer?: React.ReactNode;
   stageBadge?: string; // primary가 아닌 단계(검색 결과에서만 노출)일 때 상태 라벨(§3)
+  adjustmentLabel?: string | null; // 자본변동 보정값이면 보정 내용(카드에 표시)
   trackTone?: "kanban"; // B트랙(칸반) 소속 표시. A트랙(퀀트신호)은 2026-09-18부터 QuantGroupedCard 전용
   dateLine?: React.ReactNode; // 표준 "포착일(N일 경과)·진입가→현재가" 줄을 대체하는 슬롯(현재 미사용,
   // 향후 필요 시 재사용)
@@ -423,6 +428,10 @@ function CompactCard({
             </>
           )}
         </p>
+      )}
+
+      {adjustmentLabel && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">{corporateAdjustmentNotice(adjustmentLabel)}</p>
       )}
 
       {stageBadge && (
@@ -692,6 +701,11 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
                   <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
                     {item.name}
                   </Link>
+                  {item.corporateAdjustmentLabel && (
+                    <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      {corporateAdjustmentNotice(item.corporateAdjustmentLabel)}
+                    </span>
+                  )}
                   {item.corporateAction ? (
                     <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">{CORPORATE_ACTION_NOTICE}</span>
                   ) : item.haltIncomplete ? (
@@ -1315,6 +1329,7 @@ export default function TrackingPage() {
                                 onToggle: () => toggleFavorite(item),
                               }}
                               stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
+                              adjustmentLabel={item.corporateAdjustmentLabel}
                               trackTone="kanban"
                               footer={
                                 <>
@@ -1385,6 +1400,7 @@ export default function TrackingPage() {
                             onToggle: () => toggleFavorite(item),
                           }}
                           stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
+                          adjustmentLabel={item.corporateAdjustmentLabel}
                           trackTone="kanban"
                           footer={
                             <>
@@ -1430,6 +1446,7 @@ export default function TrackingPage() {
                       entryClose={item.entryClose}
                       currentClose={item.currentClose}
                       stageBadge={item.stage !== "primary" ? STAGE_LABEL[item.stage] : undefined}
+                      adjustmentLabel={item.corporateAdjustmentLabel}
                       trackTone="kanban"
                     />
                   ))}

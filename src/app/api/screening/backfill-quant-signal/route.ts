@@ -3,17 +3,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { kisConfig } from "@/server/kis/config";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { fetchAllRows } from "@/server/screening/paginate";
-import { isQuantSignal } from "@/server/screening/quant-signal";
+import { isQuantBackfillConfirmed, planQuantSignalBackfill, type QuantBackfillItem } from "@/server/screening/quant-signal-backfill";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface BackfillQuantSignalBody {
   recalculate?: boolean;
+  apply?: boolean;
+  confirmTargetCount?: number;
 }
 
 /**
  * 과거 overnight_screening_items에 대해 quant_signal(퀀트 진입 조건)을 소급 계산한다.
+ *
+ * 실행 가드(2026-11-04) — 기본은 dry-run 이다. 대상 행 수와 바뀌는 quant_signal·rsi14 건수만 보고하고
+ * 쓰지 않는다. 쓰려면 apply=true 와 함께 보고받은 대상 행 수를 confirmTargetCount 로 돌려줘야 한다.
+ * 이유: 2026-10-14 recalculate=true 실행이 468행의 quant_signal(false→true 32건)과 rsi14 를 당시 저장
+ * 지표로 덮었고, 그때 day0 지표가 비어 있던 34건은 rsi14 가 NULL 로 지워졌다. 그 뒤로 스크리닝 시점 판정이
+ * 컬럼에 남지 않아 A트랙 표본의 선정 규칙이 불분명해졌다(docs/release/known-issues.md "quant_signal 컬럼은
+ * 스크리닝 당시 판정이 아니다"). 기본 옵션도 rsi14 NULL 행을 대상으로 잡으므로 같은 덮어쓰기를 반복할 수 있다.
+ * 재계산 전 값은 overnight_screening_items_backup_20261014 에 있다.
  *
  * 로직:
  *   1. overnight_screening_items의 rsi14이 NULL인 행을 찾는다(recalculate=true면 전체 행 대상).
@@ -65,12 +75,12 @@ export async function POST(request: NextRequest) {
   }
 
   // 1. 대상 조회: 기본은 rsi14이 NULL인 행만, recalculate=true면 전체 행
-  let items: { date: string; symbol: string }[];
+  let items: QuantBackfillItem[];
   try {
-    items = await fetchAllRows<{ date: string; symbol: string }>((from, to) => {
+    items = await fetchAllRows<QuantBackfillItem>((from, to) => {
       let q = supabase
         .from("overnight_screening_items")
-        .select("date,symbol")
+        .select("date,symbol,rsi14,quant_signal")
         .order("date", { ascending: true })
         .order("symbol", { ascending: true });
       if (!recalculate) q = q.is("rsi14", null);
@@ -120,35 +130,43 @@ export async function POST(request: NextRequest) {
     trajectoryMap.set(`${row.symbol}::${dateCompact}`, { rsi14: row.rsi14, vol_ratio_20: row.vol_ratio_20 });
   }
 
-  // 3. 소급 업데이트
+  // 3. 쓰기 전 보고 — 확인 없이는 여기서 끝난다
+  const plan = planQuantSignalBackfill(items, trajectoryMap);
+  const report = {
+    recalculate,
+    totalTargets: plan.totalTargets,
+    skipped: plan.skipped,
+    quantSignalChanged: plan.quantSignalChanged,
+    falseToTrue: plan.falseToTrue,
+    trueToFalse: plan.trueToFalse,
+    rsi14Changed: plan.rsi14Changed,
+    rsi14ToNull: plan.rsi14ToNull,
+  };
+  if (!isQuantBackfillConfirmed(body, plan.totalTargets)) {
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      ...report,
+      message: `쓰지 않았습니다. 쓰려면 apply=true, confirmTargetCount=${plan.totalTargets} 로 다시 호출하세요.`,
+    });
+  }
+
+  // 4. 소급 업데이트
   let updated = 0;
-  let skipped = 0;
   const errors: { date: string; symbol: string; reason: string }[] = [];
 
-  for (const item of items) {
-    const key = `${item.symbol}::${item.date}`;
-    const traj = trajectoryMap.get(key);
-
-    if (traj === undefined) {
-      // stock_trajectory에 해당 (symbol, discovery_date, days_after=0) 행이 없음
-      skipped++;
-      continue;
-    }
-
-    const { rsi14, vol_ratio_20: volRatio20 } = traj;
-    const quantSignal = isQuantSignal(rsi14, volRatio20);
-
+  for (const { date, symbol, rsi14, quantSignal } of plan.updates) {
     try {
       const { error } = await supabase
         .from("overnight_screening_items")
         .update({ rsi14, quant_signal: quantSignal })
-        .eq("date", item.date)
-        .eq("symbol", item.symbol);
+        .eq("date", date)
+        .eq("symbol", symbol);
 
       if (error) throw error;
       updated++;
     } catch (e: any) {
-      errors.push({ date: item.date, symbol: item.symbol, reason: e?.message || String(e) });
+      errors.push({ date, symbol, reason: e?.message || String(e) });
     }
 
     if (updated % 50 === 0 && updated > 0) {
@@ -156,13 +174,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  console.log(`[Backfill Quant Signal] 완료: updated=${updated}, skipped=${skipped}, errors=${errors.length}`);
+  console.log(`[Backfill Quant Signal] 완료: updated=${updated}, skipped=${plan.skipped}, errors=${errors.length}`);
 
   return NextResponse.json({
     ok: true,
-    totalTargets: items.length,
+    dryRun: false,
+    ...report,
     updated,
-    skipped,
     errors: errors.slice(0, 20), // 에러는 최대 20건만 응답에 포함
   });
 }

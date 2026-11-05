@@ -4,7 +4,13 @@ import { formatKSTDateCompact } from "@/server/screening/storage";
 import { fetchAllRows } from "@/server/screening/paginate";
 import { getTradingDaysBetween } from "@/server/screening/trading-calendar";
 import { TRACKING_WINDOW_DAYS_AFTER } from "@/server/screening/trajectory-update";
-import { findCorporateActionInRange, type CorporateAction } from "@/server/screening/corporate-actions";
+import {
+  corporateAdjustmentLabel,
+  findCorporateActionsInRange,
+  lastDateUsedByQuantItem,
+  priceAdjustmentFactor,
+  type CorporateAction,
+} from "@/server/screening/corporate-actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -289,7 +295,8 @@ export async function GET() {
     haltIncomplete: boolean; // 거래정지로 day3 종가 없이 상한 초과로 종료된 건(통계 제외, "관측 미완")
     isRecentlyActive: boolean; // 관찰 지속성 보조표시(§1, 참고용 — 규칙 아님). daysAfter<30이면 항상 false.
     recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
-    corporateAction: CorporateAction | null; // 발굴일 뒤 자본변동 — 있으면 수익률을 계산하지 않고 통계에서 뺀다
+    corporateAction: CorporateAction | null; // 계산 구간 안의 비율 미확인 자본변동 — 있으면 수익률을 내지 않고 통계에서 뺀다
+    corporateAdjustmentLabel: string | null; // 계산 구간 안의 비율 확인 자본변동 — 수익률에 보정을 적용했다는 표시
   }
 
   const quantSignalItems: QuantSignalItem[] = [];
@@ -326,8 +333,21 @@ export async function GET() {
         : daysAfter;
     const currentClose = tradeDateMap.get(validDatesForReturn[validDatesForReturn.length - 1])!.close;
     const group: "pending" | "result" = validDatesForReturn.length - 1 < QUANT_SIGNAL_FRESH_DAYS ? "pending" : "result";
-    // 가격 시계열이 종목 단위로 합쳐지므로 이 건의 궤적이 아니라 합친 시계열의 끝까지 본다
-    const corporateAction = findCorporateActionInRange(row.symbol, row.discovery_date, sortedDates[sortedDates.length - 1]);
+    // 수익률은 전부 이 두 값으로 구한다 — 비율 확인 자본변동이 끼어도 같은 기준으로 맞춰진다(DB 값은 그대로)
+    const closeAt = (d: string) => tradeDateMap.get(d)!.close * priceAdjustmentFactor(row.symbol, d);
+    const entryBasis = entryClose * priceAdjustmentFactor(row.symbol, row.discovery_date);
+    const returnAt = (d: string) => ((closeAt(d) - entryBasis) / entryBasis) * 100;
+
+    // 이 건의 계산이 실제로 읽는 구간 안의 이벤트만 본다. 거래정지로 유효 구간이 이벤트 앞에서 끊긴 건은
+    // 영향이 없다(001210 7/7 — 314c665 에서 합친 시계열 끝으로 판정해 잘못 제외했다).
+    const quantLastUsedDate = lastDateUsedByQuantItem(
+      validDatesForReturn,
+      group === "result" ? returnAt(validDatesForReturn[QUANT_SIGNAL_FRESH_DAYS]) : null,
+      QUANT_OBSERVATION_END_DAYS_AFTER,
+      10
+    );
+    const quantActions = findCorporateActionsInRange(row.symbol, row.discovery_date, quantLastUsedDate);
+    const corporateAction = quantActions.find((a) => !a.adjustment) ?? null;
 
     let day3ReturnPct: number | null = null;
     let maxReturnSoFarPct: number | null = null;
@@ -341,18 +361,14 @@ export async function GET() {
     let endReturnPct: number | null = null;
 
     if (group === "result" && !corporateAction) {
-      const day3Close = tradeDateMap.get(validDatesForReturn[QUANT_SIGNAL_FRESH_DAYS])!.close;
-      day3ReturnPct = Number((((day3Close - entryClose) / entryClose) * 100).toFixed(2));
+      day3ReturnPct = Number(returnAt(validDatesForReturn[QUANT_SIGNAL_FRESH_DAYS]).toFixed(2));
 
       // 최고수익률(MFE) 계산 창 — 2026-09-18 수정: 0~30일(과거 MFE/MAE 통계 측정창을 착오로
       // 재사용)에서 0~QUANT_OBSERVATION_END_DAYS_AFTER(10)일로 축소. "관찰 중"이든 "관찰 종료"든
       // 항상 day10을 넘는 데이터는 참조하지 않는다(halt로 그 전에 끊겼으면 그 지점까지만).
       const mfeWindowLen = Math.min(validDatesForReturn.length, QUANT_OBSERVATION_END_DAYS_AFTER + 1);
       const mfeWindowDates = validDatesForReturn.slice(0, mfeWindowLen);
-      const returnSeries = mfeWindowDates.map((d) => {
-        const c = tradeDateMap.get(d)!.close;
-        return ((c - entryClose) / entryClose) * 100;
-      });
+      const returnSeries = mfeWindowDates.map(returnAt);
       maxReturnSoFarPct = Number(Math.max(...returnSeries).toFixed(2));
       // 최저수익률(MAE) — A트랙 카드/표 "참고" 영역 표시용(§UI 개선). maxReturnSoFarPct와 완전히
       // 동일한 창(returnSeries)에서 최솟값만 추가로 뽑는다 — 3일차 규칙/승률 계산에는 쓰이지 않음.
@@ -360,10 +376,7 @@ export async function GET() {
 
       // peakReturnPct — 종전 realizedReturnPct. 계산식은 그대로 두고 이름만 바꿨다(사후 상한선).
       if (day3ReturnPct >= 10) {
-        const afterDay3Series = validDatesForReturn.slice(QUANT_SIGNAL_FRESH_DAYS).map((d) => {
-          const c = tradeDateMap.get(d)!.close;
-          return ((c - entryClose) / entryClose) * 100;
-        });
+        const afterDay3Series = validDatesForReturn.slice(QUANT_SIGNAL_FRESH_DAYS).map(returnAt);
         peakReturnPct = Number(Math.max(...afterDay3Series).toFixed(2));
       } else {
         peakReturnPct = day3ReturnPct;
@@ -381,8 +394,7 @@ export async function GET() {
       const stopScanDates = validDatesForReturn.slice(1, QUANT_SIGNAL_FRESH_DAYS + 1);
       let stopHitPct: number | null = null;
       for (const d of stopScanDates) {
-        const c = tradeDateMap.get(d)!.close;
-        const r = ((c - entryClose) / entryClose) * 100;
+        const r = returnAt(d);
         if (r <= STOP_LOSS_THRESHOLD_PCT) {
           stopHitPct = Number(r.toFixed(2));
           break;
@@ -396,7 +408,7 @@ export async function GET() {
       if (validDatesForReturn.length - 1 >= QUANT_OBSERVATION_END_DAYS_AFTER) {
         endDate = validDatesForReturn[QUANT_OBSERVATION_END_DAYS_AFTER];
         endClose = tradeDateMap.get(endDate)!.close;
-        endReturnPct = Number((((endClose - entryClose) / entryClose) * 100).toFixed(2));
+        endReturnPct = Number(returnAt(endDate).toFixed(2));
       }
     }
 
@@ -407,10 +419,7 @@ export async function GET() {
     if (daysAfter >= 30 && !corporateAction) {
       const windowDates = sortedDates.slice(26, 31); // days_after 26~30(최근 5거래일)
       if (windowDates.length > 0) {
-        const windowReturns = windowDates.map((d) => {
-          const c = tradeDateMap.get(d)!.close;
-          return ((c - entryClose) / entryClose) * 100;
-        });
+        const windowReturns = windowDates.map(returnAt);
         const recentRange = Math.max(...windowReturns) - Math.min(...windowReturns);
         const volValues = windowDates
           .map((d) => tradeDateMap.get(d)!.volRatio20)
@@ -454,6 +463,7 @@ export async function GET() {
       isRecentlyActive,
       recentRecapture: recentRecaptureBySymbol.get(row.symbol) ?? null,
       corporateAction,
+      corporateAdjustmentLabel: corporateAction ? null : corporateAdjustmentLabel(quantActions),
     });
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
@@ -680,7 +690,8 @@ export async function GET() {
     currentClose: number;
     returnPct: number | null; // 자본변동이 끼면 null
     verdict: Verdict | null; // 자본변동이 끼면 null
-    corporateAction: CorporateAction | null;
+    corporateAction: CorporateAction | null; // 비율 미확인 자본변동이 끼면 수익률·판정이 null
+    corporateAdjustmentLabel: string | null; // 비율 확인 자본변동을 보정했다는 표시
     isFavorite: boolean;
     captureCount: number;
     captureDates: string[];
@@ -716,9 +727,14 @@ export async function GET() {
     const daysAfterRange = calendarDays.filter((d) => d >= latestCycle.entryDate && d <= lastAvailableDate);
     const daysAfter = daysAfterRange.length > 0 ? daysAfterRange.length - 1 : sortedTradeDates.length - 1;
     const currentClose = Number(tradeDateMap.get(lastAvailableDate) || 0);
-    // 사이클 시작 뒤 자본변동이 끼면 진입가와 이후 종가의 기준이 달라 수익률·판정을 내지 않는다
-    const corporateAction = findCorporateActionInRange(symbol, latestCycle.entryDate, lastAvailableDate);
-    const returnPct = corporateAction ? null : Number((((currentClose - entryClose) / entryClose) * 100).toFixed(2));
+    // 최신 종가로 수익률을 내므로 합친 시계열 끝까지의 이벤트를 본다. 비율이 확인된 건은 가격을 같은 기준으로
+    // 맞춰 계산하고(DB 값은 그대로), 확인되지 않은 건은 기준이 달라 수익률·판정을 내지 않는다.
+    const cycleActions = findCorporateActionsInRange(symbol, latestCycle.entryDate, lastAvailableDate);
+    const corporateAction = cycleActions.find((a) => !a.adjustment) ?? null;
+    const adjustedCloseAt = (d: string) => Number(tradeDateMap.get(d) || 0) * priceAdjustmentFactor(symbol, d);
+    const entryBasis = entryClose * priceAdjustmentFactor(symbol, latestCycle.entryDate);
+    const returnAt = (d: string) => ((adjustedCloseAt(d) - entryBasis) / entryBasis) * 100;
+    const returnPct = corporateAction ? null : Number(returnAt(lastAvailableDate).toFixed(2));
 
     let verdict: Verdict | null;
     if (returnPct === null) {
@@ -733,10 +749,7 @@ export async function GET() {
       verdict = "neutral";
     }
 
-    const returnSeries = sortedTradeDates.map((d) => {
-      const c = Number(tradeDateMap.get(d) || 0);
-      return ((c - entryClose) / entryClose) * 100;
-    });
+    const returnSeries = sortedTradeDates.map(returnAt);
     const maxReturnPct = corporateAction ? null : Number(Math.max(...returnSeries).toFixed(2));
     const minReturnPct = corporateAction ? null : Number(Math.min(...returnSeries).toFixed(2));
 
@@ -750,11 +763,13 @@ export async function GET() {
       name: latestCycle.name,
       discoveryDate: latestCycle.entryDate,
       daysAfter,
-      entryClose,
+      // 보정한 건은 화면에서 현재가와 나란히 보이므로 현재가 기준으로 옮겨 내려보낸다
+      entryClose: Math.round(entryBasis / priceAdjustmentFactor(symbol, lastAvailableDate)),
       currentClose,
       returnPct,
       verdict,
       corporateAction,
+      corporateAdjustmentLabel: corporateAction ? null : corporateAdjustmentLabel(cycleActions),
       isFavorite: favoriteSymbols.has(symbol),
       captureCount: latestCycle.captures.length,
       captureDates: latestCycle.captures.map((h) => h.date),
