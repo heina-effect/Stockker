@@ -5,11 +5,20 @@ import {
   getDomesticStockDaily, 
   getDomesticStockWeekly,
   getDomesticStockDetail,
-  getKSTPersistWindow
+  getKSTPersistWindow,
+  kstAfterHoursPriceWarning
 } from "@/server/kis/rest-client";
+import { cacheScopeDataSource, createCacheScope, runInCacheScope, type CacheScope } from "@/server/kis/cache";
 import { kisConfig } from "@/server/kis/config";
 import { getSearchMaster } from "@/lib/stocks/search-master";
-import { saveScreeningResult, formatKSTDateCompact, type ScreeningResultItem } from "@/server/screening/storage";
+import {
+  saveScreeningResult,
+  getScreeningSavedInfo,
+  logForceOverwrite,
+  formatKSTDateCompact,
+  type ScreeningResultItem,
+  type ScreeningSavedInfo,
+} from "@/server/screening/storage";
 import { runDailyTrajectoryUpdate } from "@/server/screening/trajectory-update";
 import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
 import { computeIndicatorSeries } from "@/server/screening/indicators";
@@ -17,6 +26,7 @@ import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { isRateLimitError, withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
+import { OVERNIGHT_DISCLAIMER } from "@/lib/screening/saved-result";
 
 // 헬퍼: 이동평균선(MA) 계산 (최신 데이터가 0번 인덱스임)
 function calculateMA(candles: any[], period: number, key: string = "stck_clpr"): number {
@@ -64,9 +74,28 @@ function screeningFailed(reason: string, detail?: string) {
   );
 }
 
+// ?fresh=1 (2026-11-05) — 캐시를 읽지도 쓰지도 않고 KIS 에서 새로 받는다. 값 1 만 인정한다.
+// ?save=1 과 함께 오면 저장 시점 값의 출처가 불분명해지므로 KIS 를 부르기 전에 거부한다.
+// 정기 실행(?save=1)은 기존 캐시 경로 그대로다.
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+  const fresh = searchParams.get("fresh") === "1";
+  if (fresh && searchParams.get("save") === "1") {
+    return NextResponse.json(
+      { ok: false, error: "fresh_with_save", persisted: false, persistSkippedReason: "fresh_with_save" },
+      { status: 400 }
+    );
+  }
+  const scope = createCacheScope(fresh);
+  return runInCacheScope(scope, () => runScreening(req, scope));
+}
+
+async function runScreening(req: Request, scope: CacheScope) {
+  const { searchParams } = new URL(req.url);
   const isDebug = searchParams.get("debug") === "true";
+  // 저장은 ?save=1 이 있을 때만 시도한다. 파라미터 없는 호출은 조회 전용이다(아래 저장 판정 참고)
+  const saveRequested = searchParams.get("save") === "1";
+  const force = searchParams.get("force") === "true";
   const timestamp = new Date().toISOString();
 
   // Vercel Cron은 CRON_SECRET이 설정되어 있으면 Authorization: Bearer <CRON_SECRET>
@@ -697,32 +726,77 @@ export async function GET(req: Request) {
       return screeningFailed("no_symbols_analyzed", sanitizeError(firstStockErrorMsg) || undefined);
     }
 
-    // 저장 시간대 제한(2026-11-02, 11/03 개정) — 15:30~16:00 밖에서는(장중 잠정 종가, 애프터마켓 중·후 종가 오염)
+    // 응답에 든 값의 출처를 여기서 굳힌다. 아래 궤적 갱신도 같은 범위에서 일봉을 받지만 그 값은 응답에 들지 않는다.
+    const dataSource = cacheScopeDataSource(scope);
+    const dataFetchedAt = scope.oldestReceivedAt ? new Date(scope.oldestReceivedAt).toISOString() : timestamp;
+    const priceWarning = kstAfterHoursPriceWarning(scope.newestReceivedAt ?? Date.now());
+
+    // 명시적 저장(2026-11-05) — 화면·수동 호출은 ?save=1 없이 부르므로 저장하지 않는다(view_only). 저장은 launchd
+    // 15:41 실행(?save=1)만 한다. 덮어쓰기는 ?save=1&force=true 뿐이고 force 단독은 저장하지 않는다.
+    // vercel.json cron 은 배포하지 않아 그대로 두었다. 배포하면 path 에 ?save=1 을 붙여야 저장된다.
+    //
+    // 저장 시간대 제한(2026-11-02, 11/03·11/05 개정) — 15:40~16:00 밖에서는(장중 잠정 종가, 종가 단일가 임의 종료 구간,
+    // 애프터마켓 중·후 종가 오염)
     // day0·궤적을 남기지 않는다. 10/6~10/20 장중 실행분 29건, 마감 후 애프터마켓 구간 실행분 178행이 틀린 종가로
     // 저장된 원인(docs/release/known-issues.md). 조회·응답은 그대로 한다. 판정은 getKSTPersistWindow 하나만 쓴다.
     // 휴장일·주말은 위 거래일 가드가 이미 건너뛴다.
     //
     // 실행 중 창 재판정(2026-11-03): 종목별 일봉은 위 루프에서 차례로 받는다. 조회 시작과 저장 직전 두 시각이
-    // 모두 창 안이어야 그 사이 받은 모든 종목이 창 안에서 받은 값이다. 15:29 에 시작해 15:30 을 넘긴 실행은 장중
-    // 잠정 종가를, 16:00 을 넘긴 실행은 뒤쪽 종목의 애프터마켓 체결가를 담고 있을 수 있어 둘 다 저장하지 않는다.
+    // 모두 창 안이어야 그 사이 받은 모든 종목이 창 안에서 받은 값이다. 15:39 에 시작해 15:40 을 넘긴 실행은 창 밖에서
+    // 받은 값을, 16:00 을 넘긴 실행은 뒤쪽 종목의 애프터마켓 체결가를 담고 있을 수 있어 둘 다 저장하지 않는다.
     // 종목별로 나눠 일부만 저장하지 않는 이유: saveScreeningResult 는 그날 항목 전체를 지우고 다시 넣으며 빠진
     // 종목의 궤적까지 지운다. 일부만 저장하면 앞선 정상 실행의 기록이 지워진다. 건너뛴 day0 는 다음 날 궤적 갱신이
     // 확정 일봉으로 메운다(앞선 실행이 저장한 항목이 있을 때).
+    //
+    // 첫 저장 보호(2026-11-05) — ?save=1 이어도 그날 항목이 이미 있으면 쓰지 않는다.
+    // 재저장은 항목 삭제·재삽입에 그치지 않고 탈락 종목의 궤적 그룹까지 지운다(10/28, 10/29 소실).
+    // 정기 실행 실패 뒤 수동 재실행처럼 덮어써야 할 때만 ?save=1&force=true 를 쓴다. 저장 창은 force 로도 넘지 못한다.
+    // 저장 여부 조회가 실패하면 쓰지 않는다. 있는 기록을 덮는 쪽이 하루 저장을 놓치는 쪽보다 되돌리기 어렵다.
+    const saveDate = formatKSTDateCompact(new Date());
+    let alreadySaved: ScreeningSavedInfo | null = null;
+    let saveCheckFailed = false;
+    if (saveRequested && fetchStartWindow.allowed) {
+      try {
+        alreadySaved = await getScreeningSavedInfo(saveDate);
+      } catch (e) {
+        saveCheckFailed = true;
+        console.error("[Overnight API] Saved screening check failed:", (e as Error)?.message || e);
+      }
+    }
     const persistWindow = fetchStartWindow.allowed ? getKSTPersistWindow() : fetchStartWindow;
-    const persisted = persistWindow.allowed;
     const allBucketsForPersist = [...normalBucket, ...aggressiveBucket, ...excludeBucket];
+    let persistSkippedReason: string | null = !saveRequested
+      ? "view_only"
+      : !persistWindow.allowed
+        ? (persistWindow.reason ?? null)
+        : saveCheckFailed
+          ? "save_check_failed"
+          : alreadySaved && !force
+            ? "already_saved"
+            : null;
+    if (!persistSkippedReason && alreadySaved) {
+      try {
+        await logForceOverwrite(saveDate, [...allBucketsForPersist.map((i) => i.symbol), ...excludedNotice.map((i) => i.symbol)]);
+      } catch (e) {
+        persistSkippedReason = "force_log_failed";
+        console.error("[Overnight API] Force overwrite log failed:", (e as Error)?.message || e);
+      }
+    }
+    const persisted = persistSkippedReason === null;
     const unsaved = persisted
       ? null
       : {
           items: allBucketsForPersist.length + excludedNotice.length,
           day0: allBucketsForPersist.filter((i) => i.metrics?.day0Close !== undefined).length,
-          closedDuringRun: fetchStartWindow.allowed,
+          closedDuringRun: saveRequested && fetchStartWindow.allowed && !persistWindow.allowed,
         };
-    if (!persistWindow.allowed) {
+    if (saveRequested && !persistWindow.allowed) {
       console.log(
         `[Overnight API] Persist window closed (${persistWindow.reason}${unsaved?.closedDuringRun ? ", 실행 중 닫힘" : ""}) — ` +
         `screening ${unsaved?.items ?? 0}건 / day0 ${unsaved?.day0 ?? 0}건 저장 안 함 (view only).`
       );
+    } else if (!persisted) {
+      console.log(`[Overnight API] Persist skipped (${persistSkippedReason}, savedAt=${alreadySaved?.savedAt ?? "-"}) — view only.`);
     }
 
     // 백테스트 집계를 위해 당일 스크리닝 결과를 영속 저장 (Redis 우선, 폴백 단계는 storage.ts 참고)
@@ -817,7 +891,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       persisted,
-      ...(persistWindow.allowed ? {} : { persistSkippedReason: persistWindow.reason, unsaved }),
+      ...(persisted ? {} : { persistSkippedReason, unsaved }),
+      ...(alreadySaved ? { alreadySaved } : {}),
       ...(trajectoryUpdate ? { trajectoryUpdate } : {}),
       kosdaqState: {
         value: kosdaqClose,
@@ -837,6 +912,11 @@ export async function GET(req: Request) {
       },
       excludedNotice,
       generatedAt: timestamp,
+      // 어느 경로로 받았는지와, 응답에 든 값 중 가장 오래된 수신 시각. 캐시 경로의 generatedAt 은 응답 시각일 뿐이다.
+      // priceWarning 은 가장 늦게 받은 값의 시각으로 판정한다 — 16:00 을 넘겨 끝난 조회도 뒤쪽 값에 체결가가 섞인다
+      dataSource,
+      dataFetchedAt,
+      priceWarning,
       ...(isDebug ? {
         diagnostics: {
           outOfScopeCount,
@@ -845,7 +925,7 @@ export async function GET(req: Request) {
           primaryCandidatesLength: primaryCandidates.length,
         }
       } : {}),
-      disclaimer: "본 스크리닝 결과는 이동평균선 및 당사의 오버나이트 알고리즘 기준에 따라 추출된 참고 자료이며, 투자 결과에 대한 책임은 투자자 본인에게 있습니다."
+      disclaimer: OVERNIGHT_DISCLAIMER
     });
 
   } catch (err: any) {

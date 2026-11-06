@@ -42,33 +42,49 @@ export function isAfterKSTMarketClose(at: Date = new Date()): boolean {
   return h > 15 || (h === 15 && m >= 30);
 }
 
-// 당일 시세를 DB 에 저장해도 되는 시간대(2026-11-02, 11/03 개정) — 스크리닝 저장과 궤적 갱신이 이 함수 하나를 쓴다.
+// 당일 시세를 DB 에 저장해도 되는 시간대(2026-11-02, 11/03·11/05 개정) — 스크리닝 저장과 궤적 갱신이 이 함수 하나를 쓴다.
 // 확정 일봉은 종가가 15:30(정규장), 거래량이 20시대 일괄 갱신 뒤(애프터마켓 포함)에 따로 굳는다. 두 필드가 동시에 맞는
-// 시각은 없어서, 종가가 맞는 15:30~16:00 하나만 허용하고 거래량은 정규장 기준 스냅샷으로 남긴다.
+// 시각은 없어서, 종가가 맞는 15:40~16:00 하나만 허용하고 거래량은 그 시각의 스냅샷으로 남긴다.
 //   15:30 이전        차단(before_market_close) — 정규장 진행 중, 종가 미확정
-//   15:30 ~ 16:00     허용 — 종가 확정. 거래량은 정규장분만(애프터마켓 제외)
+//   15:30 ~ 15:40     차단(before_scheduled_run) — 종가 단일가가 15:30:00~15:30:30 사이 임의 시점에 끝나 종가가
+//                     아직 미확정일 수 있고, 정기 실행은 15:41 이다
+//   15:40 ~ 16:00     허용 — 종가 확정. 거래량은 읽은 시각까지의 누적(시간외 종가 체결 포함, 애프터마켓 제외)
 //   16:00 ~ 20:00     차단(after_hours_session) — KRX 애프터마켓(2026-09-14 시행, 접속매매 ±30%) 진행 중,
 //                     이 구간 저장 178행 전부 불일치
 //   20:00 이후        차단(after_market_close) — 일봉 종가 자리에 애프터마켓 마지막 체결가가 남는다.
 //                     11/02 20:30 스냅샷 종가 19/20 이 다음 날 확정값과 불일치(docs/release/known-issues.md)
 // 휴장일 판정은 하지 않는다(호출부의 거래일 가드 몫). at 을 주면 그 시각 기준으로 판정한다(감사 대조용).
-export type PersistBlockReason = "before_market_close" | "after_hours_session" | "after_market_close";
+export type PersistBlockReason = "before_market_close" | "before_scheduled_run" | "after_hours_session" | "after_market_close";
 export type KSTPersistWindow = { allowed: true } | { allowed: false; reason: PersistBlockReason };
 
 export function getKSTPersistWindow(at: Date = new Date()): KSTPersistWindow {
   if (!isAfterKSTMarketClose(at)) return { allowed: false, reason: "before_market_close" };
-  const h = new Date(at.getTime() + 9 * 60 * 60 * 1000).getUTCHours();
+  const kst = new Date(at.getTime() + 9 * 60 * 60 * 1000);
+  const h = kst.getUTCHours();
   if (h >= 20) return { allowed: false, reason: "after_market_close" };
   if (h >= 16) return { allowed: false, reason: "after_hours_session" };
+  if (h === 15 && kst.getUTCMinutes() < 40) return { allowed: false, reason: "before_scheduled_run" };
   return { allowed: true };
 }
 
+// 이 시각에 받은 당일 값의 종가 자리에 체결가가 섞여 있는가(2026-11-05). 16:00~20:00 은 애프터마켓 체결가(11/5 16:05 측정에서
+// 98종목 중 84종목이 저장 종가와 달랐다. 중앙값 0.659%, 최대 3.046%), 20:00 이후는 마지막 체결가가 남는다(11/02 20:30 19/20 불일치).
+// 15:40~16:00 은 해당 없다(11/5 측정에서 98종목 전부 저장 종가와 같았다). 거래일 판정은 호출하는 쪽의 몫이다.
+export function kstAfterHoursPriceWarning(at: number): "after_hours" | "after_market_close" | null {
+  const h = new Date(at + 9 * 60 * 60 * 1000).getUTCHours();
+  if (h < 16) return null;
+  return h < 20 ? "after_hours" : "after_market_close";
+}
+
 // 당일 시세 캐시 키 구분 — 저장 구간이 갈리는 경계마다 키를 바꿔, 다른 구간에서 받은 당일 값을
-// 재사용하지 않게 한다. 저장은 15:30~16:00("post")에만 하므로 "ah"·"eve" 는 조회 전용 구간이지만,
-// 애프터마켓 중·후 값이 post 키로 섞이지 않게 구간은 그대로 나눠 둔다.
-function kstSessionCacheTag(): "pre" | "post" | "ah" | "eve" {
+// 재사용하지 않게 한다. 저장은 15:40~16:00("post")에만 하므로 나머지는 조회 전용 구간이지만, 그 구간 값이 post 키로
+// 섞이지 않게 구간은 그대로 나눠 둔다. "close"(15:30~15:40)를 post 와 나누지 않으면 15:30:10 화면 조회가 받은 미확정
+// 종가를 정기 실행이 캐시에서 그대로 저장한다.
+export function kstSessionCacheTag(): "pre" | "close" | "post" | "ah" | "eve" {
   if (!isAfterKSTMarketClose()) return "pre";
-  const h = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const h = kst.getUTCHours();
+  if (h === 15 && kst.getUTCMinutes() < 40) return "close";
   if (h < 16) return "post";
   return h < 20 ? "ah" : "eve";
 }

@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     const base = { symbol: t.symbol, name: t.name, discoveryDate: t.discovery_date, createdAtKst: kstHHMM(t.created_at) };
 
     // DB 내부 대조 — 유효한(isValidPeer) 다른 그룹 행의 O/H/L/C가 KIS와 같아야 한다. 거래량 차이는 판정하지 않는다
-    // (당일 저장분은 정규장 거래량이 정상 — classifyStoredBar, 2026-11-03).
+    // (당일 저장분은 15:40 스냅샷 거래량이 정상 — classifyStoredBar, 2026-11-03).
     const peerRows = peers.get(key) ?? [];
     const peerMismatch = peerRows.filter((p) => classifyStoredBar(p as StoredBar, next) === "price_mismatch");
     const verification = peerRows.length === 0 ? "대조 행 없음" : peerMismatch.length === 0 ? `일치(${peerRows.length}행)` : "불일치";

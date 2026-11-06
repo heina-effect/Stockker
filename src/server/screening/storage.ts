@@ -183,6 +183,72 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
   }
 }
 
+/** 그날 Supabase에 이미 저장된 스크리닝 항목 수와 저장 시각. 없으면 null. */
+export interface ScreeningSavedInfo {
+  itemCount: number;
+  savedAt: string;
+}
+
+/**
+ * 첫 저장 보호(2026-11-05)의 판정 입력. 조회 실패는 삼키지 않고 던진다 — 호출자가 "저장 없음"으로
+ * 착각해 덮어쓰면 안 되기 때문이다. Supabase 미구성이면 보호할 대상이 없어 null이다.
+ */
+export async function getScreeningSavedInfo(date: string): Promise<ScreeningSavedInfo | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error, count } = await supabase
+    .from("overnight_screening_items")
+    .select("created_at", { count: "exact" })
+    .eq("date", date)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  if (!count || !data?.[0]) return null;
+  return { itemCount: count, savedAt: data[0].created_at };
+}
+
+/**
+ * force 덮어쓰기 직전 기록(2026-11-05). saveScreeningResult가 지울 그날 항목과, 영향받는 궤적 그룹 전체를
+ * 남긴다. dev 서버 콘솔은 파일로 남지 않아 ~/stockker-logs 에 파일로도 쓴다. 읽기에 실패하면 던져서
+ * 기록 없는 덮어쓰기를 막는다. 파일 쓰기 실패는 콘솔 기록이 남으므로 막지 않는다(Vercel 등 쓰기 불가 환경).
+ */
+export async function logForceOverwrite(date: string, nextSymbols: string[]): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+  const [items, trajectory] = await Promise.all([
+    supabase.from("overnight_screening_items").select("*").eq("date", date),
+    supabase.from("stock_trajectory").select("*").eq("discovery_date", date),
+  ]);
+  if (items.error) throw items.error;
+  if (trajectory.error) throw trajectory.error;
+
+  const next = new Set(nextSymbols);
+  const symbols = [...new Set((trajectory.data || []).map((r: { symbol: string }) => r.symbol))];
+  const summary = {
+    date,
+    items: (items.data || []).map((r: { symbol: string; classification: string; created_at: string }) => ({
+      symbol: r.symbol,
+      classification: r.classification,
+      createdAt: r.created_at,
+    })),
+    trajectoryGroups: symbols,
+    trajectoryGroupsToDelete: symbols.filter((symbol) => !next.has(symbol)),
+  };
+  console.log(`[Screening Storage] FORCE OVERWRITE ${JSON.stringify(summary)}`);
+
+  try {
+    const dir = path.join(os.homedir(), "stockker-logs");
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15);
+    fs.writeFileSync(
+      path.join(dir, `force-overwrite-${date}-${stamp}.json`),
+      JSON.stringify({ ...summary, itemRows: items.data, trajectoryRows: trajectory.data }, null, 2)
+    );
+  } catch (e) {
+    console.error("[Screening Storage] Force overwrite log file failed:", (e as Error)?.message || e);
+  }
+}
+
 export async function deleteScreeningResult(date: string): Promise<void> {
   const key = screeningKey(date);
 
@@ -309,6 +375,39 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
     // ignore
   }
 
+  return null;
+}
+
+// Supabase 미구성일 때 거슬러 볼 달력 일수. 연휴를 넘길 만큼 잡는다
+const LATEST_FALLBACK_DAYS = 14;
+
+/**
+ * onOrBefore(YYYYMMDD) 이전 가장 최근 저장일의 결과. 저장이 없으면 null(2026-11-05).
+ * 조회 실패는 삼키지 않고 던진다 — 호출자가 "저장 없음"으로 보여 주면 안 되기 때문이다.
+ */
+export async function getLatestScreeningResult(onOrBefore: string): Promise<ScreeningResultRecord | null> {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("overnight_screening_records")
+      .select("date")
+      .lte("date", onOrBefore)
+      .order("date", { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    const latestDate = data?.[0]?.date;
+    if (!latestDate) return null;
+    const record = await getScreeningResult(latestDate);
+    if (!record) throw new Error(`screening record unreadable: ${latestDate}`);
+    return record;
+  }
+
+  const day = new Date(Date.UTC(Number(onOrBefore.slice(0, 4)), Number(onOrBefore.slice(4, 6)) - 1, Number(onOrBefore.slice(6, 8))));
+  for (let i = 0; i < LATEST_FALLBACK_DAYS; i++) {
+    const record = await getScreeningResult(day.toISOString().slice(0, 10).replace(/-/g, ""));
+    if (record) return record;
+    day.setUTCDate(day.getUTCDate() - 1);
+  }
   return null;
 }
 

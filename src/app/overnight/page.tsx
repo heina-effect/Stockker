@@ -10,25 +10,23 @@ import {
   Flame,
   Calendar,
   Clock,
-  Zap
+  Zap,
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
-import { formatGapPct, maArrangement, maGaps, type MAState } from "./market-state";
+import { formatGapPct, maArrangement, maGaps } from "./market-state";
+import { useMarketState, type IndexState } from "./use-market-state";
 import { persistSkipLabel } from "@/lib/screening/persist-skip-label";
+import { kstClock, savedResultTitle, tradeDateLabel } from "@/lib/screening/saved-result";
 import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
 import { SurfaceCard } from "@/components/common/surface-card";
-
-interface IndexState {
-  value: number;
-  maState?: MAState | null;
-  reduceWeight: boolean;
-}
 
 interface ScreeningStock {
   symbol: string;
   name: string;
   price: number;
-  changeRate: number;
+  // 저장되지 않는 값이라 저장분에는 없다
+  changeRate?: number;
   classification: "normal" | "aggressive" | "exclude";
   weightSuggestion?: number;
   reasons: string[];
@@ -48,12 +46,19 @@ interface ExcludedNoticeItem {
   entryClose?: number;
 }
 
+// /latest(저장분)와 ?fresh=1(실시간) 두 응답을 같은 화면에 그린다. source 가 saved 면 저장분이다
 interface OvernightResponse {
   ok: boolean;
-  // false = 저장 허용 시간대(15:30~16:00) 밖 조회라 DB 에 저장하지 않았다(2026-11-02, 11/03 개정)
+  source?: "saved";
+  empty?: boolean;
+  tradeDate?: string | null;
+  savedAt?: string | null;
+  isToday?: boolean;
+  // false = DB 에 저장하지 않았다. 사유는 persistSkippedReason(?fresh=1 은 항상 view_only, 2026-11-05)
   persisted?: boolean;
   persistSkippedReason?: string;
-  kosdaqState: IndexState;
+  alreadySaved?: { itemCount: number; savedAt: string };
+  kosdaqState?: IndexState;
   kospiState?: IndexState;
   results: {
     normal: ScreeningStock[];
@@ -61,8 +66,30 @@ interface OvernightResponse {
     exclude: ScreeningStock[];
   };
   excludedNotice?: ExcludedNoticeItem[];
-  generatedAt: string;
+  generatedAt?: string;
+  dataSource?: "fresh" | "cache_miss" | "cache";
+  dataFetchedAt?: string;
+  priceWarning?: "after_hours" | "after_market_close" | null;
   disclaimer: string;
+}
+
+// 새로 조회 예상 소요(11/05 실측 16.6초). 진행 표시에만 쓴다
+const FRESH_EXPECTED_SECONDS = 17;
+// 완료 강조를 유지하는 시간
+const FRESH_HIGHLIGHT_MS = 4000;
+
+const DATA_SOURCE_LABEL = { fresh: "새로 조회", cache_miss: "새로 받음", cache: "캐시" } as const;
+
+// 16:00 이후 받은 값 — 막지 않고 알린다. 근거는 rest-client.ts kstAfterHoursPriceWarning
+const PRICE_WARNING_LABEL = {
+  after_hours: "애프터마켓 중 — 종가 자리에 체결가가 섞여 있습니다. 당일 확정 종가는 다음 날 아침에 정규장 종가로 돌아옵니다",
+  after_market_close: "애프터마켓 종료 후 — 종가 자리에 마지막 체결가가 남아 있습니다. 당일 확정 종가는 다음 날 아침에 정규장 종가로 돌아옵니다",
+} as const;
+
+function formatAgo(seconds: number): string {
+  if (seconds < 60) return `${seconds}초 전`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}분 전`;
+  return `${Math.floor(seconds / 3600)}시간 ${Math.floor((seconds % 3600) / 60)}분 전`;
 }
 
 interface TrackingSummary {
@@ -72,6 +99,36 @@ interface TrackingSummary {
   watching: number;
 }
 
+// 처음 진입할 때와 새로 조회 중에 같은 화면을 쓴다. 새로 조회는 진행 표시만 더한다
+function OvernightLoadingView({ progress }: { progress?: string }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <DashboardHeader />
+      <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl">
+        {progress && (
+          <p role="status" className="flex items-center gap-2 mb-6 text-sm font-semibold text-slate-700 dark:text-zinc-300">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            {progress}
+          </p>
+        )}
+        <div className="animate-pulse">
+          <div className="h-8 w-64 max-w-full bg-slate-200 dark:bg-zinc-800 rounded mb-6" />
+          <div className="h-24 bg-slate-100 dark:bg-zinc-800/50 rounded-2xl mb-8" />
+          <div className="flex gap-2 mb-6">
+            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
+            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
+            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="h-40 bg-slate-50 dark:bg-zinc-950 rounded-2xl" />
+            <div className="h-40 bg-slate-50 dark:bg-zinc-950 rounded-2xl" />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function OvernightScreeningContent() {
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") as "normal" | "aggressive" | "exclude" || "normal";
@@ -79,23 +136,70 @@ function OvernightScreeningContent() {
   const [activeTab, setActiveTab] = useState<"normal" | "aggressive" | "exclude">(defaultTab);
   const [data, setData] = useState<OvernightResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failure, setFailure] = useState<null | "failed" | "skipped">(null);
+  const [failed, setFailed] = useState(false);
+  const { market, marketFailed, showMarket } = useMarketState();
   const [trackingSummary, setTrackingSummary] = useState<TrackingSummary | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [refreshStartedAt, setRefreshStartedAt] = useState(0);
+  const [justRefreshed, setJustRefreshed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // 수신 시각의 경과 표시와 새로 조회 진행 표시를 갱신한다
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), refreshing ? 1000 : 15000);
+    return () => clearInterval(timer);
+  }, [refreshing]);
+
+  useEffect(() => {
+    if (!justRefreshed) return;
+    const timer = setTimeout(() => setJustRefreshed(false), FRESH_HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [justRefreshed]);
+
+  // 새로 조회 — 진행 중에는 로딩 화면으로 바꾸고, 실패하면 이전 값으로 돌아와 그 사실을 알린다
+  async function refreshScreening() {
+    const startedAt = Date.now();
+    setRefreshStartedAt(startedAt);
+    setNow(startedAt);
+    setRefreshing(true);
+    setRefreshFailed(false);
+    setJustRefreshed(false);
+    try {
+      const res = await fetch("/api/screening/overnight?fresh=1");
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok || !json.results) {
+        setRefreshFailed(true);
+        return;
+      }
+      setData(json);
+      // 새로 조회 응답의 지수는 선별 결과와 같은 시점이다
+      showMarket({ kosdaqState: json.kosdaqState, kospiState: json.kospiState ?? null, fetchedAt: json.dataFetchedAt ?? json.generatedAt });
+      setJustRefreshed(true);
+    } catch (err) {
+      console.error(err);
+      setRefreshFailed(true);
+    } finally {
+      setRefreshing(false);
+      setNow(Date.now());
+    }
+  }
 
   useEffect(() => {
     async function fetchScreening() {
       try {
-        const res = await fetch("/api/screening/overnight");
+        // 진입은 저장분만 읽는다. 실시간 조회는 새로 조회 버튼으로만 나간다(2026-11-05)
+        const res = await fetch("/api/screening/overnight/latest");
         const json = await res.json().catch(() => null);
-        // 실패(ok:false)·휴장일(skipped) 응답에는 결과가 없다 — 종목·지수를 하나도 그리지 않는다
+        // 읽기 실패 응답에는 결과가 없다 — 종목을 하나도 그리지 않는다
         if (!res.ok || !json?.ok || !json.results) {
-          setFailure(json?.skipped ? "skipped" : "failed");
+          setFailed(true);
           return;
         }
         setData(json);
       } catch (err) {
         console.error(err);
-        setFailure("failed");
+        setFailed(true);
       } finally {
         setLoading(false);
       }
@@ -119,36 +223,20 @@ function OvernightScreeningContent() {
     fetchTrackingSummary();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <DashboardHeader />
-        <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl animate-pulse">
-          <div className="h-8 w-64 bg-slate-200 dark:bg-zinc-800 rounded mb-6" />
-          <div className="h-24 bg-slate-100 dark:bg-zinc-800/50 rounded-2xl mb-8" />
-          <div className="flex gap-2 mb-6">
-            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
-            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
-            <div className="h-10 w-32 bg-slate-200 dark:bg-zinc-800 rounded-lg" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-40 bg-slate-50 dark:bg-zinc-950 rounded-2xl" />
-            <div className="h-40 bg-slate-50 dark:bg-zinc-950 rounded-2xl" />
-          </div>
-        </main>
-      </div>
-    );
+  if (loading) return <OvernightLoadingView />;
+
+  if (refreshing) {
+    const elapsed = Math.max(0, Math.floor((now - refreshStartedAt) / 1000));
+    return <OvernightLoadingView progress={`새로 받는 중… ${elapsed}초 / 약 ${FRESH_EXPECTED_SECONDS}초`} />;
   }
 
-  if (failure || !data) {
+  if (failed || !data) {
     return (
       <div className="min-h-screen bg-background text-foreground flex flex-col">
         <DashboardHeader />
         <main className="flex-1 container mx-auto px-4 py-12 flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
           <XCircle className="w-12 h-12 mb-4 text-red-500" />
-          <h2 className="text-xl font-bold mb-2">
-            {failure === "skipped" ? "휴장일 — 오늘은 스크리닝하지 않았습니다" : "스크리닝 실패 — 데이터를 가져오지 못했습니다"}
-          </h2>
+          <h2 className="text-xl font-bold mb-2">스크리닝 실패 — 데이터를 가져오지 못했습니다</h2>
           <button 
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors"
@@ -160,32 +248,56 @@ function OvernightScreeningContent() {
     );
   }
 
-  const { kosdaqState, kospiState, persisted, persistSkippedReason, results, excludedNotice, generatedAt, disclaimer } = data;
+  const { persisted, persistSkippedReason, alreadySaved, results, excludedNotice, dataSource, dataFetchedAt, priceWarning, disclaimer } = data;
   const currentStocks = results[activeTab];
 
   // 전체 버킷에서 quantSignal 건수 집계
   const allStocks = [...results.normal, ...results.aggressive, ...results.exclude];
   const quantSignalCount = allStocks.filter(s => s.metrics?.quantSignal === true).length;
 
-  const dateStr = generatedAt 
-    ? new Date(generatedAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })
-    : "";
-  const timeStr = generatedAt 
-    ? new Date(generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) 
+  const isSaved = data.source === "saved";
+  const notToday = isSaved && !data.empty && !data.isToday;
+  const resultTitle = !isSaved
+    ? "지금 조회한 선별 결과"
+    : data.tradeDate
+      ? savedResultTitle(data.tradeDate, data.savedAt)
+      : "저장된 선별 결과 없음";
+  const fetchedAtMs = dataFetchedAt ? new Date(dataFetchedAt).getTime() : null;
+  const fetchedTimeStr = dataFetchedAt
+    ? new Date(dataFetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <DashboardHeader />
       
-      <main className="container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl">
+      <main className={`container mx-auto px-4 lg:px-8 py-8 md:py-12 max-w-7xl ${justRefreshed ? "animate-fresh-in" : ""}`}>
+        {refreshFailed && (
+          <div role="alert" className="mb-6 px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/30 text-sm font-semibold text-red-700 dark:text-red-300">
+            새로 받지 못했습니다 — {isSaved ? "저장된 결과를 그대로 표시합니다" : `이전 값(${fetchedTimeStr})을 표시합니다`}
+          </div>
+        )}
+
+        {/* 장중·휴장일에 열면 직전 거래일 결과가 보인다. 오늘 값으로 읽히지 않게 맨 위에 적는다 */}
+        {notToday && data.tradeDate && (
+          <div role="note" className="mb-6 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/30 text-sm font-semibold text-amber-800 dark:text-amber-300">
+            오늘 결과가 아닙니다 — {tradeDateLabel(data.tradeDate)} 저장분입니다. 오늘 결과는 거래일 15:41 저장 뒤에 보입니다
+          </div>
+        )}
+
+        {priceWarning && (
+          <div role="note" className="mb-6 px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/30 text-sm font-semibold text-amber-800 dark:text-amber-300">
+            {PRICE_WARNING_LABEL[priceWarning]}
+          </div>
+        )}
+
         {/* 미저장 조회 표시(2026-11-02) — 저장 허용 시간대 밖 실행은 API 가 저장하지 않는다. 문구는 사유별로 다르다.
             persisted 가 없는(구버전) 응답에는 그리지 않는다. */}
         {persisted === false && (
           <div className="mb-6 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-900 text-sm font-semibold text-slate-700 dark:text-zinc-300">
-            {persistSkipLabel(persistSkippedReason).title}
+            {persistSkipLabel(persistSkippedReason, alreadySaved?.savedAt).title}
             <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
-              {persistSkipLabel(persistSkippedReason).detail}
+              {persistSkipLabel(persistSkippedReason, alreadySaved?.savedAt).detail}
             </span>
           </div>
         )}
@@ -203,10 +315,6 @@ function OvernightScreeningContent() {
             </p>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               손익 관리 규칙은 검증된 바 없으며 각자 판단으로 정할 것.
-            </p>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 mt-2 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4" />
-              {dateStr} {timeStr} 분석 기준
             </p>
             {trackingSummary && (
               <Link
@@ -226,23 +334,70 @@ function OvernightScreeningContent() {
           </div>
         </div>
 
-        {/* 시장 상태 — 지수값과 이동평균 대비 괴리율, 배열 상태(정배열/역배열/혼조)를 사실로만 적는다.
-            색으로 좋고 나쁨을 나타내지 않는다. reduceWeight 는 API 내부 로직용이라 화면에 행동 지시로
-            노출하지 않는다(2026-10-30). 번호([0단계])는 순서 정보가 없어 뗐다(2026-11-02). */}
-        <div className="mb-8">
-          <h2 className="text-sm font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
-            시장 상태
-          </h2>
+        {/* 지금 시장 상태 — 지수값과 이동평균 대비 괴리율, 배열 상태(정배열/역배열/혼조)를 사실로만 적는다.
+            색으로 좋고 나쁨을 나타내지 않는다. reduceWeight 는 API 내부 로직용이라 화면에 쓰지 않는다(2026-10-30).
+            저장 컬럼에 지수 상태가 없어 저장분과 따로 받는다. 두 영역의 시점이 달라 시각을 함께 적는다(2026-11-05). */}
+        <section aria-label="지금 시장 상태" className="mb-8">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-3">
+            <h2 className="text-sm font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
+              지금 시장 상태
+            </h2>
+            {market && (
+              <span className="text-xs text-slate-500 dark:text-zinc-400">
+                {kstClock(market.fetchedAt)} 조회{isSaved && " · 아래 선별 결과와 시점이 다릅니다"}
+              </span>
+            )}
+          </div>
           <div className="bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl flex items-start gap-4">
             <Activity className="w-6 h-6 text-slate-400 dark:text-zinc-500 flex-shrink-0 mt-1" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 flex-1 min-w-0">
-              <IndexStateBlock label="코스닥" state={kosdaqState} />
-              <IndexStateBlock label="코스피" state={kospiState} />
-            </div>
+            {market ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 flex-1 min-w-0">
+                <IndexStateBlock label="코스닥" state={market.kosdaqState} />
+                <IndexStateBlock label="코스피" state={market.kospiState} />
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">
+                {marketFailed ? "지수를 받지 못했습니다" : "지수를 받는 중…"}
+              </p>
+            )}
           </div>
-        </div>
+        </section>
 
         <ScreeningPipelineGuide />
+
+        {/* 선별 결과 — 기본은 저장분이고, 새로 조회를 누르면 실시간 값으로 바뀐다 */}
+        <div className="mb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="flex items-center gap-1.5 text-lg md:text-xl font-extrabold text-slate-900 dark:text-zinc-50">
+              <Calendar className="w-5 h-5 text-slate-500 dark:text-zinc-400" />
+              {resultTitle}
+            </h2>
+            {isSaved && !data.empty && (
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                data.isToday
+                  ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
+              }`}>
+                {data.isToday ? "오늘" : "오늘 아님"}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-slate-500 dark:text-zinc-400">
+            {fetchedAtMs && (
+              <span className={justRefreshed ? "px-2 py-1 rounded-lg font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-300 dark:ring-emerald-700/60" : ""}>
+                {justRefreshed && "새 값 수신 · "}시세 수신 {fetchedTimeStr} ({formatAgo(Math.max(0, Math.floor((now - fetchedAtMs) / 1000)))} · {dataSource ? DATA_SOURCE_LABEL[dataSource] : "캐시"})
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={refreshScreening}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-zinc-700 font-semibold text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              새로 조회
+            </button>
+          </div>
+        </div>
 
         {/* 탭 인터페이스 */}
         <div className="flex border-b border-slate-200 dark:border-zinc-800 mb-8">
@@ -304,7 +459,7 @@ function OvernightScreeningContent() {
           {currentStocks.length === 0 ? (
             <div className="col-span-full py-16 bg-white dark:bg-zinc-900 rounded-[24px] border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
               <Activity className="w-10 h-10 mb-2 opacity-50" />
-              <span>선정된 종목이 없습니다.</span>
+              <span>{data.empty ? "저장된 선별 결과가 없습니다." : "선정된 종목이 없습니다."}</span>
             </div>
           ) : (
             currentStocks.map(stock => (
@@ -327,9 +482,11 @@ function OvernightScreeningContent() {
                           {stock.symbol}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
-                        전일대비 {stock.changeRate >= 0 ? "+" : ""}{stock.changeRate}%
-                      </p>
+                      {stock.changeRate != null && (
+                        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
+                          전일대비 {stock.changeRate >= 0 ? "+" : ""}{stock.changeRate}%
+                        </p>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -543,7 +700,7 @@ function ScreeningPipelineGuide() {
 
 // 지수 하나의 시장 상태 — 값이 없으면(조회 실패) 0 이나 대체 값을 그리지 않는다.
 // 이평선이 없으면 지수값만 그린다.
-function IndexStateBlock({ label, state }: { label: string; state?: IndexState }) {
+function IndexStateBlock({ label, state }: { label: string; state?: IndexState | null }) {
   if (!state || !(state.value > 0)) {
     return (
       <div className="text-sm text-slate-500 dark:text-zinc-400">{label} 지수 조회 실패</div>

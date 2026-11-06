@@ -83,3 +83,23 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* 새로 조회 완료 표시 — 새 값이 들어왔음을 알린다 */
+@keyframes fresh-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fresh-in {
+  animation: fresh-in 0.6s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-fresh-in {
+    animation: none;
+  }
+}

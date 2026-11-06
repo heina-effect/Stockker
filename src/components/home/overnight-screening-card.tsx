@@ -3,42 +3,37 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Activity, Moon } from "lucide-react";
 import Link from "next/link";
-import { formatGapPct, maArrangement, maGaps, type MAState } from "@/app/overnight/market-state";
-import { persistSkipLabel } from "@/lib/screening/persist-skip-label";
+import { formatGapPct, maArrangement, maGaps } from "@/app/overnight/market-state";
+import { useMarketState, type IndexState } from "@/app/overnight/use-market-state";
+import { kstClock, savedResultTitle } from "@/lib/screening/saved-result";
 import { SurfaceCard } from "@/components/common/surface-card";
 
-interface IndexState {
-  value: number;
-  maState?: MAState | null;
-  reduceWeight: boolean;
-}
-
-interface ScreeningData {
+interface LatestScreening {
   ok: boolean;
-  // false = 저장 허용 시간대(15:30~16:00) 밖 조회라 DB 에 저장하지 않았다(2026-11-02, 11/03 개정)
-  persisted?: boolean;
-  persistSkippedReason?: string;
-  kosdaqState: IndexState;
-  kospiState?: IndexState;
+  empty: boolean;
+  tradeDate: string | null;
+  savedAt: string | null;
+  isToday: boolean;
   results: {
-    normal: any[];
-    aggressive: any[];
-    exclude: any[];
+    normal: unknown[];
+    aggressive: unknown[];
+    exclude: unknown[];
   };
-  generatedAt: string;
 }
 
 export function OvernightScreeningCard() {
-  const [data, setData] = useState<ScreeningData | null>(null);
+  const [data, setData] = useState<LatestScreening | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const { market, marketFailed } = useMarketState();
 
   useEffect(() => {
     async function fetchScreening() {
       try {
-        const res = await fetch("/api/screening/overnight");
+        // 저장분만 읽는다. 홈에서는 실시간 스크리닝을 부르지 않는다(2026-11-05)
+        const res = await fetch("/api/screening/overnight/latest");
         const json = await res.json().catch(() => null);
-        // 실패(ok:false)·휴장일 응답에는 결과가 없다 — 종목 수·지수를 그리지 않는다
+        // 읽기 실패 응답에는 결과가 없다 — 종목 수를 그리지 않는다
         if (!res.ok || !json?.ok || !json.results) throw new Error(json?.reason || "screening_failed");
         setData(json);
       } catch (err) {
@@ -76,13 +71,9 @@ export function OvernightScreeningCard() {
     );
   }
 
-  const { kosdaqState, kospiState, persisted, persistSkippedReason, results, generatedAt } = data;
+  const { empty, tradeDate, savedAt, isToday, results } = data;
   const normalCount = results.normal.length;
   const aggressiveCount = results.aggressive.length;
-  
-  const generatedTimeStr = generatedAt 
-    ? new Date(generatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) 
-    : "";
 
   return (
     <SurfaceCard className="flex flex-col gap-4 relative overflow-hidden transition-all hover:shadow-md">
@@ -92,19 +83,6 @@ export function OvernightScreeningCard() {
         <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50 flex items-center gap-2">
           <Moon className="w-5 h-5 text-indigo-500 fill-indigo-500/20" />
           오버나이트 스크리닝 요약
-          {generatedTimeStr && (
-            <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500 ml-1.5">
-              {generatedTimeStr} 업데이트
-            </span>
-          )}
-          {persisted === false && (
-            <span
-              className="text-[10px] font-semibold text-slate-600 dark:text-zinc-300 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded"
-              title={persistSkipLabel(persistSkippedReason).detail}
-            >
-              {persistSkipLabel(persistSkippedReason).title}
-            </span>
-          )}
         </h3>
         <Link
           href="/overnight"
@@ -115,12 +93,40 @@ export function OvernightScreeningCard() {
         </Link>
       </div>
 
-      {/* 시장 상태 — 지수값·배열 상태·괴리율을 사실로만 적는다(2026-11-02). 종전 배너는 "정배열 아님"을
-          "역배열"로 표기하고 색으로 좋고 나쁨을 나타냈다. reduceWeight 는 화면에 쓰지 않는다. */}
-      <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-4 py-3 rounded-2xl space-y-1.5">
-        <IndexStateLine label="코스닥" state={kosdaqState} />
-        <IndexStateLine label="코스피" state={kospiState} />
-      </div>
+      {/* 지금 시장 상태 — 지수값·배열 상태·괴리율을 사실로만 적는다(2026-11-02). 색으로 좋고 나쁨을 나타내지 않고
+          reduceWeight 는 화면에 쓰지 않는다. 저장분과 시점이 달라 영역을 나누고 시각을 적는다(2026-11-05). */}
+      <section aria-label="지금 시장 상태">
+        <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400 mb-1.5">
+          지금 시장 상태
+          {market && <span className="font-normal"> · {kstClock(market.fetchedAt)} 조회</span>}
+        </p>
+        <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-4 py-3 rounded-2xl space-y-1.5">
+          {market ? (
+            <>
+              <IndexStateLine label="코스닥" state={market.kosdaqState} />
+              <IndexStateLine label="코스피" state={market.kospiState} />
+            </>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              {marketFailed ? "지수를 받지 못했습니다" : "지수를 받는 중…"}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* 선별 결과 — 저장분. 오늘 결과가 아니면 그 사실을 함께 적는다 */}
+      <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-zinc-400 -mb-2">
+        {tradeDate ? savedResultTitle(tradeDate, savedAt) : "저장된 선별 결과 없음"}
+        {!empty && (
+          <span className={`font-bold px-1.5 py-0.5 rounded-full ${
+            isToday
+              ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300"
+              : "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
+          }`}>
+            {isToday ? "오늘" : "오늘 아님"}
+          </span>
+        )}
+      </p>
 
       {/* 분류별 종목 수 */}
       <div className="grid grid-cols-2 gap-4">
@@ -166,7 +172,7 @@ export function OvernightScreeningCard() {
 }
 
 // 지수 한 줄 — 조회 실패면 0 이나 대체 값을 그리지 않고, 이평선이 없으면 지수값만 그린다.
-function IndexStateLine({ label, state }: { label: string; state?: IndexState }) {
+function IndexStateLine({ label, state }: { label: string; state?: IndexState | null }) {
   if (!state || !(state.value > 0)) {
     return <p className="text-xs text-slate-500 dark:text-zinc-400">{label} 지수 조회 실패</p>;
   }

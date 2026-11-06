@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classifyStoredBar, isSameDayPersistWindowSave } from "./bar-audit";
 
-// 대조 판정(2026-11-03) — 당일 15:30~16:00 저장분의 거래량 부족은 정상으로 분류한다.
+// 대조 판정(2026-11-03) — 당일 15:30~16:00 저장분의 거래량 부족은 정상으로 분류한다. 과거 행 기준이라 11/05 저장 창 하한(15:40)을 따라가지 않는다.
 const kis = { open: 100, high: 110, low: 95, close: 105, volume: 1000 };
 const row = (kstHHMM: string, over: Partial<typeof kis> = {}, kstDate = "2026-11-02") => ({
   ...kis, ...over, trade_date: "20261102",
@@ -12,6 +12,7 @@ describe("isSameDayPersistWindowSave", () => {
   it.each([
     ["15:29", false],
     ["15:30", true],
+    ["15:39", true],
     ["15:59", true],
     ["16:00", false],
     ["20:30", false],
