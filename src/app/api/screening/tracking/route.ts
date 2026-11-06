@@ -11,7 +11,7 @@ import {
   priceAdjustmentFactor,
   type CorporateAction,
 } from "@/server/screening/corporate-actions";
-import { buildQuantBreakdown, computeExitStats } from "@/lib/screening/quant-breakdown";
+import { buildQuantBreakdown, computeExitStats, findDuplicateSignals } from "@/lib/screening/quant-breakdown";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -319,6 +319,7 @@ export async function GET() {
     corporateAdjustmentLabel: string | null; // 계산 구간 안의 비율 확인 자본변동 — 수익률에 보정을 적용했다는 표시
     volumeBasis: string; // 판정에 쓴 거래량비 정의(incl_today | excl_today)
     judgedAt: string; // 판정 시각
+    duplicateOf: string | null; // 보유 구간이 겹친 집계 건의 발굴일. 있으면 목록에만 두고 집계에서 뺀다
   }
 
   const quantSignalItems: QuantSignalItem[] = [];
@@ -488,48 +489,61 @@ export async function GET() {
       corporateAdjustmentLabel: corporateAction ? null : corporateAdjustmentLabel(quantActions),
       volumeBasis: row.volume_basis,
       judgedAt: row.judged_at,
+      duplicateOf: null,
     });
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
+
+  // 캘린더가 비어 있으면(마이그레이션 미적용 등) 저장된 거래일로 센다
+  const duplicateCalendar =
+    quantCalendarDays.length > 0
+      ? quantCalendarDays
+      : [...new Set([...dataByTradeDateForQuant.values()].flatMap((m) => [...m.keys()]))].sort();
+  const duplicateSignals = findDuplicateSignals(quantSignalItems, duplicateCalendar, QUANT_SIGNAL_FRESH_DAYS);
+  for (const item of quantSignalItems) {
+    item.duplicateOf = duplicateSignals.get(`${item.symbol}::${item.discoveryDate}`) ?? null;
+  }
 
   // 누적 통계 표본(2026-10-20 재정의) — exitDay3Pct가 non-null인 건만 집계한다. day3 종가가
   // 없으면(3거래일 미경과=관측 중, 또는 3일차 이내 거래정지로 유효 구간이 끊김) 청산 규칙을
   // 적용할 수 없기 때문이다. 종전 필터(group==='result' && isValidForStats)와 결과는 동일하다 —
   // 두 조건 모두 "day3 종가 존재"와 같은 집합을 가리킨다(halt가 day<=3이면 group이 pending이 됨).
   const resultItems = quantSignalItems.filter((i) => i.exitDay3Pct != null);
+  // 수익률 집계의 표본 — 중복 신호는 건수에는 남고 집계에서 빠진다
+  const statItems = resultItems.filter((i) => !i.duplicateOf);
   // 통계에서 제외된 관측 중(day3 미도달) 건수 — 거래정지로 관측 미완 종료된 건은 따로 센다.
   const haltIncompleteCount = quantSignalItems.filter((i) => i.haltIncomplete).length;
   const corporateActionExcludedCount = quantSignalItems.filter((i) => i.corporateAction).length;
   const observingExcludedCount =
     quantSignalItems.length - resultItems.length - haltIncompleteCount - corporateActionExcludedCount;
   const avgDay3ReturnPct =
-    resultItems.length > 0
+    statItems.length > 0
       ? Number(
-          (resultItems.reduce((sum, i) => sum + (i.day3ReturnPct as number), 0) / resultItems.length).toFixed(2)
+          (statItems.reduce((sum, i) => sum + (i.day3ReturnPct as number), 0) / statItems.length).toFixed(2)
         )
       : null;
   const avgMaxReturnSoFarPct =
-    resultItems.length > 0
+    statItems.length > 0
       ? Number(
-          (resultItems.reduce((sum, i) => sum + (i.maxReturnSoFarPct as number), 0) / resultItems.length).toFixed(2)
+          (statItems.reduce((sum, i) => sum + (i.maxReturnSoFarPct as number), 0) / statItems.length).toFixed(2)
         )
       : null;
 
   // [주] 3일차 종가 청산 — 사후 정보가 들어가지 않는 실행 가능한 규칙(헤드라인).
-  const exitDay3Stats = computeExitStats(resultItems.map((i) => i.exitDay3Pct as number));
+  const exitDay3Stats = computeExitStats(statItems.map((i) => i.exitDay3Pct as number));
   // (a) 비용 차감 후
-  const exitDay3NetStats = computeExitStats(resultItems.map((i) => i.exitDay3NetPct as number));
+  const exitDay3NetStats = computeExitStats(statItems.map((i) => i.exitDay3NetPct as number));
   // (b) 손절 -10% 적용
-  const exitStop10Stats = computeExitStats(resultItems.map((i) => i.exitStop10Pct as number));
+  const exitStop10Stats = computeExitStats(statItems.map((i) => i.exitStop10Pct as number));
   // (c) 극단값 민감도 — exitDay3Pct 상·하위 1건 제외
-  const sortedExitDay3 = [...resultItems.map((i) => i.exitDay3Pct as number)].sort((a, b) => a - b);
+  const sortedExitDay3 = [...statItems.map((i) => i.exitDay3Pct as number)].sort((a, b) => a - b);
   const trimmedExitDay3 = sortedExitDay3.length > 2 ? sortedExitDay3.slice(1, -1) : [];
   const exitDay3TrimmedStats = computeExitStats(trimmedExitDay3);
   // (d) 최고점 청산 상한 — 사후에만 알 수 있어 실현 불가. 참고용으로만 노출한다.
-  const peakStats = computeExitStats(resultItems.map((i) => i.peakReturnPct as number));
+  const peakStats = computeExitStats(statItems.map((i) => i.peakReturnPct as number));
 
   // 신뢰도 배지용 표본 크기 (승패 검증이 가능한 종목만)
-  const quantSignalSampleSymbolCount = new Set(resultItems.map((r) => r.symbol)).size;
+  const quantSignalSampleSymbolCount = new Set(statItems.map((r) => r.symbol)).size;
 
   const quantSignalStats = {
     totalCount: quantSignalItems.length,
@@ -575,7 +589,7 @@ export async function GET() {
       .map((r) => ({ symbol: r.symbol, name: r.name, discoveryDate: r.discovery_date, exitDay3Pct: r.tracking_item.exitDay3Pct, exitDay3NetPct: r.tracking_item.exitDay3NetPct }));
     const results = items.filter((i) => i.exitDay3Pct != null);
     legacySample = {
-      items: items.map(({ exitDay3NetPct: _net, ...item }) => item),
+      items: items.map(({ symbol, name, discoveryDate, exitDay3Pct }) => ({ symbol, name, discoveryDate, exitDay3Pct })),
       stats: computeExitStats(results.map((i) => i.exitDay3Pct as number)),
       netExpectancy: computeExitStats(results.map((i) => i.exitDay3NetPct as number)).expectancy,
     };

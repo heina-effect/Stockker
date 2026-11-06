@@ -22,6 +22,8 @@ export interface ScreeningResultItem {
   classification: ScreeningClassification;
   entryClose: number;
   reasons: string[];
+  // 스크리닝 시점 전일대비 등락률(%). 10/22 이전 저장분과 분석 보류 항목은 없다
+  changeRate?: number | null;
   // 스크리닝 시점 계산 지표 (분석용 숫자 컬럼). 미측정 항목은 null/undefined.
   tailRatio?: number | null;
   volumeRatio?: number | null;
@@ -138,6 +140,7 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
           classification: item.classification,
           entry_close: item.entryClose,
           reasons: item.reasons,
+          change_rate: item.changeRate ?? null,
           tail_ratio: item.tailRatio ?? null,
           volume_ratio: item.volumeRatio ?? null,
           turnover_rate: item.turnoverRate ?? null,
@@ -304,6 +307,7 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
             classification,
             entry_close,
             reasons,
+            change_rate,
             tail_ratio,
             volume_ratio,
             turnover_rate,
@@ -330,6 +334,7 @@ export async function getScreeningResult(date: string): Promise<ScreeningResultR
           classification: i.classification as ScreeningClassification,
           entryClose: Number(i.entry_close || 0),
           reasons: i.reasons || [],
+          changeRate: toNum(i.change_rate),
           tailRatio: toNum(i.tail_ratio),
           volumeRatio: toNum(i.volume_ratio),
           turnoverRate: toNum(i.turnover_rate),

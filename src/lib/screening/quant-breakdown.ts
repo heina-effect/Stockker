@@ -68,6 +68,28 @@ export interface QuantBreakdownInput {
   exitDay3Pct: number | null;
   volumeBasis: string;
   judgedAt: string;
+  duplicateOf?: string | null;
+}
+
+// 같은 종목이 보유 구간 안에 또 신호를 내면 관측 구간이 겹쳐 독립 표본이 아니다. 발굴일 순으로 훑어, 마지막으로
+// 집계에 센 건의 3일차가 지나지 않았으면 중복으로 친다. 지났으면 다시 세므로 연속 신호는 보유 구간이 끝날 때마다
+// 새로 센다. 거래일 캘린더로 세고, 3일차 당일의 재신호는 아직 지나지 않은 것으로 본다.
+// 돌려주는 값은 "symbol::발굴일" → 그 건이 겹친 집계 건의 발굴일이다.
+export function findDuplicateSignals(
+  items: { symbol: string; discoveryDate: string }[],
+  tradingDays: string[],
+  holdDays: number
+): Map<string, string> {
+  const duplicates = new Map<string, string>();
+  const lastCounted = new Map<string, string>();
+  for (const { symbol, discoveryDate } of [...items].sort((a, b) => a.discoveryDate.localeCompare(b.discoveryDate))) {
+    const counted = lastCounted.get(symbol);
+    // 당일이 아직 캘린더에 없어도 어긋나지 않도록 사이의 거래일만 세고 당일을 더한다
+    const elapsed = counted ? tradingDays.filter((d) => d > counted && d < discoveryDate).length + 1 : null;
+    if (counted && elapsed !== null && elapsed <= holdDays) duplicates.set(`${symbol}::${discoveryDate}`, counted);
+    else lastCounted.set(symbol, discoveryDate);
+  }
+  return duplicates;
 }
 
 const TIME_BUCKETS = ["15:30 이전", "15:30~15:40", "15:40~16:00", "16시 이후"] as const;
@@ -84,20 +106,26 @@ export function buildQuantBreakdown(items: QuantBreakdownInput[], costPct: numbe
   const valuesOf = (list: QuantBreakdownInput[]) =>
     list.flatMap((i) => (i.exitDay3Pct != null ? [i.exitDay3Pct] : []));
   const group = (label: string, list: QuantBreakdownInput[]) => row(label, list.length, valuesOf(list), costPct);
-  const sorted = valuesOf(items).sort((a, b) => a - b);
+  // 표의 모든 줄은 중복을 뺀 집계다. 중복을 넣은 값은 비교용 한 줄로만 낸다
+  const counted = items.filter((i) => !i.duplicateOf);
+  const duplicates = items.filter((i) => i.duplicateOf);
+  const sorted = valuesOf(counted).sort((a, b) => a - b);
 
   return {
+    duplicateCount: duplicates.length,
+    duplicateResultCount: valuesOf(duplicates).length,
+    withDuplicates: group("전체(중복 포함)", items),
     sensitivity: [
-      row("전체", items.length, sorted, costPct),
+      row("전체", counted.length, sorted, costPct),
       row("최고 1건 제외", sorted.length - 1, sorted.slice(0, -1), costPct),
       row("최저 1건 제외", sorted.length - 1, sorted.slice(1), costPct),
       row("둘 다 제외", sorted.length - 2, sorted.slice(1, -1), costPct),
     ],
     byBasis: [
-      group("당일 제외(excl_today)", items.filter((i) => i.volumeBasis === "excl_today")),
-      group("당일 포함(incl_today)", items.filter((i) => i.volumeBasis === "incl_today")),
+      group("당일 제외(excl_today)", counted.filter((i) => i.volumeBasis === "excl_today")),
+      group("당일 포함(incl_today)", counted.filter((i) => i.volumeBasis === "incl_today")),
     ],
-    byTime: TIME_BUCKETS.map((bucket) => group(bucket, items.filter((i) => judgedTimeBucket(i.judgedAt) === bucket))),
+    byTime: TIME_BUCKETS.map((bucket) => group(bucket, counted.filter((i) => judgedTimeBucket(i.judgedAt) === bucket))),
   };
 }
 

@@ -13,20 +13,26 @@ const quantItem = (over: object = {}) => ({
   group: "pending", day3ReturnPct: null, maxReturnSoFarPct: null, minReturnSoFarPct: null, exitDay3Pct: null, exitDay3NetPct: null, exitStop10Pct: null,
   peakReturnPct: null, endDate: null, endClose: null, endReturnPct: null, haltStartDaysAfter: null, isValidForStats: true, elapsedTradingDays: 1,
   observationEnded: false, haltIncomplete: false, isRecentlyActive: false, recentRecapture: null, corporateAction: null, corporateAdjustmentLabel: null,
-  volumeBasis: "incl_today", judgedAt: "2026-11-05T06:40:00Z", ...over,
+  volumeBasis: "incl_today", judgedAt: "2026-11-05T06:40:00Z", duplicateOf: null, ...over,
 });
 const body = {
   ok: true,
   summary: { total: 0, stopLoss: 0, hold: 0, watching: 0, corporateActionExcluded: 0 },
   stageCounts: { primary: 0, secondary: 0, ended: 0 },
   items: [],
-  quantSignalItems: [quantItem()],
+  quantSignalItems: [
+    quantItem(),
+    quantItem({ discoveryDate: "20261106", daysAfter: 0, elapsedTradingDays: 0, judgedAt: "2026-11-06T06:41:02Z", duplicateOf: "20261105" }),
+  ],
   quantSignalStats: {
     totalCount: 12, resultCount: 10, observingExcludedCount: 2, haltIncompleteCount: 0, corporateActionExcludedCount: 0, roundTripCostPct: 0.257,
     stopLossThresholdPct: -10, avgDay3ReturnPct: -0.04, avgMaxReturnSoFarPct: 9, exitDay3: exitStats(), exitDay3Net: exitStats(), exitStop10: exitStats(),
     exitDay3Trimmed: exitStats(), peak: exitStats(), sampleSymbolCount: 9,
   },
   quantBreakdown: {
+    duplicateCount: 1,
+    duplicateResultCount: 0,
+    withDuplicates: row("전체(중복 포함)", [1], { total: 12, stats: exitStats({ expectancy: -0.05 }), netExpectancy: -0.3 }),
     sensitivity: [
       row("전체", [1], { total: 12, stats: exitStats(), netExpectancy: -0.29 }),
       row("최고 1건 제외", [1], { stats: exitStats({ expectancy: -3.81 }), netExpectancy: -4.07 }),
@@ -86,6 +92,32 @@ describe("퀀트 신호 트래커 헤드라인", () => {
     expect(within(line).getByText("통계 불가 — -5.35%, +0.86%")).toBeTruthy();
     const empty = screen.getByText("16시 이후").closest("tr") as HTMLElement;
     expect(within(empty).getByText("통계 불가")).toBeTruthy();
+  });
+
+  it("중복 건은 목록에 표시되고 건수는 헤드라인이 아니라 분해표에 나온다", async () => {
+    render(<TrackingPage />);
+    expect(await screen.findByText("중복 — 11/5 건 보유 중 재발생. 집계 제외")).toBeTruthy();
+    const head = screen.getByText(/결과 10건 · 대기 2건/);
+    expect(head.textContent).not.toContain("중복");
+    await open(/통계 근거 보기/);
+    expect(screen.getByText("전체(중복 포함)")).toBeTruthy();
+    expect(screen.getByText(/다시 낸 신호 1건\(결과 0건\)은 관측 구간이 겹쳐 집계에서 뺍니다/)).toBeTruthy();
+  });
+
+  it("카드 안에 상태와 거래량 기준이 한 번씩만 나온다", async () => {
+    render(<TrackingPage />);
+    const title = await screen.findByRole("link", { name: "종목가" });
+    const card = title.parentElement?.parentElement as HTMLElement;
+    expect(card.textContent?.match(/관찰 중/g)).toHaveLength(1);
+    expect(card.textContent?.match(/15:40 기준, 애프터마켓 제외/g)).toHaveLength(1);
+  });
+
+  it("판정 시각이 다르면 거래량 기준을 줄마다 적는다", async () => {
+    const mixed = { ...body, quantSignalItems: [quantItem(), quantItem({ discoveryDate: "20261016", judgedAt: "2026-10-16T06:36:57Z" })] };
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => mixed })) as any;
+    render(<TrackingPage />);
+    expect(await screen.findByText(/15:36 판정/)).toBeTruthy();
+    expect(screen.getByText(/15:40 기준, 애프터마켓 제외/)).toBeTruthy();
   });
 
   it("재구성 표본은 접혀 있고 수치가 그 안에만 있다", async () => {

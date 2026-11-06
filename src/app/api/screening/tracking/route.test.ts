@@ -124,6 +124,22 @@ describe("GET /api/screening/tracking — A트랙 선정", () => {
     expect(vi.mocked(console.warn)).toHaveBeenCalledWith(expect.stringContaining("000009"));
   });
 
+  it("중복 신호는 목록에 남고 수익률 집계에서 빠진다", async () => {
+    db.tables.quant_signal_judgments = [judgment("000001", "20261102", true), judgment("000001", "20261103", true)];
+    db.tables.stock_trajectory = [
+      ...series("000001", [1000, 1000, 1020, 1100, 2000]),
+      traj("000001", "20261103", "20261103", 0, 1000),
+    ];
+    const { body } = await read();
+    const items = body.quantSignalItems;
+    expect(items.map((i: any) => [i.discoveryDate, i.duplicateOf])).toEqual([["20261103", "20261102"], ["20261102", null]]);
+    expect(items.map((i: any) => i.exitDay3Pct)).toEqual([100, 10]);
+    expect(body.quantSignalStats).toMatchObject({ totalCount: 2, resultCount: 2 });
+    expect(body.quantSignalStats.exitDay3).toMatchObject({ n: 1, expectancy: 10 });
+    expect(body.quantBreakdown).toMatchObject({ duplicateCount: 1, duplicateResultCount: 1 });
+    expect(body.quantBreakdown.sensitivity[0].values).toEqual([10]);
+  });
+
   it("판정 기록을 읽지 못하면 500 이다", async () => {
     db.fail.add("quant_signal_judgments");
     expect((await read()).status).toBe(500);

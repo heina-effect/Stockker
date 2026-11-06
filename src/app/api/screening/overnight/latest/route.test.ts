@@ -115,7 +115,7 @@ describe("GET /api/screening/overnight/latest", () => {
       reduce_weight: true,
       kosdaq_value: 700,
       items: [
-        item("000001", "normal"),
+        item("000001", "normal", { change_rate: 3.22 }),
         item("000002", "aggressive"),
         item("000003", "exclude", { tail_ratio: null, volume_ratio: null, freshness_count: null, rsi14: null, quant_signal: false }),
         item("000004", "excludedNotice", { reasons: ["데이터 부족"] }),
@@ -123,7 +123,8 @@ describe("GET /api/screening/overnight/latest", () => {
     }];
     const { body } = await read();
     expect(body.results.normal[0]).toMatchObject({ symbol: "000001", price: 10000, metrics: { volumeRatio: 250, tailRatio: 1.5, freshnessCount: 3, rsi14: 55, quantSignal: true } });
-    expect(body.results.normal[0].changeRate).toBeUndefined();
+    expect(body.results.normal[0].changeRate).toBe(3.22);
+    expect(body.results.aggressive[0].changeRate).toBeNull();
     expect(body.results.aggressive[0].symbol).toBe("000002");
     expect(body.results.exclude[0].metrics).toBeUndefined();
     expect(body.excludedNotice).toEqual([{ symbol: "000004", name: "종목000004", reason: "데이터 부족", entryClose: 10000 }]);

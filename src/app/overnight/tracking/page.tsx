@@ -90,6 +90,7 @@ interface QuantSignalItem {
   corporateAdjustmentLabel: string | null; // 있으면 수익률이 자본변동 보정값
   volumeBasis: string; // 판정에 쓴 거래량비 정의
   judgedAt: string; // 판정 시각
+  duplicateOf: string | null; // 보유 구간이 겹친 집계 건의 발굴일. 목록에만 있고 집계에서 빠진다
 }
 
 // 재구성 표본 — 판정 기록과 겹치지 않는 옛 A트랙 건. 값은 스냅샷의 고정값이다
@@ -144,6 +145,12 @@ const QUANT_SIGNAL_META = {
 function formatSignedPct(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
+
+const duplicateNotice = (duplicateOf: string) => `중복 — ${formatDiscoveryDate(duplicateOf)} 건 보유 중 재발생. 집계 제외`;
+
+// 판정 시각이 저장 창 밖인 복원 건은 15:40 값이 아니다
+const volumeBasisLabel = (item: { judgedAt: string }) =>
+  judgedTimeBucket(item.judgedAt) === "15:40~16:00" ? "15:40 기준, 애프터마켓 제외" : `${kstClock(item.judgedAt)} 판정`;
 
 // 목표 표본(종전 60종목)은 산출 근거가 없었고 검증도 종료돼 제거했다(2026-11-02). 헤드라인은 표본 종목 수만 쓴다
 // — n은 A트랙 발굴 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
@@ -504,19 +511,15 @@ function groupQuantItemsBySymbol(items: QuantSignalItem[]): QuantSymbolGroup[] {
 
 // 그룹 카드 안의 이력 한 줄 — 카드는 관찰 중(day3 종가 미도달) 건만 받는다(2026-10-30 통일).
 // day3 종가가 생긴 건은 관찰 종료로 QuantEndedTable에만 나온다.
-function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
+function QuantHistoryRow({ item, showVolumeBasis }: { item: QuantSignalItem; showVolumeBasis: boolean }) {
   // 3 − 경과 거래일. 0 이하면 "N일 후 판단 예정"은 거짓이므로 문구 자체를 내지 않는다(클램프 금지).
   // 관찰 중 건만 들어오면 항상 1~3이지만, 방어적으로 0 이하 분기를 명시한다.
   const daysLeft = QUANT_SIGNAL_FRESH_DAYS_CLIENT - item.elapsedTradingDays;
   return (
     <div className="text-xs text-slate-500 dark:text-zinc-400 py-1.5 border-t border-slate-100 dark:border-zinc-800/80 first:border-t-0 first:pt-0">
-      <span className="font-semibold text-blue-700 dark:text-blue-400">관찰 중</span>
-      {" · "}
       {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter}) · RSI{" "}
       {item.rsi14 != null ? item.rsi14.toFixed(1) : "—"} · 거래량{" "}
-      {item.volumeRatio != null
-        ? `${item.volumeRatio.toFixed(0)}% ${judgedTimeBucket(item.judgedAt) === "15:40~16:00" ? "(15:40 기준, 애프터마켓 제외)" : `(${kstClock(item.judgedAt)} 판정)`}`
-        : "—"}
+      {item.volumeRatio != null ? `${item.volumeRatio.toFixed(0)}%${showVolumeBasis ? ` (${volumeBasisLabel(item)})` : ""}` : "—"}
       {item.haltStartDaysAfter != null ? (
         <span className="text-amber-600 dark:text-amber-400">
           {" "}
@@ -525,19 +528,20 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
       ) : daysLeft > 0 ? (
         <span className="text-slate-400 dark:text-zinc-500"> · {daysLeft}일 후 판단 예정</span>
       ) : null}
+      {item.duplicateOf && (
+        <span className="block mt-0.5 text-amber-700 dark:text-amber-400">{duplicateNotice(item.duplicateOf)}</span>
+      )}
     </div>
   );
 }
 
-// 카드에는 관찰 중 이벤트만 행으로 나오고, 상태는 카드 전체가 아니라 이벤트 단위로 붙인다.
-// 같은 종목의 종료 이벤트(endedEvents)는 표에 있으므로 여기서는 날짜·상태 한 줄로만 보여준다.
-// 예) 7/8 종료 · 8/20 종료 · 10/29 관찰 중
+// 카드에는 관찰 중 이벤트만 들어오므로 상태는 제목 옆에 한 번만 적는다. 같은 종목의 종료 이벤트(endedEvents)는
+// 표에 있어 날짜만 적는다. 판정 시각이 같아 거래량 기준이 같으면 줄마다 쓰지 않고 카드 아래에 한 번 적는다.
 function QuantGroupedCard({ group, endedEvents }: { group: QuantSymbolGroup; endedEvents: QuantSignalItem[] }) {
   const { symbol, name, events } = group;
-  const timeline = [
-    ...endedEvents.map((e) => ({ date: e.discoveryDate, ended: true })),
-    ...events.map((e) => ({ date: e.discoveryDate, ended: false })),
-  ].sort((a, b) => a.date.localeCompare(b.date));
+  const endedDates = endedEvents.map((e) => e.discoveryDate).sort();
+  const volumeBases = new Set(events.filter((e) => e.volumeRatio != null).map(volumeBasisLabel));
+  const sharedVolumeBasis = events.length > 1 && volumeBases.size === 1 ? [...volumeBases][0] : null;
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-transparent shadow-sm">
@@ -556,23 +560,21 @@ function QuantGroupedCard({ group, endedEvents }: { group: QuantSymbolGroup; end
         >
           퀀트신호
         </span>
+        <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 flex-shrink-0">관찰 중</span>
       </div>
-      {timeline.length > 1 && (
+      {endedDates.length > 0 && (
         <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
-          {timeline.map((t, i) => (
-            <span key={t.date}>
-              {i > 0 && " · "}
-              {formatDiscoveryDate(t.date)}{" "}
-              <span className={t.ended ? "" : "font-semibold text-blue-700 dark:text-blue-400"}>{t.ended ? "종료" : "관찰 중"}</span>
-            </span>
-          ))}
+          이전 신호 종료: {endedDates.map(formatDiscoveryDate).join(", ")}
         </p>
       )}
-      <div>
+      <div className="mt-1.5">
         {events.map((item) => (
-          <QuantHistoryRow key={item.discoveryDate} item={item} />
+          <QuantHistoryRow key={item.discoveryDate} item={item} showVolumeBasis={!sharedVolumeBasis} />
         ))}
       </div>
+      {sharedVolumeBasis && (
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">거래량: {sharedVolumeBasis}</p>
+      )}
       {events[0]?.recentRecapture && (
         <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800/80">
           최근 재포착 {formatDiscoveryDate(events[0].recentRecapture.date)}
@@ -715,6 +717,9 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
                   <Link href={`/stocks/${item.symbol}`} className="hover:underline hover:text-indigo-600 dark:hover:text-indigo-400">
                     {item.name}
                   </Link>
+                  {item.duplicateOf && (
+                    <span className="ml-1 text-[11px] text-amber-700 dark:text-amber-400">{duplicateNotice(item.duplicateOf)}</span>
+                  )}
                   {item.corporateAdjustmentLabel && (
                     <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">
                       {corporateAdjustmentNotice(item.corporateAdjustmentLabel)}
@@ -858,11 +863,16 @@ function QuantReferenceToggle({ stats, breakdown }: { stats: QuantSignalStats; b
       <p className="text-xs text-slate-600 dark:text-zinc-300">판정 조건: {QUANT_SIGNAL_META.condition}</p>
       {stats.resultCount > 0 && (
         <>
-          <QuantBreakdownTable title="극단값 민감도" rows={breakdown.sensitivity} />
+          <QuantBreakdownTable
+            title="극단값 민감도"
+            rows={breakdown.duplicateCount > 0 ? [...breakdown.sensitivity, breakdown.withDuplicates] : breakdown.sensitivity}
+          />
           <QuantBreakdownTable title="거래량비 정의별" rows={breakdown.byBasis} />
           <QuantBreakdownTable title="판정 시각별" rows={breakdown.byTime} />
           <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
             결과 칸은 결과 건수/전체 건수입니다. 결과 {MIN_STAT_RESULTS}건 미만은 통계를 내지 않습니다. 비용 후는 왕복 {stats.roundTripCostPct}% 차감입니다.
+            {breakdown.duplicateCount > 0 &&
+              ` 같은 종목이 보유 구간 안에 다시 낸 신호 ${breakdown.duplicateCount}건(결과 ${breakdown.duplicateResultCount}건)은 관측 구간이 겹쳐 집계에서 뺍니다.`}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">

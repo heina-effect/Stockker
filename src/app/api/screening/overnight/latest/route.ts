@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 // 화면 열람 경로(2026-11-05). 저장된 결과만 읽는다 — KIS 를 부르지 않고 캐시도 건드리지 않는다.
 // 실행 경로는 GET /api/screening/overnight 그대로다.
-// 저장 컬럼에 없는 값은 만들지 않는다. 등락률은 저장되지 않아 응답에 없고, 지수 상태는 market-state 가 따로 준다.
+// 저장 컬럼에 없는 값은 만들지 않는다. 등락률은 10/22 이전 저장분에 없어 null 이고, 지수 상태는 market-state 가 따로 준다.
 
 function toStock(item: ScreeningResultItem) {
   const { tailRatio, volumeRatio, freshnessCount } = item;
@@ -19,6 +19,7 @@ function toStock(item: ScreeningResultItem) {
     symbol: item.symbol,
     name: item.name,
     price: item.entryClose,
+    changeRate: item.changeRate ?? null,
     classification: item.classification,
     reasons: item.reasons,
     // 조회 실패로 제외된 종목은 지표가 없다

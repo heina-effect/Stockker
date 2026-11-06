@@ -189,6 +189,11 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
 
     beforeEach(() => vi.setSystemTime(new Date("2026-10-30T06:41:00Z")));
 
+    it("등락률을 저장한다", async () => {
+      await call("?save=1");
+      expect((h.save.mock.calls[0][0] as { items: { changeRate: number }[] }).items[0].changeRate).toBe(5);
+    });
+
     it("저장에 성공하면 기록한다", async () => {
       await call("?save=1");
       expect(h.recordJudgments).toHaveBeenCalledTimes(1);

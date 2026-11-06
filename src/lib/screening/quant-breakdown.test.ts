@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQuantBreakdown, computeExitStats, judgedTimeBucket } from "./quant-breakdown";
+import { buildQuantBreakdown, computeExitStats, findDuplicateSignals, judgedTimeBucket } from "./quant-breakdown";
 
 const COST = 0.257;
 const item = (exitDay3Pct: number | null, volumeBasis = "incl_today", judgedAt = "2026-11-06T06:41:00Z") => ({ exitDay3Pct, volumeBasis, judgedAt });
@@ -66,6 +66,88 @@ describe("buildQuantBreakdown", () => {
       ["15:40~16:00", [3]],
       ["16시 이후", [4]],
     ]);
+  });
+});
+
+describe("findDuplicateSignals", () => {
+  const days = ["20261103", "20261104", "20261105", "20261106", "20261109", "20261110", "20261111", "20261112", "20261113", "20261116"];
+  const signal = (discoveryDate: string, symbol = "035420") => ({ symbol, discoveryDate });
+  const find = (...items: { symbol: string; discoveryDate: string }[]) => [...findDuplicateSignals(items, days, 3).entries()];
+
+  it("보유 구간 안의 재신호는 중복이다", () => {
+    expect(find(signal("20261105"), signal("20261106"))).toEqual([["035420::20261106", "20261105"]]);
+  });
+
+  it("3일차 당일의 재신호는 아직 지나지 않아 중복이다", () => {
+    expect(find(signal("20261105"), signal("20261110"))).toEqual([["035420::20261110", "20261105"]]);
+  });
+
+  it("3일차가 지난 뒤의 재신호는 중복이 아니다", () => {
+    expect(find(signal("20261105"), signal("20261111"))).toEqual([]);
+  });
+
+  it("주말을 건너 거래일로 센다", () => {
+    expect(find(signal("20261106"), signal("20261111"))).toEqual([["035420::20261111", "20261106"]]);
+    expect(find(signal("20261106"), signal("20261112"))).toEqual([]);
+  });
+
+  it("연속 신호는 보유 구간이 끝날 때마다 새로 센다", () => {
+    const all = ["20261103", "20261104", "20261105", "20261106", "20261109", "20261110", "20261111"].map((d) => signal(d));
+    expect(find(...all)).toEqual([
+      ["035420::20261104", "20261103"],
+      ["035420::20261105", "20261103"],
+      ["035420::20261106", "20261103"],
+      ["035420::20261110", "20261109"],
+      ["035420::20261111", "20261109"],
+    ]);
+  });
+
+  it("중복 건 뒤의 판단은 마지막으로 센 건 기준이다", () => {
+    expect(find(signal("20261103"), signal("20261106"), signal("20261109"))).toEqual([["035420::20261106", "20261103"]]);
+  });
+
+  it("종목별로 따로 센다", () => {
+    expect(find(signal("20261105"), signal("20261106", "000001"))).toEqual([]);
+  });
+
+  it("입력 순서와 무관하다", () => {
+    expect(find(signal("20261106"), signal("20261105"))).toEqual([["035420::20261106", "20261105"]]);
+  });
+
+  it("당일이 캘린더에 아직 없어도 같게 센다", () => {
+    expect([...findDuplicateSignals([signal("20261105"), signal("20261106")], ["20261105"], 3).keys()]).toEqual(["035420::20261106"]);
+  });
+});
+
+describe("중복 신호와 집계", () => {
+  const values = [-4.98, -8.04, -12.31, 15.94, 33.95, -5.35, -4.63, -4.65, -11.14, 0.86];
+  const base = values.map((v) => item(v));
+
+  it("중복 건은 모든 줄에서 빠지고 비교 줄에만 남는다", () => {
+    const b = buildQuantBreakdown([...base, { ...item(99), duplicateOf: "20261105" }], COST);
+    expect(b.sensitivity[0]).toMatchObject({ total: 10 });
+    expect(b.sensitivity[0].stats?.expectancy).toBe(-0.04);
+    expect(b.sensitivity[1].values).not.toContain(99);
+    expect(b.byBasis[1].values).not.toContain(99);
+    expect(b.byTime[2].values).not.toContain(99);
+    expect(b.withDuplicates.values).toContain(99);
+    expect(b).toMatchObject({ duplicateCount: 1, duplicateResultCount: 1 });
+  });
+
+  it("11/10·11/11 에 NAVER 결과가 들어와도 11/6 건은 집계에 안 들어간다", () => {
+    const before = buildQuantBreakdown([...base, item(null), { ...item(null), duplicateOf: "20261105" }], COST);
+    expect(before.sensitivity[0]).toMatchObject({ total: 11 });
+    expect(before.sensitivity[0].stats?.n).toBe(10);
+    expect(before).toMatchObject({ duplicateCount: 1, duplicateResultCount: 0 });
+
+    const on1110 = buildQuantBreakdown([...base, item(5), { ...item(null), duplicateOf: "20261105" }], COST);
+    expect(on1110.sensitivity[0].stats?.n).toBe(11);
+
+    const on1111 = buildQuantBreakdown([...base, item(5), { ...item(7), duplicateOf: "20261105" }], COST);
+    expect(on1111.sensitivity[0].stats?.n).toBe(11);
+    expect(on1111.sensitivity[0].stats?.expectancy).toBe(on1110.sensitivity[0].stats?.expectancy);
+    expect(on1111.withDuplicates.stats?.n).toBe(12);
+    expect(on1111.duplicateResultCount).toBe(1);
   });
 });
 

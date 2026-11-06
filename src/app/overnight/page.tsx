@@ -25,8 +25,8 @@ interface ScreeningStock {
   symbol: string;
   name: string;
   price: number;
-  // 저장되지 않는 값이라 저장분에는 없다
-  changeRate?: number;
+  // 10/22 이전 저장분은 null 이다
+  changeRate?: number | null;
   classification: "normal" | "aggressive" | "exclude";
   weightSuggestion?: number;
   reasons: string[];
@@ -482,11 +482,9 @@ function OvernightScreeningContent() {
                           {stock.symbol}
                         </span>
                       </div>
-                      {stock.changeRate != null && (
-                        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
-                          전일대비 {stock.changeRate >= 0 ? "+" : ""}{stock.changeRate}%
-                        </p>
-                      )}
+                      <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
+                        전일대비 {stock.changeRate != null ? `${stock.changeRate >= 0 ? "+" : ""}${stock.changeRate}%` : "—"}
+                      </p>
                     </div>
 
                     <div className="text-right">
