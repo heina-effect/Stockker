@@ -81,9 +81,11 @@ function fallbackFilePath(date: string): string {
 // 소급 검증 용도이므로 넉넉히 보존 (약 400일)
 const RESULT_TTL_SECONDS = 400 * 24 * 60 * 60;
 
-export async function saveScreeningResult(record: ScreeningResultRecord): Promise<void> {
+// supabaseSaved: 이 함수는 Supabase 실패를 삼키고 보조 저장소로 넘어가므로, 호출자가 DB 저장 성공을 알 길은 이 값뿐이다
+export async function saveScreeningResult(record: ScreeningResultRecord): Promise<{ supabaseSaved: boolean }> {
   const key = screeningKey(record.date);
   const payload = JSON.stringify(record);
+  let supabaseSaved = false;
 
   // 1. Supabase 영구 저장 시도
   try {
@@ -155,6 +157,7 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
 
         if (itemsErr) throw itemsErr;
       }
+      supabaseSaved = true;
       console.log(`[Screening Storage] Successfully saved screening for date ${record.date} to Supabase`);
     }
   } catch (e) {
@@ -166,7 +169,7 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
     const redis = getRedis();
     if (redis) {
       await redis.set(key, payload, { ex: RESULT_TTL_SECONDS });
-      return;
+      return { supabaseSaved };
     }
   } catch (e) {
     console.error("[Screening Storage] Redis save failed, falling back:", (e as Error)?.message || e);
@@ -181,6 +184,7 @@ export async function saveScreeningResult(record: ScreeningResultRecord): Promis
   } catch {
     // ignore
   }
+  return { supabaseSaved };
 }
 
 /** 그날 Supabase에 이미 저장된 스크리닝 항목 수와 저장 시각. 없으면 null. */

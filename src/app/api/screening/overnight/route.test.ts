@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
   trajectory: vi.fn(),
   upsert: vi.fn(),
   invariant: vi.fn(),
+  recordJudgments: vi.fn(),
+  stockDetail: null as null | ((...args: unknown[]) => unknown),
   supabase: null as null | { from: (t: string) => { upsert: (...a: unknown[]) => unknown } },
 }));
 
@@ -27,14 +29,18 @@ vi.mock("@/server/kis/rest-client", async () => ({
   getDomesticVolumeRank: h.volumeRank,
   getDomesticStockDaily: h.stockDaily,
   getDomesticStockWeekly: h.stockDaily,
-  getDomesticStockDetail: h.stockDaily,
+  getDomesticStockDetail: (...args: unknown[]) => (h.stockDetail ?? h.stockDaily)(...args),
 }));
 vi.mock("@/lib/stocks/search-master", () => ({ getSearchMaster: h.searchMaster }));
 vi.mock("@/server/screening/storage", () => ({
-  saveScreeningResult: h.save,
+  saveScreeningResult: async (...args: unknown[]) => (await h.save(...args)) ?? { supabaseSaved: true },
   getScreeningSavedInfo: h.savedInfo,
   logForceOverwrite: h.forceLog,
   formatKSTDateCompact: () => "20261030",
+}));
+vi.mock("@/server/screening/quant-judgment", async (importActual) => ({
+  ...(await importActual<typeof import("@/server/screening/quant-judgment")>()),
+  recordQuantJudgments: h.recordJudgments,
 }));
 vi.mock("@/server/screening/trajectory-update", () => ({ runDailyTrajectoryUpdate: h.trajectory }));
 vi.mock("@/lib/supabase/client", () => ({ getSupabaseAdmin: () => h.supabase }));
@@ -175,6 +181,62 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
     expect(h.save).toHaveBeenCalledTimes(1);
     expect(h.upsert).toHaveBeenCalledTimes(1);
     expect(h.trajectory).toHaveBeenCalledTimes(1);
+  });
+
+  describe("판정 기록(2026-11-06)", () => {
+    const stockRow = (symbol: string) => ({ mksc_shrn_iscd: symbol, hts_kor_isnm: `종목${symbol}`, stck_prpr: "10000", prdy_ctrt: "5", acml_tr_pbmn: "2000000000", vol_tnrt: "10" });
+    const recorded = () => h.recordJudgments.mock.calls[0]?.[0] as { symbol: string; quant_signal: boolean; source: string }[];
+
+    beforeEach(() => vi.setSystemTime(new Date("2026-10-30T06:41:00Z")));
+
+    it("저장에 성공하면 기록한다", async () => {
+      await call("?save=1");
+      expect(h.recordJudgments).toHaveBeenCalledTimes(1);
+      expect(recorded()).toEqual([expect.objectContaining({ symbol: "000001", date: "20261030", source: "live", volume_basis: "incl_today", close_at_judgment: 10000, volume_at_judgment: 1000, judged_at: "2026-10-30T06:41:00.000Z" })]);
+    });
+
+    // 행 생성의 true·false 는 quant-judgment.test.ts 에서 본다. 여기서는 미달 종목도 빠지지 않는지 본다
+    it("판정 미달 종목도 넘긴다", async () => {
+      h.volumeRank.mockResolvedValue([stockRow("000001"), stockRow("000002")]);
+      await call("?save=1");
+      expect(recorded().map((r) => [r.symbol, r.quant_signal])).toEqual([["000001", false], ["000002", false]]);
+    });
+
+    it("Supabase 저장이 실패하면 기록하지 않는다", async () => {
+      h.save.mockResolvedValueOnce({ supabaseSaved: false });
+      const r = await call("?save=1");
+      expect(r.body.persisted).toBe(true);
+      expect(h.recordJudgments).not.toHaveBeenCalled();
+    });
+
+    it("저장 함수가 던지면 기록하지 않는다", async () => {
+      h.save.mockRejectedValueOnce(new Error("boom"));
+      await call("?save=1");
+      expect(h.recordJudgments).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["조회 전용", "", "2026-10-30T06:41:00Z"],
+      ["이미 저장됨", "?save=1", "2026-10-30T06:41:00Z"],
+      ["15:39 저장 창 전", "?save=1", "2026-10-30T06:39:00Z"],
+      ["16:00 저장 창 뒤", "?save=1", "2026-10-30T07:00:00Z"],
+    ])("%s 이면 기록하지 않는다", async (label, query, iso) => {
+      vi.setSystemTime(new Date(iso));
+      if (label === "이미 저장됨") h.savedInfo.mockResolvedValue({ itemCount: 8, savedAt: "2026-10-30T06:40:18Z" });
+      await call(query);
+      expect(h.save).not.toHaveBeenCalled();
+      expect(h.recordJudgments).not.toHaveBeenCalled();
+    });
+
+    it("excludedNotice 는 기록하지 않는다", async () => {
+      h.volumeRank.mockResolvedValue([stockRow("000001"), stockRow("000002")]);
+      h.stockDaily.mockImplementation(async (symbol: string) => (symbol === "000002" ? candles.slice(0, 50) : candles));
+      h.stockDetail = async () => ({ vol_tnrt: "10" });
+      const r = await call("?save=1");
+      h.stockDetail = null;
+      expect(r.body.excludedNotice.map((n: { symbol: string }) => n.symbol)).toEqual(["000002"]);
+      expect(recorded().map((j) => j.symbol)).toEqual(["000001"]);
+    });
   });
 
   // 실행 중 창 재판정(2026-11-03) — 종목 일봉을 받는 동안 시각이 창 경계를 넘으면 저장하지 않는다

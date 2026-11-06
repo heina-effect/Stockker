@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DashboardHeader } from "@/components/home/dashboard-header";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp, Info, Search, Star, XCircle } from "lucide-react";
+import {
+  judgedTimeBucket,
+  MIN_STAT_RESULTS,
+  type ExitStats,
+  type QuantBreakdown,
+  type QuantBreakdownRow,
+} from "@/lib/screening/quant-breakdown";
+import { kstClock } from "@/lib/screening/saved-result";
 
 type Verdict = "stopLoss" | "hold" | "neutral" | "watching";
 
@@ -80,17 +88,15 @@ interface QuantSignalItem {
   recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
   corporateAction: CorporateActionInfo | null; // 계산 구간 안의 비율 미확인 자본변동 — 수익률이 전부 null, 통계 제외
   corporateAdjustmentLabel: string | null; // 있으면 수익률이 자본변동 보정값
+  volumeBasis: string; // 판정에 쓴 거래량비 정의
+  judgedAt: string; // 판정 시각
 }
 
-// 청산 규칙 하나에 대한 성과 묶음 — 백엔드 computeExitStats()가 규칙별로 같은 산식으로 만든다.
-interface ExitStats {
-  n: number;
-  winCount: number;
-  lossCount: number;
-  winRatePct: number | null; // 수익률 > 0 비율(±10% 임계값과 무관)
-  profitFactor: number; // 승 수익 합 / |패 손실 합|
-  expectancy: number; // 거래당 평균 수익률
-  kellyPct: number | null; // W - (1-W)/R. 승·패가 모두 있어야 정의됨(음수면 베팅 금지 신호)
+// 재구성 표본 — 판정 기록과 겹치지 않는 옛 A트랙 건. 값은 스냅샷의 고정값이다
+interface LegacySample {
+  items: { symbol: string; name: string; discoveryDate: string; exitDay3Pct: number | null }[];
+  stats: ExitStats;
+  netExpectancy: number;
 }
 
 interface QuantSignalStats {
@@ -121,6 +127,8 @@ interface TrackingResponse {
   items: TrackingItem[];
   quantSignalItems: QuantSignalItem[];
   quantSignalStats: QuantSignalStats;
+  quantBreakdown: QuantBreakdown;
+  legacySample: LegacySample | null;
 }
 
 const STAGE_LABEL: Record<Exclude<TrackingStage, "primary">, string> = {
@@ -132,6 +140,10 @@ const STAGE_LABEL: Record<Exclude<TrackingStage, "primary">, string> = {
 const QUANT_SIGNAL_META = {
   condition: "RSI 50~60 + 거래량 200~400%",
 };
+
+function formatSignedPct(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
 
 // 목표 표본(종전 60종목)은 산출 근거가 없었고 검증도 종료돼 제거했다(2026-11-02). 헤드라인은 표본 종목 수만 쓴다
 // — n은 A트랙 발굴 건수가 아니라 unique symbol 수(표본 독립성 문제로 종목 기준).
@@ -183,7 +195,7 @@ const READ_GUIDE = {
     { verdict: "약세 전환", condition: "포착 후 2거래일차부터 -10% 초과 하락", meaning: "회복 확률이 낮은 구간" },
     { verdict: "강세 지속", condition: "포착 후 2거래일차부터 +10% 초과 상승", meaning: "추가 상승 가능성이 높은 구간" },
     { verdict: "혼조", condition: "그 사이", meaning: "방향성 불명확" },
-    { verdict: "판단 대기", condition: "아직 2일 미도달", meaning: "판단 유보" },
+    { verdict: "판단 대기", condition: "포착 후 2거래일차 이전", meaning: "판단 유보" },
   ],
 };
 
@@ -502,7 +514,9 @@ function QuantHistoryRow({ item }: { item: QuantSignalItem }) {
       {" · "}
       {formatDiscoveryDate(item.discoveryDate)} (D+{item.daysAfter}) · RSI{" "}
       {item.rsi14 != null ? item.rsi14.toFixed(1) : "—"} · 거래량{" "}
-      {item.volumeRatio != null ? `${item.volumeRatio.toFixed(0)}% (15:40 기준, 애프터마켓 제외)` : "—"}
+      {item.volumeRatio != null
+        ? `${item.volumeRatio.toFixed(0)}% ${judgedTimeBucket(item.judgedAt) === "15:40~16:00" ? "(15:40 기준, 애프터마켓 제외)" : `(${kstClock(item.judgedAt)} 판정)`}`
+        : "—"}
       {item.haltStartDaysAfter != null ? (
         <span className="text-amber-600 dark:text-amber-400">
           {" "}
@@ -780,15 +794,58 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
   );
 }
 
-// 퀀트 신호 참고 통계 토글 — 판정 조건 + 청산 규칙별 성과 표(2026-10-20: 헤드라인에서 내려온
-// 승률·손익비·기대값·Kelly 전부를 여기로 이동). 헤드라인은 3줄만 남기고, 상세 수치는 펼쳐야만
-// 보이게 해서 "작은 표본의 숫자"가 매매 근거처럼 읽히지 않도록 한다.
-function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
+// 분해표 한 묶음. 결과 5건 미만 줄은 숫자를 만들지 않고 개별 수익률만 적는다
+function QuantBreakdownTable({ title, rows }: { title: string; rows: QuantBreakdownRow[] }) {
+  return (
+    <div>
+      <h4 className="text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">{title}</h4>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800 whitespace-nowrap">
+              <th className="text-left px-2 py-1.5 font-semibold">구분</th>
+              <th className="text-right px-2 py-1.5 font-semibold">결과</th>
+              <th className="text-right px-2 py-1.5 font-semibold">승/패</th>
+              <th className="text-right px-2 py-1.5 font-semibold">승률</th>
+              <th className="text-right px-2 py-1.5 font-semibold">손익비</th>
+              <th className="text-right px-2 py-1.5 font-semibold">기대값</th>
+              <th className="text-right px-2 py-1.5 font-semibold">비용 후</th>
+              <th className="text-right px-2 py-1.5 font-semibold">Kelly</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-b border-slate-50 dark:border-zinc-800/60 text-slate-600 dark:text-zinc-300 whitespace-nowrap">
+                <td className="text-left px-2 py-1.5">{r.label}</td>
+                <td className="text-right px-2 py-1.5">{r.values.length}/{r.total}</td>
+                {r.stats ? (
+                  <>
+                    <td className="text-right px-2 py-1.5">{r.stats.winCount}/{r.stats.lossCount}</td>
+                    <td className="text-right px-2 py-1.5">{r.stats.winRatePct?.toFixed(1)}%</td>
+                    <td className="text-right px-2 py-1.5">{r.stats.profitFactor.toFixed(2)}</td>
+                    <td className={`text-right px-2 py-1.5 ${priceColorClass(r.stats.expectancy, 0)}`}>{formatSignedPct(r.stats.expectancy)}</td>
+                    <td className="text-right px-2 py-1.5">{r.netExpectancy != null ? formatSignedPct(r.netExpectancy) : "—"}</td>
+                    <td className="text-right px-2 py-1.5">{r.stats.kellyPct != null ? `${r.stats.kellyPct}%` : "—"}</td>
+                  </>
+                ) : (
+                  <td colSpan={6} className="text-left px-2 py-1.5 text-slate-500 dark:text-zinc-400">
+                    통계 불가{r.values.length > 0 && ` — ${r.values.map(formatSignedPct).join(", ")}`}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// 퀀트 신호 참고 통계 토글 — 헤드라인은 건수만 쓰고(2026-11-06) 수치는 펼쳐야만 보인다. 작은 표본의 숫자가
+// 매매 근거처럼 읽히지 않게 하려는 것이다. 값은 응답의 quantBreakdown 이며 어디에도 고정돼 있지 않다.
+function QuantReferenceToggle({ stats, breakdown }: { stats: QuantSignalStats; breakdown: QuantBreakdown }) {
   const rows: { label: string; s: ExitStats; muted?: boolean; title?: string }[] = [
-    { label: "3일차 종가", s: stats.exitDay3 },
-    { label: `3일차 비용차감 (왕복 ${stats.roundTripCostPct}%)`, s: stats.exitDay3Net },
     { label: `손절 ${stats.stopLossThresholdPct}% (종가 기준)`, s: stats.exitStop10 },
-    { label: "극단값 제외 (상·하위 각 1건)", s: stats.exitDay3Trimmed },
     {
       label: "최고점 상한 (실현 불가)",
       s: stats.peak,
@@ -801,11 +858,17 @@ function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
       <p className="text-xs text-slate-600 dark:text-zinc-300">판정 조건: {QUANT_SIGNAL_META.condition}</p>
       {stats.resultCount > 0 && (
         <>
+          <QuantBreakdownTable title="극단값 민감도" rows={breakdown.sensitivity} />
+          <QuantBreakdownTable title="거래량비 정의별" rows={breakdown.byBasis} />
+          <QuantBreakdownTable title="판정 시각별" rows={breakdown.byTime} />
+          <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+            결과 칸은 결과 건수/전체 건수입니다. 결과 {MIN_STAT_RESULTS}건 미만은 통계를 내지 않습니다. 비용 후는 왕복 {stats.roundTripCostPct}% 차감입니다.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800">
-                  <th className="text-left px-2 py-1.5 font-semibold">기준</th>
+                  <th className="text-left px-2 py-1.5 font-semibold">다른 청산 가정</th>
                   <th className="text-right px-2 py-1.5 font-semibold">승률</th>
                   <th className="text-right px-2 py-1.5 font-semibold">손익비</th>
                   <th className="text-right px-2 py-1.5 font-semibold">기대값</th>
@@ -844,6 +907,41 @@ function QuantReferenceToggle({ stats }: { stats: QuantSignalStats }) {
         </>
       )}
       <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{QUANT_OBSERVATION_END_DISCLAIMER}</p>
+    </CollapsibleSection>
+  );
+}
+
+// 재구성 표본 — 판정 기록이 있는 표본과 성격이 달라 수치를 이 안에만 둔다. 스냅샷의 고정값이며 다시 계산하지 않는다
+function LegacySampleSection({ sample }: { sample: LegacySample }) {
+  const { stats } = sample;
+  return (
+    <CollapsibleSection label={`재구성 표본 ${sample.items.length}건 보기`}>
+      <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+        임계값(RSI 50~60, 거래량비 200~400)을 7/3~8/31 관측으로 정했습니다. 이 {sample.items.length}건은 그 데이터이거나 판정 기록이 없는 건이라, 조건을 검증하는 표본으로 쓸 수 없습니다.
+      </p>
+      <p className="text-xs text-slate-600 dark:text-zinc-300">
+        결과 {stats.n}건 · {stats.winCount}승 {stats.lossCount}패 · 승률 {stats.winRatePct?.toFixed(1)}% · 손익비 {stats.profitFactor.toFixed(2)} · 기대값 {formatSignedPct(stats.expectancy)} · 비용 후 {formatSignedPct(sample.netExpectancy)}
+      </p>
+      <div className="overflow-x-auto max-h-64">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800">
+              <th className="text-left px-2 py-1.5 font-semibold">발굴일</th>
+              <th className="text-left px-2 py-1.5 font-semibold">종목</th>
+              <th className="text-right px-2 py-1.5 font-semibold">3일차(%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sample.items.map((item) => (
+              <tr key={`${item.symbol}-${item.discoveryDate}`} className="border-b border-slate-50 dark:border-zinc-800/60 text-slate-600 dark:text-zinc-300">
+                <td className="text-left px-2 py-1.5 whitespace-nowrap">{formatDiscoveryDate(item.discoveryDate)}</td>
+                <td className="text-left px-2 py-1.5">{item.name}</td>
+                <td className="text-right px-2 py-1.5">{item.exitDay3Pct != null ? formatSignedPct(item.exitDay3Pct) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </CollapsibleSection>
   );
 }
@@ -1048,19 +1146,12 @@ export default function TrackingPage() {
   const quantObservingGroupsVisible =
     isSearching || showAllQuantResults ? quantObservingGroups : quantObservingGroups.slice(0, QUANT_RESULT_PAGE_SIZE);
 
-  // 고점 대비 낙폭 참고 패널 — 승률/손익비/기대값/극단값 제외/비용 차감은 전부 백엔드
-  // quantSignalStats(규칙별 ExitStats)에서 내려오므로 여기서 다시 계산하지 않는다(종전 중복 계산
-  // 제거). 낙폭만 "최고점(MFE) 대비 3일차 청산 시 얼마나 반납했는지"로, 헤드라인과 같은
-  // 기준(exitDay3Pct)에서 센다. 카드의 "참고" 낙폭(대비 현재가)과는 기준이 다르다.
-  const quantStatsResultItems = data.quantSignalItems.filter((i) => i.exitDay3Pct != null);
-  const quantExtraStats = (() => {
-    const drawdowns = quantStatsResultItems
-      .map((it) => drawdownFromPeak(it.maxReturnSoFarPct, it.exitDay3Pct))
-      .filter((d): d is number => d != null);
-    if (drawdowns.length === 0) return null;
-    const avgDrawdown = Number((drawdowns.reduce((a, b) => a + b, 0) / drawdowns.length).toFixed(2));
-    return { avgDrawdown };
-  })();
+  // 왜 헤드라인에 숫자를 쓰지 않는지 — 표본이 커지면 값이 바뀌므로 응답에서 만든다
+  const [, withoutBest, withoutWorst] = data.quantBreakdown.sensitivity;
+  const quantSensitivityNote =
+    withoutBest.stats && withoutWorst.stats
+      ? `결과 ${quantSignalStats.resultCount}건으로는 한 건에 크게 흔들립니다(최고 1건 제외 ${formatSignedPct(withoutBest.stats.expectancy)}, 최저 1건 제외 ${formatSignedPct(withoutWorst.stats.expectancy)}). 건수만 표시합니다`
+      : "결과가 적어 건수만 표시합니다";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -1119,9 +1210,8 @@ export default function TrackingPage() {
 
         <ReadGuide />
 
-        {/* 퀀트 신호 트래커 — 칸반(포착 종목 전체 관찰)과 완전히 분리된 별도 트랙. 발굴일 저장 지표
-            (stock_trajectory day0 rsi14·vol_ratio_20)가 조건에 걸린 건을 기간 제한 없이 영구히
-            추적한다 — quant_signal 컬럼 기준이 아니며, 진행 중인 아웃오브샘플 관측이다.
+        {/* 퀀트 신호 트래커 — 칸반(포착 종목 전체 관찰)과 완전히 분리된 별도 트랙. 발굴일 판정 기록
+            (quant_signal_judgments)이 true 인 건을 기간 제한 없이 영구히 추적한다. 저장 지표로 다시 거르지 않는다.
             3일 미만은 "판단 대기", 3일 이상은 "결과 확인 중"으로 나눠 보여준다. 항목 없으면 섹션 자체를 그리지 않는다. */}
         {quantSignalItemsFavFiltered.length > 0 && (
           <section className="mb-8 bg-amber-50/40 dark:bg-amber-950/10 rounded-3xl p-5">
@@ -1130,7 +1220,7 @@ export default function TrackingPage() {
             </h2>
             {/* 선정 기준 한 줄 — 서버 A트랙 쿼리 조건(tracking/route.ts)과 같아야 한다. */}
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              RSI 50~60 · 거래량비 200~400% (발굴일 저장 지표 기준) — 참고용 관찰
+              RSI 50~60 · 거래량비 200~400% (발굴일 15:40 판정 기록 기준) — 참고용 관찰
             </p>
             {/* 헤드라인(2026-10-29) — 백테스트 검증 종료 결론(analysis/hypothesis-log.md 최종 정리)을
                 고정 문구로 둔다. 실시간 기대값으로 상태를 바꾸지 않는다. */}
@@ -1146,44 +1236,22 @@ export default function TrackingPage() {
               </p>
             )}
 
-            {/* 실측 요약 2줄 — 승률·손익비·Kelly·비용차감·손절·극단값·최고점 상한·신뢰도 배지·
-                표본부족 경고는 전부 아래 "통계 근거 보기" 접기 안의 규칙별 표에 있다. */}
-            {quantSignalStats.resultCount > 0 ? (
-              <div className="mt-0.5">
-                {/* 1줄: 표본 — 기대값은 헤드라인 바로 아래에서 결론("알파 없음")과 모순돼 보여 뺐다
-                    (2026-11-02). 비용 차감 전후 기대값은 아래 "통계 근거 보기" 표에 있다. */}
-                <p className="text-sm text-slate-700 dark:text-zinc-300 mt-0.5">
-                  3일차 결과 {quantSignalStats.resultCount}건
-                  <span className="text-slate-400 dark:text-zinc-500">
-                    {"  ·  표본 "}
-                    {quantSignalStats.sampleSymbolCount}종목
-                  </span>
-                  {quantSignalStats.corporateActionExcludedCount > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400">
-                      {"  ·  자본변동 제외 "}
-                      {quantSignalStats.corporateActionExcludedCount}건
-                    </span>
-                  )}
-                </p>
-                {/* 2줄: 평균 최고 → 3일차 (고점 반납) */}
-                {quantSignalStats.avgMaxReturnSoFarPct != null && quantSignalStats.avgDay3ReturnPct != null && (
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                    평균 최고 {quantSignalStats.avgMaxReturnSoFarPct >= 0 ? "+" : ""}
-                    {quantSignalStats.avgMaxReturnSoFarPct.toFixed(1)}% → 3일차{" "}
-                    {quantSignalStats.avgDay3ReturnPct >= 0 ? "+" : ""}
-                    {quantSignalStats.avgDay3ReturnPct.toFixed(1)}%
-                    {quantExtraStats && ` (고점 반납 -${quantExtraStats.avgDrawdown.toFixed(1)}%p)`}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400 dark:text-zinc-500 mt-1">
-                3일차 결과 대기 중
-              </p>
-            )}
+            {/* 헤드라인은 건수만(2026-11-06) — 승률·손익비·기대값·Kelly 는 아래 접기 안에만 둔다. */}
+            <p className="text-sm text-slate-700 dark:text-zinc-300 mt-0.5">
+              결과 {quantSignalStats.resultCount}건 · 대기 {quantSignalStats.observingExcludedCount}건
+              {quantSignalStats.corporateActionExcludedCount > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {" · 자본변동 제외 "}
+                  {quantSignalStats.corporateActionExcludedCount}건
+                </span>
+              )}
+              {quantSignalStats.haltIncompleteCount > 0 && ` · 거래정지 미완 ${quantSignalStats.haltIncompleteCount}건`}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{quantSensitivityNote}</p>
 
-            <div className="mt-3 mb-4">
-              <QuantReferenceToggle stats={quantSignalStats} />
+            <div className="mt-3 mb-4 space-y-2">
+              <QuantReferenceToggle stats={quantSignalStats} breakdown={data.quantBreakdown} />
+              {data.legacySample && <LegacySampleSection sample={data.legacySample} />}
             </div>
 
             {/* 헤더 건수는 observationEnded 하나로만 센다 — 관찰 중 + 관찰 종료 = 전체. */}

@@ -400,10 +400,10 @@ function OvernightScreeningContent() {
         </div>
 
         {/* 탭 인터페이스 */}
-        <div className="flex border-b border-slate-200 dark:border-zinc-800 mb-8">
+        <div className="flex overflow-x-auto no-scrollbar border-b border-slate-200 dark:border-zinc-800 mb-8">
           <button
             onClick={() => setActiveTab("normal")}
-            className={`py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
+            className={`shrink-0 whitespace-nowrap py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
               activeTab === "normal"
                 ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
                 : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-zinc-300"
@@ -417,7 +417,7 @@ function OvernightScreeningContent() {
           </button>
           <button
             onClick={() => setActiveTab("aggressive")}
-            className={`py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
+            className={`shrink-0 whitespace-nowrap py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
               activeTab === "aggressive"
                 ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
                 : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-zinc-300"
@@ -431,7 +431,7 @@ function OvernightScreeningContent() {
           </button>
           <button
             onClick={() => setActiveTab("exclude")}
-            className={`py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
+            className={`shrink-0 whitespace-nowrap py-3 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${
               activeTab === "exclude"
                 ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
                 : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-zinc-300"
@@ -445,7 +445,7 @@ function OvernightScreeningContent() {
           </button>
           {/* 퀀트신호 요약 — 탭이 아닌 정보 배지 */}
           {quantSignalCount > 0 && (
-            <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg self-center"
+            <div className="ml-auto shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg self-center"
               title="RSI 50~60 + 거래량 200~400% 충족 종목 수 (참고용 지표, 매수 추천 아님) · 실험 신호 · 추세 필터 미반영"
             >
               <Zap className="w-3.5 h-3.5 text-amber-500" />

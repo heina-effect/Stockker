@@ -11,6 +11,7 @@ import {
   priceAdjustmentFactor,
   type CorporateAction,
 } from "@/server/screening/corporate-actions";
+import { buildQuantBreakdown, computeExitStats } from "@/lib/screening/quant-breakdown";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ const PRIMARY_STAGE_DAYS_AFTER = 10;
 const CYCLE_RESET_DAYS_AFTER = 30;
 
 // 퀀트 신호 트래커(A)와 전체 관찰 칸반(B)은 완전히 분리된 별도 체계다. A 대상(아래 "A." 블록의
-// 선정 조건 — stock_trajectory day0 저장 지표 기준이며 quant_signal 컬럼이 아니다)인 발굴 건은
+// 선정 조건 — quant_signal_judgments 의 발굴일 판정 기록)인 발굴 건은
 // B의 판정 로직(verdict)과 절대 섞이지 않고, A에서 daysAfter와 무관하게 영구히(발생 시점부터
 // 계속) 추적된다.
 //
@@ -105,19 +106,11 @@ export async function GET() {
 
   // ============================================================================
   // A. 퀀트 신호 트래커 — B(전체 관찰 칸반)와 완전히 분리된 별도 체계.
-  // 선정 조건(기간 제한 없음): stock_trajectory WHERE days_after = 0
-  //   AND rsi14 BETWEEN 50 AND 60 AND vol_ratio_20 BETWEEN 200 AND 400
-  // 즉 발굴일(day0)에 저장된 지표로 거른다. overnight_screening_items.quant_signal 컬럼은 쓰지
-  // 않는다. 11/03 실측으로 두 기준은 거의 일치한다(발굴 557건 중 quant_signal 51 / 인라인 조건 52 /
-  // 교집합 51). 이 일치는 규칙이 같다는 뜻이 아니다 — 10/14 backfill-quant-signal(recalculate=true)이
-  // 그때까지의 468행을 저장 지표로 재계산해, 그 행들의 컬럼은 스크리닝 시점 판정을 보존하지 않는다.
-  // 그래서 그 구간의 "실시간 판정과의 차이"는 지금 이 컬럼으로 측정할 수 없다.
-  // docs/release/known-issues.md "quant_signal 컬럼은 스크리닝 당시 판정이 아니다", "A트랙 선정 지표 편향" 참고.
-  // 이 조건은 2026년 아웃오브샘플 표본을 쌓는 중이라 관측 도중 바꾸지 않는다(바꾸면 쌓인 표본을
-  // 쓸 수 없다). QUANT_SIGNAL_CRITERIA도 import하지 않고 값을 여기 고정한다.
-  // 같은 symbol이 여러 번 조건에 걸렸어도 각 발굴 건을 독립 이벤트로 전부 추적한다(대표 1건만
-  // 뽑지 않음 — 매 발생이 독립 표본). 한 번 이 트랙에 들어온 건은 daysAfter가 얼마든 영구히
-  // 여기서만 표시된다.
+  // 선정(2026-11-06 교체): quant_signal_judgments WHERE quant_signal = true. 발굴일에 한 번 기록된 판정만 읽고
+  // 저장 지표로 다시 거르지 않는다. 종전에는 stock_trajectory day0 의 rsi14·vol_ratio_20 을 조회 때마다 걸러서,
+  // 지표가 교정되면 목록이 바뀌고 소급 편입이 생겼다(삼성SDI 10/19). 임계값은 판정할 때의 quant-signal.ts 다.
+  // 수익률은 여전히 궤적의 확정 종가 기준이다. 15:40~16:00 종가매매로 사면 확정 종가에 산다.
+  // close_at_judgment 는 기록용이다. 같은 symbol의 여러 판정은 각각 독립 표본으로 추적한다.
   // ============================================================================
   let quantSignalRows: {
     symbol: string;
@@ -126,28 +119,55 @@ export async function GET() {
     close: number;
     rsi14: number | null;
     vol_ratio_20: number | null;
+    volume_basis: string;
+    judged_at: string;
   }[];
   try {
-    quantSignalRows = await fetchAllRows<{
+    const judgments = await fetchAllRows<{
+      date: string;
       symbol: string;
-      name: string;
-      discovery_date: string;
-      close: number;
+      judged_at: string;
       rsi14: number | null;
       vol_ratio_20: number | null;
+      volume_basis: string;
     }>((from, to) =>
       supabase
+        .from("quant_signal_judgments")
+        .select("date,symbol,judged_at,rsi14,vol_ratio_20,volume_basis")
+        .eq("quant_signal", true)
+        .order("symbol", { ascending: true })
+        .order("date", { ascending: true })
+        .range(from, to)
+    );
+    const judgedSymbols = [...new Set(judgments.map((j) => j.symbol))];
+    const day0Rows = judgedSymbols.length === 0 ? [] : await fetchAllRows<{ symbol: string; name: string; discovery_date: string; close: number }>((from, to) =>
+      supabase
         .from("stock_trajectory")
-        .select("symbol,name,discovery_date,close,rsi14,vol_ratio_20")
+        .select("symbol,name,discovery_date,close")
         .eq("days_after", 0)
-        .gte("rsi14", 50)
-        .lte("rsi14", 60)
-        .gte("vol_ratio_20", 200)
-        .lte("vol_ratio_20", 400)
+        .in("symbol", judgedSymbols)
         .order("symbol", { ascending: true })
         .order("discovery_date", { ascending: true })
         .range(from, to)
     );
+    const day0ByKey = new Map(day0Rows.map((r) => [`${r.symbol}::${r.discovery_date}`, r]));
+    quantSignalRows = judgments.flatMap((j) => {
+      const day0 = day0ByKey.get(`${j.symbol}::${j.date}`);
+      if (!day0) {
+        console.warn(`[Tracking API] 판정 기록에 day0 궤적이 없어 건너뜀: ${j.symbol} ${j.date}`);
+        return [];
+      }
+      return [{
+        symbol: j.symbol,
+        name: day0.name,
+        discovery_date: j.date,
+        close: day0.close,
+        rsi14: j.rsi14,
+        vol_ratio_20: j.vol_ratio_20,
+        volume_basis: j.volume_basis,
+        judged_at: j.judged_at,
+      }];
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }
@@ -297,6 +317,8 @@ export async function GET() {
     recentRecapture: { date: string; status: "notMet" | "unknown" } | null; // 신호일 이후 재포착 이력(표시용, 판정과 무관)
     corporateAction: CorporateAction | null; // 계산 구간 안의 비율 미확인 자본변동 — 있으면 수익률을 내지 않고 통계에서 뺀다
     corporateAdjustmentLabel: string | null; // 계산 구간 안의 비율 확인 자본변동 — 수익률에 보정을 적용했다는 표시
+    volumeBasis: string; // 판정에 쓴 거래량비 정의(incl_today | excl_today)
+    judgedAt: string; // 판정 시각
   }
 
   const quantSignalItems: QuantSignalItem[] = [];
@@ -464,6 +486,8 @@ export async function GET() {
       recentRecapture: recentRecaptureBySymbol.get(row.symbol) ?? null,
       corporateAction,
       corporateAdjustmentLabel: corporateAction ? null : corporateAdjustmentLabel(quantActions),
+      volumeBasis: row.volume_basis,
+      judgedAt: row.judged_at,
     });
   }
   quantSignalItems.sort((a, b) => b.discoveryDate.localeCompare(a.discoveryDate));
@@ -490,42 +514,6 @@ export async function GET() {
           (resultItems.reduce((sum, i) => sum + (i.maxReturnSoFarPct as number), 0) / resultItems.length).toFixed(2)
         )
       : null;
-
-  // 청산 규칙별 성과 집계 — 어떤 규칙이든 "거래당 수익률 배열" 하나로 환원해 같은 산식을 쓴다.
-  //   승률     = (수익률 > 0 인 건수) / n          ← ±10% 임계값은 승패 판정에 쓰지 않는다
-  //   손익비   = 승 수익 합 / |패 손실 합|
-  //   기대값   = (승 수익 합 - 패 손실 합) / n     ( = 거래당 평균 수익률)
-  //   Kelly    = W - (1-W)/R,  W=승률, R=평균승/평균패 (음수면 "베팅하지 말라"는 뜻)
-  function computeExitStats(values: number[]) {
-    const n = values.length;
-    if (n === 0) {
-      return { n: 0, winCount: 0, lossCount: 0, winRatePct: null, profitFactor: 0, expectancy: 0, kellyPct: null };
-    }
-    const wins = values.filter((v) => v > 0);
-    const losses = values.filter((v) => v < 0);
-    const grossProfit = wins.reduce((a, b) => a + b, 0);
-    const grossLoss = losses.reduce((a, b) => a + Math.abs(b), 0);
-    const winRate = wins.length / n;
-    const profitFactor = grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : grossProfit > 0 ? 99.99 : 0;
-    const expectancy = Number(((grossProfit - grossLoss) / n).toFixed(2));
-    // Kelly는 평균승/평균패 비율(R)이 필요하므로 승·패가 모두 1건 이상일 때만 정의된다.
-    let kellyPct: number | null = null;
-    if (wins.length > 0 && losses.length > 0) {
-      const avgWin = grossProfit / wins.length;
-      const avgLoss = grossLoss / losses.length;
-      const payoffRatio = avgWin / avgLoss;
-      kellyPct = Number(((winRate - (1 - winRate) / payoffRatio) * 100).toFixed(1));
-    }
-    return {
-      n,
-      winCount: wins.length,
-      lossCount: n - wins.length, // 0%는 패로 집계(종전 관례 유지)
-      winRatePct: Number((winRate * 100).toFixed(1)),
-      profitFactor,
-      expectancy,
-      kellyPct,
-    };
-  }
 
   // [주] 3일차 종가 청산 — 사후 정보가 들어가지 않는 실행 가능한 규칙(헤드라인).
   const exitDay3Stats = computeExitStats(resultItems.map((i) => i.exitDay3Pct as number));
@@ -561,6 +549,41 @@ export async function GET() {
     sampleSymbolCount: quantSignalSampleSymbolCount,
   };
 
+  // 표본이 작아 헤드라인에는 건수만 쓴다. 이 분해는 화면의 접기 안에만 나온다
+  const quantBreakdown = buildQuantBreakdown(quantSignalItems, ROUND_TRIP_COST_PCT);
+
+  // 재구성 표본 — 판정 기록이 없는 시기를 포함한 옛 A트랙 52건 중 판정 기록과 겹치지 않는 건.
+  // 11/6 에 고정한 tracking_item 만 읽고 궤적으로 다시 계산하지 않는다. 임계값을 정한 관측 데이터이거나
+  // 판정 기록이 없는 건이라 조건을 검증하는 표본으로 쓸 수 없어 집계도 따로 낸다.
+  let legacySample: {
+    items: { symbol: string; name: string; discoveryDate: string; exitDay3Pct: number | null }[];
+    stats: ReturnType<typeof computeExitStats>;
+    netExpectancy: number;
+  } | null = null;
+  try {
+    const judgedKeys = new Set(quantSignalRows.map((r) => `${r.symbol}::${r.discovery_date}`));
+    const snapshot = await fetchAllRows<{ symbol: string; name: string; discovery_date: string; tracking_item: { exitDay3Pct: number | null; exitDay3NetPct: number | null } }>((from, to) =>
+      supabase
+        .from("a_track_legacy_snapshot_20261106")
+        .select("symbol,name,discovery_date,tracking_item")
+        .order("discovery_date", { ascending: false })
+        .order("symbol", { ascending: true })
+        .range(from, to)
+    );
+    const items = snapshot
+      .filter((r) => !judgedKeys.has(`${r.symbol}::${r.discovery_date}`))
+      .map((r) => ({ symbol: r.symbol, name: r.name, discoveryDate: r.discovery_date, exitDay3Pct: r.tracking_item.exitDay3Pct, exitDay3NetPct: r.tracking_item.exitDay3NetPct }));
+    const results = items.filter((i) => i.exitDay3Pct != null);
+    legacySample = {
+      items: items.map(({ exitDay3NetPct: _net, ...item }) => item),
+      stats: computeExitStats(results.map((i) => i.exitDay3Pct as number)),
+      netExpectancy: computeExitStats(results.map((i) => i.exitDay3NetPct as number)).expectancy,
+    };
+  } catch (e: any) {
+    // 접힌 참고 영역이다. 읽지 못해도 트래커는 그대로 보인다
+    console.error("[Tracking API] Legacy snapshot read failed:", e?.message || e);
+  }
+
   if (trackedSymbols.length === 0) {
     return NextResponse.json({
       ok: true,
@@ -569,6 +592,8 @@ export async function GET() {
       items: [],
       quantSignalItems,
       quantSignalStats,
+      quantBreakdown,
+      legacySample,
     });
   }
 
@@ -809,5 +834,5 @@ export async function GET() {
     ended: items.filter((i) => i.stage === "ended").length,
   };
 
-  return NextResponse.json({ ok: true, summary, stageCounts, items, quantSignalItems, quantSignalStats });
+  return NextResponse.json({ ok: true, summary, stageCounts, items, quantSignalItems, quantSignalStats, quantBreakdown, legacySample });
 }

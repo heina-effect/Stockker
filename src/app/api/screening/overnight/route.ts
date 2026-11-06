@@ -20,6 +20,7 @@ import {
   type ScreeningSavedInfo,
 } from "@/server/screening/storage";
 import { runDailyTrajectoryUpdate } from "@/server/screening/trajectory-update";
+import { buildQuantJudgmentRows, recordQuantJudgments } from "@/server/screening/quant-judgment";
 import { warnEntryDay0Mismatches } from "@/server/screening/entry-invariant";
 import { computeIndicatorSeries } from "@/server/screening/indicators";
 import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
@@ -808,12 +809,14 @@ async function runScreening(req: Request, scope: CacheScope) {
         ...excludeBucket.map((s) => ({ symbol: s.symbol, name: s.name, classification: "exclude" as const, entryClose: s.entryClose, reasons: s.reasons, tailRatio: s.metrics?.tailRatio ?? null, volumeRatio: s.metrics?.volumeRatio ?? null, turnoverRate: s.metrics?.turnoverRate ?? null, freshnessCount: s.metrics?.freshnessCount ?? null, rsi14: s.metrics?.rsi14 ?? null, quantSignal: s.metrics?.quantSignal ?? false })),
         ...excludedNotice.map((s) => ({ symbol: s.symbol, name: s.name, classification: "excludedNotice" as const, entryClose: s.entryClose, reasons: [s.reason] })),
       ];
-      await saveScreeningResult({
+      const { supabaseSaved } = await saveScreeningResult({
         date: todayKey,
         reduceWeight,
         kosdaqValue: kosdaqClose,
         items: persistedItems,
       });
+      // 판정 기록 — 저장이 된 실행만 남긴다. persisted 가 곧 저장 창 판정이라 허용 시각도 같다
+      if (supabaseSaved) await recordQuantJudgments(buildQuantJudgmentRows(todayKey, dataFetchedAt, allBucketsForPersist));
     } catch (e) {
       // 저장 실패는 스크리닝 응답 자체를 막지 않는다 (백테스트는 부가 기능)
       console.error("[Overnight API] Screening result persist failed:", (e as Error)?.message || e);
