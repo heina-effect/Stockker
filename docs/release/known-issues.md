@@ -428,6 +428,28 @@ launchctl kickstart -k gui/501/com.hyuna.stockker.devserver
 
 - **핫리로드 함정:** 11/5 `storage.ts`에 export를 더했는데 Turbopack이 편집을 놓쳐 옛 모듈을 썼다. 새 라우트가 `... is not a function`으로 503을 냈고, `touch`로는 풀리지 않았다. 코드 수정 직후 이 오류가 `dev.log`에 보이면 코드를 의심하기 전에 위 `launchctl kickstart -k`로 재시작한다.
 
+- **새로고침 루프(2026-11-09):** 맥 재부팅 뒤 화면이 계속 깜빡이며 다시 로드됐다.
+  - **증상:** 페이지가 분당 수백 회(256~706회) 다시 로드되고, `dev.log`에 `✓ Compiled`가 분당 82~213회 반복된다. 브라우저 콘솔에는 `[HMR] connected` → `[Fast Refresh] rebuilding`이 반복되고 오류는 없다. 프로젝트 파일 변경은 0건이고 `.next/dev/build-manifest.json`만 계속 다시 써진다. 클라이언트 코드에 자동 새로고침은 없다.
+  - **원인(추정):** 맥 종료·재부팅 과정에서 dev 서버가 정상적으로 닫히지 못해 Turbopack 영구 캐시(`.next/dev/cache`)가 어긋났다. 캐시를 치우자 바로 멈춘 것이 근거다. 캐시의 어느 부분이 어긋났는지는 확인하지 못했다.
+  - **조치:** 서버를 멈추고 → `.next/dev/cache`를 옮기거나 지우고 → 다시 올린다. 저장 창(15:40~16:00)이면 16:00이 지난 뒤에 한다. 재등록이 `Bootstrap failed: 5: Input/output error`로 실패하면 이전 등록이 해제되는 중이므로 잠시 뒤 다시 시도한다. 캐시는 첫 열람 때 다시 만들어진다(11/9 64MB). 다시 띄운 뒤 열려 있던 탭은 한 번 새로고침한다.
+
+```bash
+launchctl bootout gui/501/com.hyuna.stockker.devserver
+```
+
+```bash
+cd ~/Desktop/heina/stockker && mv .next/dev/cache "$TMPDIR/next-dev-cache-$(date +%Y%m%d)"
+```
+
+```bash
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.hyuna.stockker.devserver.plist
+```
+
+  - **11/9 사례:** 맥은 11/6(금) 18:34 종료, 11/9(월) 09:35 재부팅, 10:15 로그인으로 dev 서버가 떴다. 서버가 뜬 뒤 15:41 정기 실행 전까지 열람은 없었다. 루프는 15:51:21 그날 첫 열람부터 시작해 16:01:20 해소됐다. 15:41 정기 실행은 15:42:56에 이미 끝나 있었다. 16:00까지 기다렸다가 조치했고 서버가 꺼져 있던 시간은 약 1분(16:00:09~16:01:20)이다. 옮긴 캐시는 181MB였다.
+  - **루프 동안 쌓인 요청(15:43~16:00 로그, 대부분 루프):** `GET /` 2,496회, `/api/screening/overnight/market-state` 2,791회, `/api/screening/overnight/latest` 2,131회(그 밖에 90초 시간 초과 503 1회), `/overnight/tracking` 397회, `✓ Compiled` 694회. 저장 경로 `GET /api/screening/overnight`(파라미터 무관)는 0회였다.
+  - **저장 창 안이어도 DB는 안전했다.** 11/5에 넣은 세 겹이 실제로 작동한 첫 사례다. ① 안 B: 화면은 `/latest`(DB 읽기)와 `/market-state`(지수만)만 부르고 스크리닝 경로를 부르지 않는다. ② `?save=1`: 스크리닝 경로가 불려도 이 파라미터 없이는 저장하지 않는다. ③ 첫 저장 보호: `?save=1`이어도 그날 항목이 이미 있으면 쓰지 않는다. 11/9에는 ①에서 이미 막혀 ②·③까지 갈 일이 없었다. 수치로 확인한 것: 그날 `overnight_screening_items` 6행(id 2106~2111, 연속, `created_at` 모두 15:41:16), `quant_signal_judgments` 6행(15:41:16), `stock_trajectory` 그날 생성 180행(15:41:16~15:42:25). 15:42:56 이후 생성된 행은 세 테이블과 `overnight_screening_records` 모두 0건이다. 궤적 갱신은 기존 행의 `created_at`을 바꾸지 않으므로 이 수치는 새 행만 본다. 갱신 여부는 저장 경로 호출 0회와 `[Trajectory Update]` 줄이 정기 실행 1회뿐인 것으로 확인했다.
+  - **조건:** 금요일 종료 → 월요일 재부팅이 이 증상의 조건일 수 있다. 재현은 1회뿐이다. 예방 조치(로그인 시 캐시 비우기 등)는 넣지 않았다. 재발 빈도를 보고 정한다. 재부팅한 날 첫 열람에서 깜빡이면 위 조치를 한다.
+
 **맥 재시작 후**
 - 자동: 로그인하면 세 작업이 모두 등록되고 dev 서버가 뜬다.
 - 수동: 로그인이다. 세 작업은 LaunchAgent라 부팅이 아니라 **로그인 시점**에 시작한다. 이 맥은 자동 로그인이 꺼져 있어(11/5 확인) 재시작 후 로그인 화면에 머물면 서버도 15:41 실행도 돌지 않는다.
@@ -438,6 +460,7 @@ launchctl kickstart -k gui/501/com.hyuna.stockker.devserver
   - **caffeinate(붙잡음):** `sleep` 값이 1이라 깨워도 1분 뒤 다시 잠들 수 있다. 15:37부터 30분 잠들지 못하게 한다. sudo가 필요 없다. 이미 잠든 맥을 깨우지는 못한다.
   - `-ims`다(11/6 `-s`에서 변경). `-s`는 전원 연결 때만 듣는다. `-i`가 배터리에서도 유휴 잠자기를 막는다. `-d`는 매 평일 화면이 켜져서 뺐다.
   - **관찰 항목:** 15:36 깨움과 15:37 시작 사이에 다시 잠들면 caffeinate도 밀린다(`sleep` 1). 지금은 조정하지 않는다. 며칠간 15:41 시작 시각을 보고 밀림이 실제로 생기면 그때 정한다.
+  - **11/9 기록:** 맥은 15:36에 이미 깨어 있었다(화면 11:23~16:08 켜짐). pmset 로그에는 15:36:00 `wakeschedule` 표시만 있고 잠자기→깨어남 기록은 없다. caffeinate는 15:37:00에 떠 16:07:00에 끝났고, 15:41 실행은 밀리지 않았다(`generatedAt` 15:41:01). **잠든 맥을 15:36에 깨우는 경우는 아직 시험되지 않았다.** 관찰 항목으로 남긴다.
 
 **15:41 저장이 실패했을 때 확인 순서**
 1. `~/stockker-logs/dev.log`: 15:41 무렵 `GET /api/screening/overnight?save=1` 줄과 오류가 있는지 본다. 줄이 없으면 요청이 서버에 닿지 않은 것이다. 07:00 이전 기록은 `dev-*.log.gz`에 있다(`gzip -dc`).
