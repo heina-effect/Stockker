@@ -1,5 +1,6 @@
 import { SourceItem } from "@/types/research";
 import { getServerStockName } from "@/lib/stocks/search-master";
+import { describeHttpError } from "./http-error";
 
 function stableId(prefix: string, symbol: string, title: string): string {
   const key = `${symbol}::${title}`;
@@ -39,11 +40,13 @@ export async function fetchNewsApi(config: NewsApiProviderConfig): Promise<Sourc
     clearTimeout(timeout);
 
     if (!response.ok) {
+      // 일일 한도 소진인지 초당 제한인지 가리려고 상태코드와 오류 메시지를 남긴다(URL·키는 남기지 않음).
+      const detail = await describeHttpError(response, apiKey);
       if (response.status === 429) {
-         console.warn("[NewsAPI] Rate limit exceeded.");
+         console.warn(`[NewsAPI] Rate limit exceeded for ${config.symbol}: ${detail}`);
          return [];
       }
-      throw new Error(`[NewsAPI] HTTP error ${response.status}`);
+      throw new Error(`[NewsAPI] HTTP error ${detail}`);
     }
 
     const data = await response.json();
