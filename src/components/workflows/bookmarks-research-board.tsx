@@ -44,8 +44,8 @@ export function BookmarksResearchBoard() {
 
   if (bookmarks.length === 0) {
     return (
-      <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[24px] border shadow-sm px-8">
-        <Bookmark className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+      <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-transparent shadow-sm px-8">
+        <Bookmark className="w-12 h-12 text-slate-400 mx-auto mb-4" />
         <p className="text-slate-700 dark:text-zinc-300 font-semibold mb-2">북마크한 리포트가 없습니다.</p>
         <p className="text-sm text-slate-400 dark:text-zinc-500">
           종목 상세 페이지 우측 상단의 북마크 아이콘을 눌러<br />
@@ -60,7 +60,7 @@ export function BookmarksResearchBoard() {
       {bookmarks.map((sym: string) => {
         const item = data[sym];
         return (
-          <Link href={`/stocks/${sym}`} key={sym} className="block bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm hover:border-emerald-200 transition-colors">
+          <Link href={`/stocks/${sym}`} key={sym} className="block bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-transparent shadow-sm hover:border-emerald-200 transition-colors">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50">{getStockName(sym)}</h3>

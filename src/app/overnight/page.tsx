@@ -457,7 +457,7 @@ function OvernightScreeningContent() {
         {/* 종목 리스트 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {currentStocks.length === 0 ? (
-            <div className="col-span-full py-16 bg-white dark:bg-zinc-900 rounded-[24px] border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
+            <div className="col-span-full py-16 bg-white dark:bg-zinc-900 rounded-3xl border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
               <Activity className="w-10 h-10 mb-2 opacity-50" />
               <span>{data.empty ? "저장된 선별 결과가 없습니다." : "선정된 종목이 없습니다."}</span>
             </div>
@@ -537,7 +537,7 @@ function OvernightScreeningContent() {
                       <div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500">RSI(14)</div>
                         <div className={`text-xs font-bold ${
-                          stock.metrics.rsi14 == null ? "text-slate-300 dark:text-zinc-600"
+                          stock.metrics.rsi14 == null ? "text-slate-400 dark:text-zinc-600"
                             : stock.metrics.rsi14 >= 55 && stock.metrics.rsi14 <= 65 ? "text-amber-500"
                             : stock.metrics.rsi14 > 70 ? "text-rose-500"
                             : "text-slate-500 dark:text-zinc-400"
@@ -604,7 +604,7 @@ function OvernightScreeningContent() {
               </div>
               <div className="flex-1 border-t border-dashed border-slate-200 dark:border-zinc-800" />
             </div>
-            <p className="text-[11px] text-slate-400 dark:text-zinc-500 mb-4 text-center">
+            <p className="text-xs text-slate-400 dark:text-zinc-500 mb-4 text-center">
               정배열 판정에 필요한 데이터가 부족해 분석하지 못한 종목입니다. 직접 확인 후 참고하세요.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -625,13 +625,13 @@ function OvernightScreeningContent() {
                         {item.symbol}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 leading-relaxed">
+                    <p className="text-xs text-slate-400 dark:text-zinc-500 leading-relaxed">
                       {item.reason}
                     </p>
                   </div>
                   {item.entryClose != null && item.entryClose > 0 && (
                     <div className="flex-shrink-0 text-right">
-                      <div className="text-[9px] text-slate-400 dark:text-zinc-500">당일 종가</div>
+                      <div className="text-[10px] text-slate-400 dark:text-zinc-500">당일 종가</div>
                       <div className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
                         {item.entryClose.toLocaleString()}원
                       </div>
@@ -730,7 +730,7 @@ function IndexStateBlock({ label, state }: { label: string; state?: IndexState |
               </span>
             ))}
           </p>
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 tabular-nums mt-0.5">
+          <p className="text-xs text-slate-400 dark:text-zinc-500 tabular-nums mt-0.5">
             지수 대비 괴리율 · 이평선 {gaps.map((g) => g.ma.toFixed(2)).join(" / ")}
           </p>
         </>

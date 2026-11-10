@@ -75,7 +75,7 @@ export function WatchlistResearchBoard() {
 
   if (watchlist.length === 0) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-12 border text-center shadow-sm">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-12 border border-transparent text-center shadow-sm">
         <p className="text-slate-500 mb-4">저장된 관심 종목이 없습니다.</p>
         <Link href="/" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
           검색으로 돌아가기

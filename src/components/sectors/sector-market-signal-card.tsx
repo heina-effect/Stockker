@@ -64,7 +64,7 @@ export function SectorMarketSignalCard({
   }, [sectorId]);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-5 shadow-sm border border-slate-100 dark:border-zinc-800">
+    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-5 shadow-sm border border-transparent">
       <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-50 mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4 text-teal-500" />
         KIS 업종 흐름

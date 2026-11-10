@@ -12,7 +12,7 @@ type CardData = AnalystOpinionSummary & { currentPrice?: number };
 function OpinionChangeBadge({ prev, curr }: { prev?: string; curr: string }) {
   if (!prev || prev === curr || prev === "—") return null;
   return (
-    <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300 ml-1">
+    <span className="text-[10px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300 ml-1">
       {prev} → {curr}
     </span>
   );
@@ -204,7 +204,7 @@ function SummaryBanner({ data, currentPrice }: { data: CardData; currentPrice?: 
           {highestTargetPrice > 0 ? `${formatNumber(highestTargetPrice)}원` : "—"}
         </div>
         {highestUpside !== null && (
-          <div className={`mt-0.5 text-[10px] font-semibold ${Number(highestUpside) >= 0 ? "text-red-400" : "text-blue-400"}`}>
+          <div className={`mt-0.5 text-[10px] font-semibold ${Number(highestUpside) >= 0 ? "text-red-500" : "text-blue-500"}`}>
             {Number(highestUpside) >= 0 ? "+" : ""}{highestUpside}%
           </div>
         )}
@@ -231,7 +231,7 @@ function OpinionBadge({ opinion }: { opinion: string }) {
   }[opinion] ?? "bg-slate-50 text-slate-600 ring-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700";
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ring-1 ${className}`}>
       {opinion}
     </span>
   );
@@ -261,7 +261,7 @@ function OpinionRow({ item }: { item: AnalystOpinionItem }) {
             {item.targetPrice > 0 ? `${formatNumber(item.targetPrice)}원` : "—"}
           </span>
           {priceDiff !== 0 && (
-            <span className={`text-[10px] ${priceDiff > 0 ? "text-red-400" : "text-blue-400"}`}>
+            <span className={`text-[10px] ${priceDiff > 0 ? "text-red-500" : "text-blue-500"}`}>
               {priceDiff > 0 ? "▲" : "▼"}{formatNumber(Math.abs(priceDiff))}
             </span>
           )}

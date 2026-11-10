@@ -25,7 +25,7 @@ function TrendBar({ strength }: { strength: number }) {
       <div className="w-10 h-1 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
         <div className="h-full bg-indigo-400 dark:bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[9px] text-slate-400 dark:text-zinc-500 tabular-nums">{pct}</span>
+      <span className="text-[10px] text-slate-400 dark:text-zinc-500 tabular-nums">{pct}</span>
     </div>
   );
 }
@@ -58,7 +58,7 @@ export function TrendIssuesCard() {
                   {issue.title}
                 </h4>
                 {idx === 0 && (
-                  <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px] text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded-full font-bold">
+                  <span className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-1.5 py-0.5 rounded-full font-bold">
                     <Zap className="w-2.5 h-2.5" />주목
                   </span>
                 )}

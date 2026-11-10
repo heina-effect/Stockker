@@ -60,15 +60,15 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
         </div>
       ) : error ? (
         <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
-          <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
+          <Newspaper className="w-8 h-8 text-slate-400 mb-3" />
           <p className="text-sm text-slate-400">이슈 데이터를 불러오지 못했습니다.</p>
-          <p className="text-xs text-slate-300 mt-1">잠시 후 다시 확인해 주세요.</p>
+          <p className="text-xs text-slate-400 mt-1">잠시 후 다시 확인해 주세요.</p>
         </div>
       ) : clusters.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
-          <Newspaper className="w-8 h-8 text-slate-300 mb-3" />
+          <Newspaper className="w-8 h-8 text-slate-400 mb-3" />
           <p className="text-sm text-slate-400">종목과 직접 연결된 최신 이슈가 없습니다.</p>
-          <p className="text-xs text-slate-300 mt-1">약한 근거와 타 섹터 이슈는 표시하지 않습니다.</p>
+          <p className="text-xs text-slate-400 mt-1">약한 근거와 타 섹터 이슈는 표시하지 않습니다.</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-5">
@@ -90,11 +90,11 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
               </span>
               {/* Source type icon */}
               {cluster.representativeSource === "Open DART" ? (
-                <span className="flex items-center gap-0.5 text-[9px] text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-1 rounded">
+                <span className="flex items-center gap-0.5 text-[10px] text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-1 rounded">
                   <FileText className="w-2.5 h-2.5" />공시
                 </span>
               ) : (
-                <span className="flex items-center gap-0.5 text-[9px] text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded">
+                <span className="flex items-center gap-0.5 text-[10px] text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-1 rounded">
                   <Newspaper className="w-2.5 h-2.5" />뉴스
                 </span>
               )}
@@ -109,7 +109,7 @@ export function IssueTimelineCard({ symbol }: { symbol: string }) {
             </p>
             {/* Phase 19: Cross-confirmation indicator */}
             {cluster.sourceCount > 1 && (
-              <span className="inline-flex items-center gap-1 mt-1 text-[9px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">
+              <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">
                 근거 충분 ({cluster.sourceCount}개 소스 확인)
               </span>
             )}

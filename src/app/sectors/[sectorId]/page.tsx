@@ -52,7 +52,7 @@ export default async function SectorReportPage({ params }: SectorPageProps) {
           <div className="lg:col-span-4 flex flex-col gap-4">
             <SectorMarketSignalCard sectorId={sectorId} watchCandidates={snapshot?.watch_candidates ?? []} />
 
-            <div className="bg-slate-50 dark:bg-zinc-900 rounded-[24px] p-5 border border-slate-100 dark:border-zinc-800 text-xs text-slate-500 dark:text-zinc-500 text-center leading-relaxed">
+            <div className="bg-slate-50 dark:bg-zinc-900 rounded-3xl p-5 border border-transparent shadow-sm text-xs text-slate-500 dark:text-zinc-500 text-center leading-relaxed">
               본 섹터 정보 및 관련 종목 데이터는 정보 제공을 목적으로 하며, 투자 수익이나 원금을 보장하지 않습니다.
               <br /><br />
               투자 판단에 대한 책임은 전적으로 이용자 본인에게 있습니다.

@@ -44,8 +44,8 @@ export function RecentResearchBoard() {
 
   if (recentSymbols.length === 0) {
     return (
-      <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[24px] border shadow-sm px-8">
-        <Clock className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+      <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-transparent shadow-sm px-8">
+        <Clock className="w-12 h-12 text-slate-400 mx-auto mb-4" />
         <p className="text-slate-700 dark:text-zinc-300 font-semibold mb-2">최근 본 종목이 없습니다.</p>
         <p className="text-sm text-slate-400 dark:text-zinc-500">
           홈 화면 검색창에서 종목을 검색하고 상세 페이지를 방문하면<br />
@@ -60,7 +60,7 @@ export function RecentResearchBoard() {
       {recentSymbols.map((sym: string) => {
         const item = data[sym];
         return (
-          <Link href={`/stocks/${sym}`} key={sym} className="block bg-white dark:bg-zinc-900 rounded-[24px] p-6 border shadow-sm hover:border-amber-200 transition-colors">
+          <Link href={`/stocks/${sym}`} key={sym} className="block bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-transparent shadow-sm hover:border-amber-200 transition-colors">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-bold text-lg text-slate-900 dark:text-zinc-50">{getStockName(sym)}</h3>

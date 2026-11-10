@@ -62,7 +62,7 @@ export function FreshnessLabel({ type, state, timestamp }: FreshnessLabelProps) 
   const Icon = config.icon;
 
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${config.color}`}>
+    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${config.color}`}>
       <Icon className="w-3 h-3" />
       {config.text}
     </div>

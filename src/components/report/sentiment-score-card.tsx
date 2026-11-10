@@ -112,7 +112,7 @@ export function SentimentScoreCard({ symbol }: { symbol: string }) {
         )}
       </div>
       {(data as any)._meta && process.env.NODE_ENV === "development" && (
-        <div className="mt-4 pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800 text-[9px] text-slate-400 flex flex-wrap gap-2">
+        <div className="mt-4 pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800 text-[10px] text-slate-400 flex flex-wrap gap-2">
           <span className="font-mono bg-slate-100 dark:bg-zinc-800 px-1 rounded">Dev Meta</span>
           <span>{`Model: ${(data as any)._meta.model}`}</span>
           <span className={(data as any)._meta.mode === 'real' ? 'text-green-500' : 'text-amber-500'}>{`Mode: ${(data as any)._meta.mode}`}</span>
@@ -152,12 +152,12 @@ function SourceList({ sources }: { sources?: any[] }) {
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] bg-white dark:bg-zinc-800 border px-1 rounded text-slate-500 uppercase">{src.sourceType}</span>
                 {badge && (
-                  <span className={`text-[9px] px-1 rounded ${badge.cls}`}>{badge.label}</span>
+                  <span className={`text-[10px] px-1 rounded ${badge.cls}`}>{badge.label}</span>
                 )}
               </div>
               <span className="text-xs text-slate-600 dark:text-zinc-400 truncate">{src.title}</span>
             </div>
-            <Link2 className="w-3 h-3 text-slate-300 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
+            <Link2 className="w-3 h-3 text-slate-400 group-hover:text-indigo-400 flex-shrink-0 ml-2" />
           </a>
         );
       })}

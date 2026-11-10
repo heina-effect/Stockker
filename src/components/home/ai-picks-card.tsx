@@ -93,7 +93,7 @@ export function AIPicksCard() {
                 <span>{pick.riskSummary}</span>
               </div>
 
-              <div className="mt-3 text-[9px] text-slate-400 text-center border-t border-slate-100 dark:border-zinc-800 pt-2">
+              <div className="mt-3 text-[10px] text-slate-400 text-center border-t border-slate-100 dark:border-zinc-800 pt-2">
                 {pick.disclaimer}
               </div>
             </div>

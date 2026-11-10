@@ -10,7 +10,7 @@ import { getStockName } from "@/lib/stocks/metadata";
 function SectorAISkeleton() {
   return (
     <div className="animate-pulse flex flex-col gap-6">
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-slate-100 dark:border-zinc-800">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-transparent shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div className="w-32 h-5 bg-slate-100 dark:bg-zinc-800 rounded" />
           <div className="w-20 h-4 bg-slate-100 dark:bg-zinc-800 rounded" />
@@ -34,7 +34,7 @@ function SectorAISkeleton() {
 
 function SectorAIGenerating() {
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-8 border border-slate-100 dark:border-zinc-800 flex flex-col items-center gap-4">
+    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-8 border border-transparent shadow-sm flex flex-col items-center gap-4">
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:0ms]" />
         <span className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -91,7 +91,7 @@ function SectorAIContent({ snapshot, sector }: { snapshot: SectorResearchSnapsho
   return (
     <div className="flex flex-col gap-5">
       {/* 핵심 요약 블록 */}
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-100 dark:border-zinc-800">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-transparent">
         <div className="flex items-start justify-between mb-3 gap-3">
           <h3 className="font-bold text-slate-900 dark:text-zinc-50 flex items-center gap-2">
             <Zap className="w-4 h-4 text-indigo-500" />
@@ -161,7 +161,7 @@ function SectorAIContent({ snapshot, sector }: { snapshot: SectorResearchSnapsho
 
       {/* 주요 이슈 */}
       {snapshot.related_issues.length > 0 && (
-        <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 shadow-sm border border-slate-100 dark:border-zinc-800">
+        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-transparent">
           <h4 className="font-bold text-sm text-slate-800 dark:text-zinc-200 mb-4">주요 근거 이슈</h4>
           <div className="flex flex-col gap-3">
             {snapshot.related_issues.map((issue: any) => (
@@ -169,7 +169,7 @@ function SectorAIContent({ snapshot, sector }: { snapshot: SectorResearchSnapsho
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <div className="font-semibold text-sm text-slate-800 dark:text-zinc-200 leading-tight">{issue.title}</div>
                   {issue.sentiment && (
-                    <span className={`flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                    <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
                       issue.sentiment === "positive"
                         ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400"
                         : issue.sentiment === "negative"
@@ -227,7 +227,7 @@ export function SectorAISection({ snapshot: initialSnapshot, sectorId, sector }:
 
   if (error || !snapshot) {
     return (
-      <div className="bg-white dark:bg-zinc-900 rounded-[24px] p-6 border border-slate-100 dark:border-zinc-800 flex items-center gap-3 text-sm text-slate-400 dark:text-zinc-500">
+      <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-transparent shadow-sm flex items-center gap-3 text-sm text-slate-400 dark:text-zinc-500">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         AI 섹터 분석을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
       </div>

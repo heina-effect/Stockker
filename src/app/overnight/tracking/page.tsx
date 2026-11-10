@@ -227,7 +227,7 @@ function sortSectionItems(verdict: Verdict, sectionItems: TrackingItem[]): Track
 
 // 색상 규칙: 현재가 > 포착가 = 빨강, 현재가 < 포착가 = 파랑, 동일 = 기본. 예상수익률 셀도 동일 색 적용.
 function priceColorClass(currentClose: number, entryClose: number): string {
-  if (currentClose > entryClose) return "text-rose-500";
+  if (currentClose > entryClose) return "text-red-500";
   if (currentClose < entryClose) return "text-blue-500";
   return "text-slate-500 dark:text-zinc-400";
 }
@@ -239,7 +239,7 @@ function priceColorClass(currentClose: number, entryClose: number): string {
 function maxReturnColorClass(value: number | null): string {
   if (value == null) return "text-slate-400";
   const rounded = Number(value.toFixed(1));
-  if (rounded > 0) return "text-rose-500";
+  if (rounded > 0) return "text-red-500";
   if (rounded < 0) return "text-blue-500";
   return "text-slate-500 dark:text-zinc-400";
 }
@@ -308,7 +308,7 @@ function CaptureInfo({
             )}
           </div>
         )}
-        <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+        <span className="text-xs text-slate-500 dark:text-zinc-400">
           {captureCount}회 포착
           {showMinMax && (
             <>
@@ -321,13 +321,13 @@ function CaptureInfo({
         </span>
         <button
           onClick={onToggleExpand}
-          className="text-[11px] text-indigo-500 dark:text-indigo-400 hover:underline ml-auto"
+          className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline ml-auto"
         >
           이력 보기 {expanded ? "▲" : "▼"}
         </button>
       </div>
       {expanded && (
-        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5 leading-relaxed">
+        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1.5 leading-relaxed">
           {captureHistory
             .map((h) => `${formatDiscoveryDate(h.date)} (${h.entryClose.toLocaleString()}원)`)
             .join(" · ")}
@@ -357,7 +357,7 @@ function StarButton({
     >
       <Star
         className={`w-4 h-4 transition-colors ${
-          isFavorite ? "fill-amber-500 text-amber-500" : "text-slate-300 dark:text-zinc-700 hover:text-amber-400"
+          isFavorite ? "fill-amber-500 text-amber-500" : "text-slate-400 dark:text-zinc-700 hover:text-amber-400"
         }`}
       />
     </button>
@@ -401,7 +401,7 @@ function CompactCard({
   const priceColor = priceColorClass(currentClose, entryClose);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-transparent shadow-sm">
+    <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 border border-transparent shadow-sm">
       {/* 상단 1줄: (즐겨찾기) + 종목명 + (A/B 트랙 라벨) — 좁은 컬럼에서도 이름이 수익률과 공간을
           다투지 않도록 종목명/수익률을 별도 줄로 분리(칸반 좁은 컬럼 폭에서 텍스트 겹침 방지) */}
       <div className="flex items-center gap-1.5 min-w-0">
@@ -416,7 +416,7 @@ function CompactCard({
           {name}
         </Link>
         {trackTone && (
-          <span className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400">
+          <span className="text-[10px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400">
             일반관찰
           </span>
         )}
@@ -450,7 +450,7 @@ function CompactCard({
       )}
 
       {adjustmentLabel && (
-        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">{corporateAdjustmentNotice(adjustmentLabel)}</p>
+        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{corporateAdjustmentNotice(adjustmentLabel)}</p>
       )}
 
       {stageBadge && (
@@ -544,7 +544,7 @@ function QuantGroupedCard({ group, endedEvents }: { group: QuantSymbolGroup; end
   const sharedVolumeBasis = events.length > 1 && volumeBases.size === 1 ? [...volumeBases][0] : null;
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-transparent shadow-sm">
+    <div className="h-full flex flex-col bg-white dark:bg-zinc-900 rounded-3xl p-4 border border-transparent shadow-sm">
       <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
         <Link
           href={`/stocks/${symbol}`}
@@ -555,7 +555,7 @@ function QuantGroupedCard({ group, endedEvents }: { group: QuantSymbolGroup; end
         </Link>
         <span className="text-xs font-mono text-slate-400 dark:text-zinc-500 flex-shrink-0">({symbol})</span>
         <span
-          className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"
+          className="text-[10px] font-bold px-1 py-0.5 rounded flex-shrink-0 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400"
           title="실험 신호 · 매수 추천 아님 · 추세 필터 미반영"
         >
           퀀트신호
@@ -573,10 +573,10 @@ function QuantGroupedCard({ group, endedEvents }: { group: QuantSymbolGroup; end
         ))}
       </div>
       {sharedVolumeBasis && (
-        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">거래량: {sharedVolumeBasis}</p>
+        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">거래량: {sharedVolumeBasis}</p>
       )}
       {events[0]?.recentRecapture && (
-        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800/80">
+        <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-zinc-800/80">
           최근 재포착 {formatDiscoveryDate(events[0].recentRecapture.date)}
         </p>
       )}
@@ -664,14 +664,14 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+        <span className="text-xs text-slate-400 dark:text-zinc-500">
           {showDetail
             ? `전체 ${rows.length}건 · 상세 컬럼 표시 중`
             : `최신 ${visibleRows.length}건 표시 중${hiddenRowCount > 0 ? ` (${hiddenRowCount}건 숨김)` : ""} · 발견일 최신순`}
         </span>
         <button
           onClick={toggleDetail}
-          className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex-shrink-0"
+          className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex-shrink-0"
         >
           {showDetail ? `최신 ${QUANT_ENDED_COLLAPSED_ROWS}건만 보기 ▲` : `전체 ${rows.length}건 + 상세 보기 ▼`}
         </button>
@@ -718,17 +718,17 @@ function QuantEndedTable({ items }: { items: QuantSignalItem[] }) {
                     {item.name}
                   </Link>
                   {item.duplicateOf && (
-                    <span className="ml-1 text-[11px] text-amber-700 dark:text-amber-400">{duplicateNotice(item.duplicateOf)}</span>
+                    <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">{duplicateNotice(item.duplicateOf)}</span>
                   )}
                   {item.corporateAdjustmentLabel && (
-                    <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">
+                    <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
                       {corporateAdjustmentNotice(item.corporateAdjustmentLabel)}
                     </span>
                   )}
                   {item.corporateAction ? (
-                    <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">{CORPORATE_ACTION_NOTICE}</span>
+                    <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">{CORPORATE_ACTION_NOTICE}</span>
                   ) : item.haltIncomplete ? (
-                    <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">거래정지로 관측 미완</span>
+                    <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">거래정지로 관측 미완</span>
                   ) : (
                     item.haltStartDaysAfter != null && (
                       <span className="ml-1 text-amber-600 dark:text-amber-400" title="거래정지 구간 제외 후 관찰">⏸</span>
@@ -791,7 +791,7 @@ function CollapsibleSection({ label, children }: { label: string; children: Reac
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <div className="mt-3 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl p-4 space-y-3 text-sm">
+        <div className="mt-3 bg-white dark:bg-zinc-900 border border-transparent shadow-sm rounded-3xl p-4 space-y-3 text-sm">
           {children}
         </div>
       )}
@@ -1334,7 +1334,7 @@ export default function TrackingPage() {
 
         <div className="bg-blue-50/30 dark:bg-blue-950/10 rounded-3xl p-5">
         {items.length === 0 ? (
-          <div className="py-16 bg-white dark:bg-zinc-900 rounded-[24px] border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
+          <div className="py-16 bg-white dark:bg-zinc-900 rounded-3xl border border-transparent shadow-sm flex flex-col items-center justify-center text-slate-400 dark:text-zinc-500">
             <Activity className="w-10 h-10 mb-2 opacity-50" />
             <span>
               {isSearching
@@ -1420,7 +1420,7 @@ export default function TrackingPage() {
                                     onToggleExpand={() => toggleExpand(item.symbol)}
                                   />
                                   {item.priorCycleEntryDates.length > 0 && (
-                                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                                    <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
                                       이전 사이클 시작: {item.priorCycleEntryDates.map(formatDiscoveryDate).join(", ")}
                                     </p>
                                   )}
@@ -1491,7 +1491,7 @@ export default function TrackingPage() {
                                 onToggleExpand={() => toggleExpand(item.symbol)}
                               />
                               {item.priorCycleEntryDates.length > 0 && (
-                                <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">
+                                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
                                   이전 사이클 시작: {item.priorCycleEntryDates.map(formatDiscoveryDate).join(", ")}
                                 </p>
                               )}

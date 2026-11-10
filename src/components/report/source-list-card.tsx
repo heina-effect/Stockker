@@ -178,19 +178,19 @@ export function SourceListCard({ symbol }: { symbol: string }) {
               <div className="flex items-center justify-between flex-wrap gap-1">
                 <div className="flex items-center gap-1.5">
                   {src.sourceType === "disclosure" ? (
-                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 border border-teal-100 dark:border-teal-900/40 uppercase">
+                    <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 border border-teal-100 dark:border-teal-900/40 uppercase">
                       <FileText className="w-2.5 h-2.5" />공시
                     </span>
                   ) : (
-                    <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 uppercase">
+                    <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 uppercase">
                       <Newspaper className="w-2.5 h-2.5" />뉴스
                     </span>
                   )}
                   {badge && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${badge.cls}`}>{badge.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${badge.cls}`}>{badge.label}</span>
                   )}
                   {confirmCount > 1 && (
-                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1 rounded">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1 rounded">
                       {confirmCount}건 확인
                     </span>
                   )}
@@ -199,7 +199,7 @@ export function SourceListCard({ symbol }: { symbol: string }) {
                 {sourceDate && (
                   <span className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-zinc-500">
                     <Clock className="w-2.5 h-2.5" />
-                    <span className="text-slate-300 dark:text-zinc-600">{dateLabel}</span>
+                    <span className="text-slate-400 dark:text-zinc-600">{dateLabel}</span>
                     {formatSourceDate(sourceDate)}
                   </span>
                 )}
@@ -220,9 +220,9 @@ export function SourceListCard({ symbol }: { symbol: string }) {
                 <span className="text-[10px] text-slate-500 dark:text-zinc-500">{src.provider}</span>
                 <div className="flex items-center gap-1.5">
                   {strategyTags.slice(0, 2).map(tag => (
-                    <span key={tag} className="text-[8px] text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-1 rounded">{tag}</span>
+                    <span key={tag} className="text-[10px] text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-1 rounded">{tag}</span>
                   ))}
-                  {src.url && <Link2 className="w-3 h-3 text-slate-300 dark:text-zinc-600" />}
+                  {src.url && <Link2 className="w-3 h-3 text-slate-400 dark:text-zinc-600" />}
                 </div>
               </div>
             </li>
