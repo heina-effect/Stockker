@@ -161,35 +161,35 @@ const volumeBasisLabel = (item: { judgedAt: string }) =>
  */
 const SECTION_META: Record<
   Verdict,
-  { title: string; sortHint: string; hasReference: boolean; dot: string; bg: string }
+  { title: string; sortHint: string; hasReference: boolean; dot: string; frame: string }
 > = {
   stopLoss: {
     title: "약세 전환",
     sortHint: "낙폭 큰 순",
     hasReference: true,
     dot: "bg-rose-500",
-    bg: "bg-rose-50/70 dark:bg-rose-950/20",
+    frame: "border-rose-200 dark:border-rose-500/40",
   },
   hold: {
     title: "강세 지속",
     sortHint: "상승폭 큰 순",
     hasReference: true,
     dot: "bg-blue-500",
-    bg: "bg-blue-50/70 dark:bg-blue-950/20",
+    frame: "border-blue-200 dark:border-blue-500/40",
   },
   neutral: {
     title: "혼조",
     sortHint: "최근 포착순",
     hasReference: true,
     dot: "bg-amber-500",
-    bg: "bg-amber-50/70 dark:bg-amber-950/20",
+    frame: "border-amber-200 dark:border-amber-500/40",
   },
   watching: {
     title: "판단 대기",
     sortHint: "최근 포착순",
     hasReference: false,
     dot: "bg-slate-400 dark:bg-zinc-600",
-    bg: "bg-slate-100/70 dark:bg-zinc-800/30",
+    frame: "border-slate-200 dark:border-zinc-700",
   },
 };
 
@@ -1362,7 +1362,7 @@ export default function TrackingPage() {
                   return (
                     <div
                       key={verdict}
-                      className={`flex flex-col flex-1 basis-0 min-w-[220px] rounded-2xl p-3 ${meta.bg}`}
+                      className={`flex flex-col flex-1 basis-0 min-w-[220px] rounded-2xl p-3 border ${meta.frame}`}
                     >
                       {/* 헤더 높이를 4컬럼 공통 고정값으로 맞춰, 통계 문구 줄바꿈 여부와 무관하게
                           아래 카드 목록의 시작 지점(헤더 하단선)이 컬럼마다 수평으로 일치하도록 함.

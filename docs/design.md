@@ -20,6 +20,7 @@
 - 다크 테두리 짝(`dark:border-zinc-800`)도 두지 않는다. SurfaceCard와 같다.
 - 결정 당시 분포: 투명 + shadow-sm 33곳, `border-slate-100 dark:border-zinc-800` 8곳 / 4파일(그중 5곳은 그림자 없음), 색 미지정 `border`(`--border` 색) 5곳 / 3파일.
 - 적용: slate-100 8곳과 색 미지정 5곳 → 투명 + shadow-sm. 호버 때 테두리 색이 생기는 링크 카드(`hover:border-emerald-200` 등)는 호버 클래스를 그대로 둔다.
+- 예외: 추적 화면(`overnight/tracking`)의 그룹 컬럼(약세 전환·강세 지속·혼조·판단 대기)은 최상위 카드가 아니라 묶음 컨테이너라 이 규칙 대상이 아니다. 배경 틴트 없이 점 색과 같은 계열의 1px 색 테두리(라이트 -200, 다크 -500/40, 판단 대기는 slate-200 / zinc-700)로 그룹을 구분한다.
 - 예외: overnight 안내 박스는 그대로. shadcn `ring-1 ring-foreground/10`(ui/card)과 `border-2 border-slate-200`(orderbook-panel·price-chart, 4-1에서 삭제)은 화면에 나오는 곳이 없어 건드리지 않았다.
 
 ## 3. 텍스트 색 — 보조는 두 단계, 강조·본문은 보류
