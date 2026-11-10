@@ -1,6 +1,7 @@
 import { DashboardHeader } from "@/components/home/dashboard-header";
 import { SearchHeroCard } from "@/components/home/search-hero-card";
 import { WatchlistAsideCard } from "@/components/home/watchlist-aside-card";
+import { RecentViewedCard } from "@/components/home/recent-viewed-card";
 import { TrendIssuesCard } from "@/components/home/trend-issues-card";
 import { TrendStocksCard } from "@/components/home/trend-stocks-card";
 import { TrendSectorsCard } from "@/components/home/trend-sectors-card";
@@ -31,9 +32,13 @@ export default function HomePage() {
             </HomeIntelligenceProvider>
           </div>
           
-          {/* Right Column: Watchlist Overview */}
-          <div className="lg:col-span-4">
-            <WatchlistAsideCard />
+          {/* Right Column: Watchlist Overview + Recently Viewed */}
+          {/* 관심 종목 카드는 남은 높이를 채우고(h-full), 최근 조회 카드는 내용 높이로 아래에 둔다 */}
+          <div className="lg:col-span-4 flex flex-col gap-8">
+            <div className="lg:flex-1 lg:min-h-0">
+              <WatchlistAsideCard />
+            </div>
+            <RecentViewedCard />
           </div>
         </div>
       </main>
