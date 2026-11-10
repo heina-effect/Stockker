@@ -79,7 +79,7 @@ describe("getStockAnalystOpinions", () => {
     expect(result.avgTargetPrice).toBe(95000);
   });
 
-  it("still calls opinion APIs in mock KIS mode but marks the response as real KIS data", async () => {
+  it("calls opinion APIs with the production quote credentials even in mock KIS mode", async () => {
     kisMode = "mock";
     callKisApi
       .mockResolvedValueOnce({
@@ -103,10 +103,20 @@ describe("getStockAnalystOpinions", () => {
     const result = await getStockAnalystOpinions("005930");
 
     expect(callKisApi).toHaveBeenCalledTimes(2);
+    expect(callKisApi).toHaveBeenCalledWith(
+      expect.stringContaining("/invest-opinion?"),
+      expect.objectContaining({ trId: "FHKST663300C0", useQuoteCreds: true })
+    );
+    expect(callKisApi).toHaveBeenCalledWith(
+      expect.stringContaining("/invest-opbysec?"),
+      expect.objectContaining({ trId: "FHKST663400C0", useQuoteCreds: true })
+    );
     expect(result.items).toHaveLength(1);
+    // meta는 KIS_MODE가 아니라 실제로 쓴 자격증명(실전 시세)을 가리킨다
     expect(result._meta).toEqual(expect.objectContaining({
       source: "kis-openapi",
-      kisMode: "mock",
+      kisMode: "real",
+      endpointMode: "real",
       isMockData: false,
     }));
   });

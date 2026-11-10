@@ -88,13 +88,19 @@ function normalizeOpinionRows(rows: Record<string, unknown>[], fallbackFirmName:
 }
 
 /**
+ * 투자의견 TR은 시세 함수들과 같이 실전 시세 자격증명(KIS_APP_KEY_PROD, 실전 도메인)으로 부른다.
+ * KIS_MODE(주문용, 기본 모의투자)와 무관하다. 2026-11-10 실전·모의 응답의 필드 구성과 건수가 같음을 확인했다.
+ */
+const OPINION_USES_QUOTE_CREDS = true;
+
+/**
  * KIS Open API — 종목 투자의견 조회
  * - 국내주식 종목투자의견: invest-opinion / FHKST663300C0 / 화면 16633
  * - 국내주식 증권사별 투자의견: invest-opbysec / FHKST663400C0 / 화면 16634
  * 하루 1회 이상 갱신되므로 1시간 캐싱.
  */
 export async function getStockAnalystOpinions(symbol: string): Promise<AnalystOpinionSummary> {
-  return withDedupeAndCache(`analyst_opinion_v2_${symbol}`, 60 * 60 * 1000, async () => {
+  return withDedupeAndCache(`analyst_opinion_v3_${symbol}`, 60 * 60 * 1000, async () => {
     try {
       const today = new Date();
       const kstDate = new Date(today.getTime() + 9 * 60 * 60 * 1000);
@@ -123,11 +129,11 @@ export async function getStockAnalystOpinions(symbol: string): Promise<AnalystOp
       const [opinionResult, opBySecResult] = await Promise.allSettled([
         callKisApi<KisRawResponse>(
           `/uapi/domestic-stock/v1/quotations/invest-opinion?${opinionQuery.toString()}`,
-          { method: "GET", trId: "FHKST663300C0" }
+          { method: "GET", trId: "FHKST663300C0", useQuoteCreds: OPINION_USES_QUOTE_CREDS }
         ),
         callKisApi<KisRawResponse>(
           `/uapi/domestic-stock/v1/quotations/invest-opbysec?${opBySecQuery.toString()}`,
-          { method: "GET", trId: "FHKST663400C0" }
+          { method: "GET", trId: "FHKST663400C0", useQuoteCreds: OPINION_USES_QUOTE_CREDS }
         ),
       ]);
 
@@ -183,12 +189,14 @@ function emptyResult(): AnalystOpinionSummary {
 }
 
 function createMeta(): NonNullable<AnalystOpinionSummary["_meta"]> {
+  // meta는 KIS_MODE가 아니라 이 TR이 실제로 쓴 자격증명을 가리킨다. 시세용(quote) 자격증명은 항상 실전 서버다.
+  const usedMode: "real" | "mock" = OPINION_USES_QUOTE_CREDS ? "real" : kisConfig.mode;
   return {
     source: "kis-openapi",
-    kisMode: kisConfig.mode,
-    endpointMode: kisConfig.mode,
+    kisMode: usedMode,
+    endpointMode: usedMode,
     isMockData: false,
-    note: kisConfig.mode === "mock"
+    note: usedMode === "mock"
       ? "모의투자 키/서버에서 호출했지만 Stockker mock 데이터가 아니라 KIS OpenAPI 응답입니다."
       : "실전 OpenAPI 정보성 엔드포인트 응답입니다.",
   };
