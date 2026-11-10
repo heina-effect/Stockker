@@ -2,6 +2,8 @@
 
 화면 값이 갈라져 있던 다섯 항목의 기준이다. 집계는 `.work/reports/2026-11-10-1026-mock-refs-migration-sql-design-options.md`(가짜 데이터 코드 4개 파일 삭제 뒤 기준)의 값이다. `docs/design-inventory.md`는 2026-11-02 집계라 일부 수치가 낡았다.
 
+아래 "결정 당시 분포"에는 2026-11-10 4-1에서 지운 dashboard 죽은 파일 4개가 들어 있다. 그 몫(접두 뗀 기준)은 slate-400 6 / 3파일, slate-500 2 / 2, slate-600 1 / 1, muted-foreground 1 / 1, text-xs 7 / 3, `[10px]` 5 / 4이고, radius·테두리·slate-300·`[11px]`·`[9px]`·`[8px]` 집계에는 없다.
+
 이 문서는 새 코드를 쓸 때 고를 값을 정한다. 여기 없는 값(하위 카드 radius, 카드 padding, 구분선 색, 강조·본문 텍스트 색)은 아직 정하지 않았다.
 
 ## 1. 최상위 카드 radius — 1.5rem, `rounded-3xl`
@@ -18,7 +20,7 @@
 - 다크 테두리 짝(`dark:border-zinc-800`)도 두지 않는다. SurfaceCard와 같다.
 - 결정 당시 분포: 투명 + shadow-sm 33곳, `border-slate-100 dark:border-zinc-800` 8곳 / 4파일(그중 5곳은 그림자 없음), 색 미지정 `border`(`--border` 색) 5곳 / 3파일.
 - 적용: slate-100 8곳과 색 미지정 5곳 → 투명 + shadow-sm. 호버 때 테두리 색이 생기는 링크 카드(`hover:border-emerald-200` 등)는 호버 클래스를 그대로 둔다.
-- 예외: overnight 안내 박스는 그대로. shadcn `ring-1 ring-foreground/10`(ui/card)과 `border-2 border-slate-200`(orderbook-panel·price-chart)은 화면에 나오는 곳이 없어 건드리지 않았다.
+- 예외: overnight 안내 박스는 그대로. shadcn `ring-1 ring-foreground/10`(ui/card)과 `border-2 border-slate-200`(orderbook-panel·price-chart, 4-1에서 삭제)은 화면에 나오는 곳이 없어 건드리지 않았다.
 
 ## 3. 텍스트 색 — 보조는 두 단계, 강조·본문은 보류
 

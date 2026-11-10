@@ -298,10 +298,6 @@
 
 **조건:** 나중에 CLI(`db push` 등)를 쓸 일이 생기면, 그 전에 빠진 14개를 한꺼번에 `migration repair`(또는 같은 형식의 INSERT)로 적용됨 등록해야 한다. 등록하지 않고 push하면 006~018이 다시 돌고, 017의 트리거 생성처럼 멱등이 아닌 문장에서 실패한다. 017·018용 INSERT·되돌리기 SQL은 `.work/reports/2026-11-10-1026-mock-refs-migration-sql-design-options.md`에 있고, 나머지 12개는 같은 형식으로 만들면 된다.
 
-### P3: 어느 화면에서도 import되지 않는 dashboard 컴포넌트 4개 (2026-11-10)
-
-`src/components/dashboard/orderbook-panel.tsx`, `price-chart.tsx`, `dashboard-header.tsx`, `connection-status.tsx`는 import하는 곳이 0이다(2026-11-10 `git grep` 확인). 화면에 나오지 않지만 디자인 집계(색·radius·작은 글자·등락 색)에 잡혀 수치를 흐린다. shadcn `<Card>`(`ui/card.tsx`)의 사용처도 이 중 두 파일뿐이다. 삭제는 별도 작업으로 둔다.
-
 ### P3: 등락률은 10/22부터만 있다 (2026-11-06)
 
 화면이 저장분을 읽게 되면서(안 B) "전일대비"가 사라졌다. 값은 스크리닝 때 있었지만 저장하지 않고 있었다. 018로 `overnight_screening_items.change_rate`를 더해 저장하고 `/latest`와 화면에 되살렸다. 값이 없으면 "전일대비 —"로 보인다.
@@ -618,6 +614,10 @@ day0 와 비-day0 의 기준은 코드상 다르다. 저장 당일에는 두 기
 **재개 조건**: `docs/release/intraday-reopen-checklist.md` 충족 후 별도 Phase에서 검토.
 
 ## 최근 해결
+
+- 2026-11-10: 어느 화면에서도 import되지 않던 dashboard 컴포넌트 4개 삭제(P3, 2026-11-10 등록). `src/components/dashboard/orderbook-panel.tsx`, `price-chart.tsx`, `dashboard-header.tsx`, `connection-status.tsx`를 지웠다. 네 파일 밖의 코드 참조는 0이었다(`DashboardHeader`라는 이름의 import는 모두 `home/dashboard-header`). `live-market-provider`가 남아 폴더는 그대로 둔다.
+  - 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `44278e8`이다.
+  - 이 삭제로 import하는 곳이 0이 된 파일: shadcn `ui/card.tsx`·`ui/table.tsx`·`ui/badge.tsx`, `src/lib/market-utils.ts`(장 상태 배지 토큰), `src/lib/format.ts`. 지우지 않았다.
 
 - 2026-11-10: 가짜 데이터 생성 코드 제거(P2, 2026-10-30 등록). `layout.tsx`가 앱 전체를 `MockLiveProvider`로 감싸 화면에 안 보여도 모든 페이지에서 `setInterval`로 가짜 시세를 만들고 있었다. `src/lib/mock/market.ts`, `src/components/dashboard/mock-live-provider.tsx`, `market-overview-card.tsx`, `watchlist-panel.tsx` 4개 파일을 지웠고, `related-stocks-card.tsx`의 `ai_inferred: "AI 추론"` 라벨·색을 뺐다(맵에 없는 관계 유형은 배지를 그리지 않음). `RelationType` 유니온의 `ai_inferred`는 생산·저장 경로가 없음을 확인한 뒤 따로 정리한다.
   - 관심종목 UI(`WatchlistPanel`·`MarketOverviewCard`)를 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `b42fa64`이고, 가짜 데이터 공급원(`MockLiveProvider`) 대신 실제 시세에 연결해야 한다.
