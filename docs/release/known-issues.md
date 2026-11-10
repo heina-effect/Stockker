@@ -615,6 +615,8 @@ day0 와 비-day0 의 기준은 코드상 다르다. 저장 당일에는 두 기
 
 ## 최근 해결
 
+- 2026-11-10: 드러나지 않는 가짜 경로 제거. 호출처 0인 `src/server/research/pipeline/summarize.ts`(`summarizeIssues`가 입력을 버리고 항상 `mockReportSummary`를 반환)와 `mock-data.ts`의 미사용 export 3개(`mockSearchData`, `mockIssues`, `mockRelatedStocks`)를 지웠다. AI 요약·감성의 가짜 폴백(`mockReportSummary`·`mockSentiment`, orchestrator의 Gemini 실패 폴백)은 의도적으로 유지하며 `_meta.mode="fallback"`으로 표시된다. 화면에는 요약이 "근거 부족" 헤드라인과 리포트 신선도 "근거 부족", 감성이 `_isFallback`으로 "판단불가"와 경고 문구로 드러나고, `mode` 문자열 자체는 개발 모드 메타 줄에만 보인다.
+
 - 2026-11-10: 어느 화면에서도 import되지 않던 dashboard 컴포넌트 4개 삭제(P3, 2026-11-10 등록). `src/components/dashboard/orderbook-panel.tsx`, `price-chart.tsx`, `dashboard-header.tsx`, `connection-status.tsx`를 지웠다. 네 파일 밖의 코드 참조는 0이었다(`DashboardHeader`라는 이름의 import는 모두 `home/dashboard-header`). `live-market-provider`가 남아 폴더는 그대로 둔다.
   - 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `44278e8`이다.
   - 이 삭제로 import하는 곳이 0이 된 파일: shadcn `ui/card.tsx`·`ui/table.tsx`·`ui/badge.tsx`, `src/lib/market-utils.ts`(장 상태 배지 토큰), `src/lib/format.ts`. 지우지 않았다.
