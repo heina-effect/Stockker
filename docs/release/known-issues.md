@@ -285,9 +285,22 @@
 
 **42건 재구성 표본**: `a_track_legacy_snapshot_20261106`의 52건에서 판정 기록과 겹치는 10건을 뺀 42건이다. 임계값을 7/3~8/31 관측으로 정했고, 이 42건은 그 데이터이거나 판정 기록이 없는 건이라 조건을 검증하는 표본으로 쓸 수 없다. 스냅샷의 `tracking_item` 고정값만 읽고 재평가하지 않는다. 접힌 영역에 두고 헤드라인 집계에서 뺀다. 수치도 그 영역 안에만 둔다. 7/3~9/3 315행은 판정 불가라 판정 기록에 없고, 그중 A트랙이던 건은 이 스냅샷 쪽에 있다.
 
-### P3: 017·018은 Supabase 마이그레이션 이력에 없다 (2026-11-06)
+### P3: 마이그레이션 이력이 001~005뿐이다 — 복구하지 않음 (2026-11-06 등록, 11-10 정정)
 
-두 파일은 대시보드 SQL Editor로 실행했다. 이 맥에 CLI 토큰과 DB 비밀번호가 없다. `supabase db push`를 쓰면 017의 트리거 생성이 다시 돌아 실패한다. 쓰기 전에 `migration repair`로 두 건을 적용됨으로 등록한다. 스냅샷 `a_track_legacy_snapshot_20261106`은 마이그레이션 파일에 없다.
+**현상(2026-11-10 `supabase_migrations.schema_migrations` 조회):** 이력에 있는 것은 `001`~`005` 다섯 행뿐이다. 빠진 것은 `003_overnight_screening`, `006`~`016`(11개), `017`, `018`로 모두 14개다. 처음에는 017·018만 빠졌다고 적었는데 사실과 달랐다.
+- 기록된 `003`은 `003b_add_sector_depth_columns.sql`의 내용(이름 `add_sector_depth_columns`)이다. 파일 번호와 이력 번호가 이미 어긋나 있다.
+- 행 형식은 `version text`('005'), `name text`, `statements text[]`(문장별, 끝 세미콜론 없음)이다.
+
+**결정: 복구하지 않는다.**
+- 017·018만 넣는 부분 복구는 이력이 맞다는 착각을 만들고, `db push`는 여전히 006~016을 다시 실행하려 한다.
+- 이 프로젝트는 Supabase SQL Editor로 직접 실행하는 방식으로 운영한다. 이 맥에는 supabase CLI가 설치돼 있지 않다(CLI 토큰·DB 비밀번호도 없음).
+- 스냅샷 `a_track_legacy_snapshot_20261106`도 마이그레이션 파일에 없다.
+
+**조건:** 나중에 CLI(`db push` 등)를 쓸 일이 생기면, 그 전에 빠진 14개를 한꺼번에 `migration repair`(또는 같은 형식의 INSERT)로 적용됨 등록해야 한다. 등록하지 않고 push하면 006~018이 다시 돌고, 017의 트리거 생성처럼 멱등이 아닌 문장에서 실패한다. 017·018용 INSERT·되돌리기 SQL은 `.work/reports/2026-11-10-1026-mock-refs-migration-sql-design-options.md`에 있고, 나머지 12개는 같은 형식으로 만들면 된다.
+
+### P3: 어느 화면에서도 import되지 않는 dashboard 컴포넌트 4개 (2026-11-10)
+
+`src/components/dashboard/orderbook-panel.tsx`, `price-chart.tsx`, `dashboard-header.tsx`, `connection-status.tsx`는 import하는 곳이 0이다(2026-11-10 `git grep` 확인). 화면에 나오지 않지만 디자인 집계(색·radius·작은 글자·등락 색)에 잡혀 수치를 흐린다. shadcn `<Card>`(`ui/card.tsx`)의 사용처도 이 중 두 파일뿐이다. 삭제는 별도 작업으로 둔다.
 
 ### P3: 등락률은 10/22부터만 있다 (2026-11-06)
 
