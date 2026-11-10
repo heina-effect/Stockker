@@ -282,9 +282,10 @@ Rules:
 // ═════════════════════════════════════════════════════════════════════════════
 // 2.5 SECTOR SUMMARY
 // ═════════════════════════════════════════════════════════════════════════════
-export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{ summary: string; trendStrength: number; leaders?: string[]; laggards?: string[]; watchCandidates?: any[] }> {
+// failed: 요약을 실제로 만들지 못하고 자리표시 문구를 돌려준 경우. 스냅샷 저장 쪽이 기존 행을 덮지 않는 데 쓴다.
+export async function aiSummarizeSector(sector: any, clusters: any[]): Promise<{ summary: string; trendStrength: number; leaders?: string[]; laggards?: string[]; watchCandidates?: any[]; failed?: boolean }> {
   if (!ai || clusters.length === 0) {
-    return { summary: "해당 섹터에 대한 충분한 최신 데이터가 없습니다.", trendStrength: 50 };
+    return { summary: "해당 섹터에 대한 충분한 최신 데이터가 없습니다.", trendStrength: 50, failed: true };
   }
 
   try {
@@ -315,6 +316,7 @@ Rules:
     const parsed = await geminiJSON<any>(GEMINI_FLASH, prompt);
     return {
       summary: parsed.summary || "해당 섹터에 대한 최신 동향을 파악 중입니다.",
+      failed: !parsed.summary,
       trendStrength: parsed.trendStrength ?? 50,
       leaders: parsed.leaders || [],
       laggards: parsed.laggards || [],
@@ -322,7 +324,7 @@ Rules:
     };
   } catch (e: any) {
     logOrchestratorError(`Sector summary for ${sector.name}`, e);
-    return { summary: "해당 섹터에 대한 분석 중 오류가 발생했습니다.", trendStrength: 50 };
+    return { summary: "해당 섹터에 대한 분석 중 오류가 발생했습니다.", trendStrength: 50, failed: true };
   }
 }
 

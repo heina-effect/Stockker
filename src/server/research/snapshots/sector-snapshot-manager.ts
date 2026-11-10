@@ -65,7 +65,7 @@ export async function generateSectorSnapshot(sectorId: string): Promise<SectorRe
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 10);
 
-  const { summary, trendStrength, leaders, laggards, watchCandidates } = await aiSummarizeSector(sector, sortedClusters);
+  const { summary, trendStrength, leaders, laggards, watchCandidates, failed: summaryFailed } = await aiSummarizeSector(sector, sortedClusters);
 
   const snapshot = {
     sector_id: sector.sectorId,
@@ -83,6 +83,27 @@ export async function generateSectorSnapshot(sectorId: string): Promise<SectorRe
 
   const db = getSupabaseAdmin();
   if (db) {
+    // 재생성이 실패한 결과(이슈 0개, 또는 AI 요약 실패의 자리표시 문구)로 기존 스냅샷을 덮지 않는다.
+    // 기존 행이 없으면(첫 생성) 그대로 저장해 "아직 없음"과 "만들다 실패"를 구분한다.
+    // watch_candidates·leaders·laggards가 비는 것은 AI가 정상적으로 "없음"이라고 답한 것일 수 있어 실패로 보지 않는다.
+    const skipReason = snapshot.related_issues.length === 0
+      ? "no_issues"
+      : summaryFailed
+        ? "summary_failed"
+        : null;
+
+    if (skipReason) {
+      const { data: existing } = await db
+        .from("sector_research_snapshots")
+        .select("*")
+        .eq("sector_id", sector.sectorId)
+        .maybeSingle();
+      if (existing) {
+        console.warn(`[SectorSnapshot] Skip upsert sector=${sector.sectorId} reason=${skipReason} at=${new Date().toISOString()} (keeping snapshot updated_at=${existing.updated_at})`);
+        return existing as SectorResearchSnapshot;
+      }
+    }
+
     const { error } = await db.from("sector_research_snapshots").upsert(snapshot, { onConflict: "sector_id" });
     if (error) console.error("[SectorSnapshot] Failed to save:", error.message);
   }
