@@ -8,8 +8,8 @@ import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { GitBranch, Layers, FileText, Sparkles } from "lucide-react";
 import { SurfaceCard } from "@/components/common/surface-card";
 
-// 맵에 없는 relationType(예: ai_inferred — 서버가 만들지 않는 유형)은 배지를 그리지 않는다.
-const RELATION_LABEL: Partial<Record<RelationType, string>> = {
+// 응답에 맵에 없는 relationType 값이 오면 배지를 그리지 않는다(타입과 실제 JSON이 어긋날 때 대비).
+const RELATION_LABEL: Record<RelationType, string> = {
   sector_peer: "동종 섹터",
   issue_mention: "이슈 연관",
   supply_chain: "공급망",
@@ -17,7 +17,7 @@ const RELATION_LABEL: Partial<Record<RelationType, string>> = {
   peer: "유사 종목",
 };
 
-const RELATION_COLORS: Partial<Record<RelationType, string>> = {
+const RELATION_COLORS: Record<RelationType, string> = {
   sector_peer: "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
   issue_mention: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   supply_chain: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",

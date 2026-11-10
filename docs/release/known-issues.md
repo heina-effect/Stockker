@@ -619,7 +619,7 @@ day0 와 비-day0 의 기준은 코드상 다르다. 저장 당일에는 두 기
   - 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `44278e8`이다.
   - 이 삭제로 import하는 곳이 0이 된 파일: shadcn `ui/card.tsx`·`ui/table.tsx`·`ui/badge.tsx`, `src/lib/market-utils.ts`(장 상태 배지 토큰), `src/lib/format.ts`. 지우지 않았다.
 
-- 2026-11-10: 가짜 데이터 생성 코드 제거(P2, 2026-10-30 등록). `layout.tsx`가 앱 전체를 `MockLiveProvider`로 감싸 화면에 안 보여도 모든 페이지에서 `setInterval`로 가짜 시세를 만들고 있었다. `src/lib/mock/market.ts`, `src/components/dashboard/mock-live-provider.tsx`, `market-overview-card.tsx`, `watchlist-panel.tsx` 4개 파일을 지웠고, `related-stocks-card.tsx`의 `ai_inferred: "AI 추론"` 라벨·색을 뺐다(맵에 없는 관계 유형은 배지를 그리지 않음). `RelationType` 유니온의 `ai_inferred`는 생산·저장 경로가 없음을 확인한 뒤 따로 정리한다.
+- 2026-11-10: 가짜 데이터 생성 코드 제거(P2, 2026-10-30 등록). `layout.tsx`가 앱 전체를 `MockLiveProvider`로 감싸 화면에 안 보여도 모든 페이지에서 `setInterval`로 가짜 시세를 만들고 있었다. `src/lib/mock/market.ts`, `src/components/dashboard/mock-live-provider.tsx`, `market-overview-card.tsx`, `watchlist-panel.tsx` 4개 파일을 지웠고, `related-stocks-card.tsx`의 `ai_inferred: "AI 추론"` 라벨·색을 뺐다(맵에 없는 관계 유형은 배지를 그리지 않음). `RelationType` 유니온의 `ai_inferred`는 생산·저장 경로가 없음을 확인한 뒤 같은 날 따로 지웠다(4-2).
   - 관심종목 UI(`WatchlistPanel`·`MarketOverviewCard`)를 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `b42fa64`이고, 가짜 데이터 공급원(`MockLiveProvider`) 대신 실제 시세에 연결해야 한다.
 
 - Beta RC Gate: 검색 결과 없음 submit fallback 제거

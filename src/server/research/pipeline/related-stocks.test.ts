@@ -54,7 +54,7 @@ describe("generateRelatedStocks", () => {
     const results = await generateRelatedStocks("005930");
     for (const r of results) {
       expect(r.relationType).toBeDefined();
-      expect(["sector_peer", "issue_mention", "supply_chain", "disclosure_linked", "peer", "ai_inferred"]).toContain(r.relationType);
+      expect(["sector_peer", "issue_mention", "supply_chain", "disclosure_linked", "peer"]).toContain(r.relationType);
       expect(typeof r.relationReason).toBe("string");
       expect(r.relationReason.length).toBeGreaterThan(0);
     }

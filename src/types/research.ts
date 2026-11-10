@@ -82,7 +82,7 @@ export interface BuyPricePlan {
   generatedAt: string;
 }
 
-export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "disclosure_linked" | "peer" | "ai_inferred";
+export type RelationType = "sector_peer" | "issue_mention" | "supply_chain" | "disclosure_linked" | "peer";
 
 export interface RelatedStock {
   symbol: string;

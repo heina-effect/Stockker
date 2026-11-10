@@ -269,7 +269,7 @@ KIS 기간별시세 엔드포인트는 단일 호출당 반환 봉수에 상한�
 
 | 필드 | 설명 |
 |------|------|
-| `relationType` | `sector_peer` / `issue_mention` / `supply_chain` / `disclosure_linked` / `peer` / `ai_inferred` |
+| `relationType` | `sector_peer` / `issue_mention` / `supply_chain` / `disclosure_linked` / `peer` |
 | `relationReason` | 인간이 읽을 수 있는 선정 이유 |
 | `basisSourceCount` | 이슈 연관 시 관련 소스 수 |
 | `quoteMode` | 항상 `live-sync` (클라이언트 SSE 스트림 사용) |
