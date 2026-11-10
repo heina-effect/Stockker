@@ -79,3 +79,6 @@ vercel.json
 
 # 작업 메모·보고 (로컬 전용)
 .work/
+
+# Claude Code 로컬 설정
+.claude/settings.local.json

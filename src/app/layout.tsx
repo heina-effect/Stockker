@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
-import { MockLiveProvider } from "@/components/dashboard/mock-live-provider";
 import { LiveMarketProvider } from "@/components/dashboard/live-market-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -22,14 +21,12 @@ export default function RootLayout({
         className="bg-background text-foreground antialiased font-sans"
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <MockLiveProvider>
-            <LiveMarketProvider>
-              <TooltipProvider>
-                {children}
-                <Toaster />
-              </TooltipProvider>
-            </LiveMarketProvider>
-          </MockLiveProvider>
+          <LiveMarketProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster />
+            </TooltipProvider>
+          </LiveMarketProvider>
         </ThemeProvider>
       </body>
     </html>

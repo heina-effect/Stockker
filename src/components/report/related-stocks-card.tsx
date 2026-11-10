@@ -8,24 +8,21 @@ import { useLiveMarket } from "@/components/dashboard/live-market-provider";
 import { GitBranch, Layers, FileText, Sparkles } from "lucide-react";
 import { SurfaceCard } from "@/components/common/surface-card";
 
-const RELATION_LABEL: Record<RelationType, string> = {
+// 맵에 없는 relationType(예: ai_inferred — 서버가 만들지 않는 유형)은 배지를 그리지 않는다.
+const RELATION_LABEL: Partial<Record<RelationType, string>> = {
   sector_peer: "동종 섹터",
   issue_mention: "이슈 연관",
   supply_chain: "공급망",
   disclosure_linked: "공시 연관",
   peer: "유사 종목",
-  // TODO(2026-10-30): 재연결 금지, 삭제 검토 — 서버가 ai_inferred 관계를 만들지 않아 지금은 안 보이는 라벨.
-  //   모델 호출 없이 이 값을 붙이면 근거 없는 "AI 추론" 표기가 된다.
-  ai_inferred: "AI 추론",
 };
 
-const RELATION_COLORS: Record<RelationType, string> = {
+const RELATION_COLORS: Partial<Record<RelationType, string>> = {
   sector_peer: "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
   issue_mention: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   supply_chain: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   disclosure_linked: "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
   peer: "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300",
-  ai_inferred: "bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 function RelationIcon({ type }: { type: RelationType }) {
@@ -115,10 +112,12 @@ export function RelatedStocksCard({ symbol }: { symbol: string }) {
                     <span className="text-[10px] px-1 py-0.5 rounded border border-slate-200 dark:border-zinc-800 text-slate-500 bg-white dark:bg-zinc-900 font-mono">
                       {stock.symbol}
                     </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 font-semibold ${RELATION_COLORS[stock.relationType]}`}>
-                      <RelationIcon type={stock.relationType} />
-                      {RELATION_LABEL[stock.relationType]}
-                    </span>
+                    {RELATION_LABEL[stock.relationType] && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 font-semibold ${RELATION_COLORS[stock.relationType] ?? ""}`}>
+                        <RelationIcon type={stock.relationType} />
+                        {RELATION_LABEL[stock.relationType]}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] text-slate-500 mt-1 line-clamp-1">
                     {stock.relationReason}

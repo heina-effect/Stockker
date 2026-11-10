@@ -15,14 +15,6 @@
 
 현재 알려진 P0 이슈 없음.
 
-### P2: 가짜 데이터 생성 코드 잔존 — 재연결 금지, 삭제 검토 (2026-10-30)
-
-**현상**: 다음 코드는 지금 화면에 노출되지 않지만, 다시 연결하면 가짜 숫자·근거 없는 AI 라벨이 실제처럼 보인다.
-- `src/lib/mock/market.ts` + `src/components/dashboard/mock-live-provider.tsx` — 가짜 지수·관심종목 시세. 소비자(`WatchlistPanel`·`MarketOverviewCard`)는 렌더링되는 화면이 없다.
-- `src/components/report/related-stocks-card.tsx` 의 `ai_inferred: "AI 추론"` 라벨 — 서버가 이 관계 유형을 만들지 않는다.
-
-**대응**: 재연결하지 않는다. 정리 작업 때 삭제를 검토한다. 각 파일에 같은 TODO 주석을 달아 두었다.
-
 ### P2: day0 종가(진입가)가 확정 종가가 아닌 행 — 31건 교정, 2건 미해결 (2026-10-30, 11-02 갱신)
 
 **현상**: 10/6 이후 발견 건 day0 행 중 31건의 `close`가 KIS 확정 종가와 달랐다(day0 지표 백필 dry-run에서 발견). 이 값이 추적 수익률의 진입가다.
@@ -613,6 +605,9 @@ day0 와 비-day0 의 기준은 코드상 다르다. 저장 당일에는 두 기
 **재개 조건**: `docs/release/intraday-reopen-checklist.md` 충족 후 별도 Phase에서 검토.
 
 ## 최근 해결
+
+- 2026-11-10: 가짜 데이터 생성 코드 제거(P2, 2026-10-30 등록). `layout.tsx`가 앱 전체를 `MockLiveProvider`로 감싸 화면에 안 보여도 모든 페이지에서 `setInterval`로 가짜 시세를 만들고 있었다. `src/lib/mock/market.ts`, `src/components/dashboard/mock-live-provider.tsx`, `market-overview-card.tsx`, `watchlist-panel.tsx` 4개 파일을 지웠고, `related-stocks-card.tsx`의 `ai_inferred: "AI 추론"` 라벨·색을 뺐다(맵에 없는 관계 유형은 배지를 그리지 않음). `RelationType` 유니온의 `ai_inferred`는 생산·저장 경로가 없음을 확인한 뒤 따로 정리한다.
+  - 관심종목 UI(`WatchlistPanel`·`MarketOverviewCard`)를 되살릴 때는 git 이력에서 꺼낸다. 삭제 직전 커밋은 `b42fa64`이고, 가짜 데이터 공급원(`MockLiveProvider`) 대신 실제 시세에 연결해야 한다.
 
 - Beta RC Gate: 검색 결과 없음 submit fallback 제거
 - Beta RC Gate: DB-first 검색 timeout 및 local master alias 병합
