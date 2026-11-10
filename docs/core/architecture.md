@@ -222,7 +222,7 @@ Phase 34부터 섹터 상세는 AI snapshot과 별개로 KIS 정보성 API를 �
 | 국내주식업종 일자별 지수 | `getDomesticIndexDaily()` | 오버나이트 거시필터 (KOSDAQ 정배열) |
 | 국내주식 종목투자의견 | `getStockAnalystOpinions()` | 상세/관심종목 투자의견 요약 |
 
-투자의견 API는 KIS 공식 샘플의 정보성 엔드포인트 기준이다. `KIS_MODE=mock`에서도 호출은 허용하지만 응답 meta와 UI 뱃지에 `KIS mock · 실제 응답`을 표시해 Stockker mock/fallback 데이터와 구분한다.
+투자의견 API는 KIS 공식 샘플의 정보성 엔드포인트 기준이다. `KIS_MODE=mock`에서도 호출은 허용하지만 응답 meta와 UI 뱃지에 `모의투자 서버 · KIS 실제 응답`을 표시해 Stockker mock/fallback 데이터와 구분한다.
 
 아직 직접 래퍼가 없는 KIS 순위 API는 거래량순위, 체결강도 상위, 관심종목등록 상위다. 홈 주목 종목/섹터는 현재 구현 기준상 source count, 이슈 밀도, 대표 종목 시세 흐름을 중심으로 설명한다.
 

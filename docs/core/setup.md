@@ -52,7 +52,7 @@ UPSTASH_REDIS_REST_TOKEN="your_upstash_token"
 
 > **API 없이 실행할 경우**: Gemini/KIS/DART/GNews/NewsAPI 키가 없으면 각 기능은 자동으로 mock fallback 모드로 동작합니다. Supabase 없이도 일부 화면은 작동하지만 스냅샷 재사용 및 벡터 기능이 비활성화됩니다.
 
-> **투자의견 API 주의**: 국내주식 종목투자의견/증권사별 투자의견은 KIS 공식 샘플 기준 정보성 엔드포인트입니다. `KIS_MODE=mock`에서도 호출은 허용하지만, 응답과 UI에 `KIS mock · 실제 응답` meta를 노출해 Stockker mock 데이터와 구분합니다.
+> **투자의견 API 주의**: 국내주식 종목투자의견/증권사별 투자의견은 KIS 공식 샘플 기준 정보성 엔드포인트입니다. `KIS_MODE=mock`에서도 호출은 허용하지만, 응답과 UI에 `모의투자 서버 · KIS 실제 응답` meta를 노출해 Stockker mock 데이터와 구분합니다.
 
 ---
 

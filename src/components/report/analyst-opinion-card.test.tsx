@@ -52,7 +52,7 @@ describe("AnalystOpinionCard", () => {
     expect(screen.getByText("최근 30일 4건")).toBeTruthy();
     expect(screen.getByText("+60.0%")).toBeTruthy();
     expect(screen.getByText("+100.0%")).toBeTruthy();
-    expect(screen.queryByText("KIS real · 실제 응답")).toBeNull();
+    expect(screen.queryByText("모의투자 서버 · KIS 실제 응답")).toBeNull();
 
     expect(screen.getByText("A증권")).toBeTruthy();
     expect(screen.getByText("B증권")).toBeTruthy();
@@ -76,5 +76,25 @@ describe("AnalystOpinionCard", () => {
     expect(await screen.findByText("현재가 대비")).toBeTruthy();
     expect(screen.getByText("-72.6%")).toBeTruthy();
     expect(screen.getByText("-65.7%")).toBeTruthy();
+  });
+
+  it("labels mock-mode responses as the KIS paper-trading server, not as fake data", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: {
+          avgTargetPrice: 80000,
+          updatedAt: new Date().toISOString(),
+          _meta: { source: "kis-openapi", kisMode: "mock", endpointMode: "mock", isMockData: false },
+          items: [{ firmName: "A증권", opinion: "매수", targetPrice: 90000, date: daysAgo(0) }],
+        },
+      }),
+    }) as any;
+
+    render(<AnalystOpinionCard symbol="005930" />);
+
+    expect(await screen.findByText("모의투자 서버 · KIS 실제 응답")).toBeTruthy();
+    expect(screen.queryByText(/KIS mock/)).toBeNull();
   });
 });

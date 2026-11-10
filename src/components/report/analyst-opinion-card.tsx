@@ -85,7 +85,7 @@ export function AnalystOpinionCard({ symbol }: { symbol: string }) {
             title={data._meta.note}
             className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40"
           >
-            KIS {data._meta.kisMode} · 실제 응답
+            모의투자 서버 · KIS 실제 응답
           </span>
         )}
       </div>
