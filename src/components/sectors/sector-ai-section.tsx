@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown, Zap, AlertCircle } from "lucide-react";
 import type { SectorResearchSnapshot } from "@/server/research/snapshots/sector-snapshot-manager";
 import type { SectorTheme } from "@/data/sectors/taxonomy";
 import { getStockName } from "@/lib/stocks/metadata";
+import { formatResearchDate } from "@/lib/date-format";
 
 function SectorAISkeleton() {
   return (
@@ -162,7 +163,14 @@ function SectorAIContent({ snapshot, sector }: { snapshot: SectorResearchSnapsho
       {/* 주요 이슈 */}
       {snapshot.related_issues.length > 0 && (
         <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-sm border border-transparent">
-          <h4 className="font-bold text-sm text-slate-800 dark:text-zinc-200 mb-4">주요 근거 이슈</h4>
+          <div className="flex items-baseline justify-between gap-3 mb-4">
+            <h4 className="font-bold text-sm text-slate-800 dark:text-zinc-200">주요 근거 이슈</h4>
+            {formatResearchDate(snapshot.updated_at) && (
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500 tabular-nums">
+                스냅샷 기준 {formatResearchDate(snapshot.updated_at)}
+              </span>
+            )}
+          </div>
           <div className="flex flex-col gap-3">
             {snapshot.related_issues.map((issue: any) => (
               <div key={issue.id} className="p-3 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-xl">
@@ -181,7 +189,12 @@ function SectorAIContent({ snapshot, sector }: { snapshot: SectorResearchSnapsho
                   )}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">{issue.summary}</div>
-                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-2">{issue.representativeSource}</div>
+                <div className="text-[10px] text-slate-400 dark:text-zinc-500 mt-2">
+                  {issue.representativeSource}
+                  {issue.timestamp && formatResearchDate(issue.timestamp) && (
+                    <span className="tabular-nums"> · {formatResearchDate(issue.timestamp)}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
