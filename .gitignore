@@ -73,6 +73,8 @@ scratch/
 docs/quant-hypothesis.md
 docs/phases/phase-41-report.md
 docs/phases/phase-42-report.md
+docs/phases/phase-43-report.md
+docs/phases/phase-43-audit.md
 
 # 배포하지 않음 (2026-10-29 결정) — 로컬 전용
 vercel.json
