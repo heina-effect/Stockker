@@ -47,7 +47,24 @@ describe("GET /api/screening/overnight/market-state", () => {
     kis.index.mockResolvedValue(candles(50));
     const GET = await get();
     const body = await (await GET()).json();
-    expect(body.kosdaqState).toEqual({ value: 700, maState: null });
+    expect(body.kosdaqState).toEqual({ value: 700, maState: null, change: 0, changeRate: 0 });
+  });
+
+  // 전일 대비(2026-11-13) — 이평선용으로 받은 일봉의 직전 봉으로 계산한다. 호출은 지수당 한 번 그대로
+  it("직전 봉 종가로 전일 대비를 계산한다", async () => {
+    kis.index.mockResolvedValue([{ bstp_nmix_prpr: "707" }, ...candles(129)]);
+    const GET = await get();
+    const body = await (await GET()).json();
+    expect(kis.index).toHaveBeenCalledTimes(2);
+    expect(body.kosdaqState.change).toBeCloseTo(7, 6);
+    expect(body.kosdaqState.changeRate).toBeCloseTo(1, 6);
+  });
+
+  it("직전 봉이 없으면 전일 대비는 null 이다", async () => {
+    kis.index.mockResolvedValue(candles(1));
+    const GET = await get();
+    const body = await (await GET()).json();
+    expect(body.kosdaqState).toEqual({ value: 700, maState: null, change: null, changeRate: null });
   });
 
   it("한쪽만 실패하면 다른 쪽은 준다", async () => {

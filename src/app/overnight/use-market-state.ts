@@ -6,6 +6,9 @@ import type { MAState } from "./market-state";
 export interface IndexState {
   value: number;
   maState?: MAState | null;
+  // 전일 대비(2026-11-13). 이전 응답·직전 봉 없음이면 비어 있다
+  change?: number | null;
+  changeRate?: number | null;
 }
 
 export interface MarketState {

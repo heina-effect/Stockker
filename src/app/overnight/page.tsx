@@ -14,7 +14,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import Link from "next/link";
-import { formatGapPct, maArrangement, maGaps } from "./market-state";
+import { changeDirection, formatGapPct, maArrangement, maGaps } from "./market-state";
 import { useMarketState, type IndexState } from "./use-market-state";
 import { persistSkipLabel } from "@/lib/screening/persist-skip-label";
 import { kstClock, savedResultTitle, tradeDateLabel } from "@/lib/screening/saved-result";
@@ -335,7 +335,7 @@ function OvernightScreeningContent() {
         </div>
 
         {/* 지금 시장 상태 — 지수값과 이동평균 대비 괴리율, 배열 상태(정배열/역배열/혼조)를 사실로만 적는다.
-            색으로 좋고 나쁨을 나타내지 않는다. reduceWeight 는 API 내부 로직용이라 화면에 쓰지 않는다(2026-10-30).
+            괴리율·배열 상태에는 색으로 좋고 나쁨을 나타내지 않는다. 지수 숫자와 전일 대비만 등락 색을 쓴다(2026-11-13, docs/design.md 4절). reduceWeight 는 API 내부 로직용이라 화면에 쓰지 않는다(2026-10-30).
             저장 컬럼에 지수 상태가 없어 저장분과 따로 받는다. 두 영역의 시점이 달라 시각을 함께 적는다(2026-11-05). */}
         <section aria-label="지금 시장 상태" className="mb-8">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-3">
@@ -693,6 +693,13 @@ function ScreeningPipelineGuide() {
   );
 }
 
+// 전일 대비 "+12.34 (+1.23%)" / "−12.34 (−1.23%)" / "0.00 (0.00%)". 음수는 유니코드 마이너스
+function formatIndexChange(change: number, rate: number, dir: "up" | "down" | "flat"): string {
+  if (dir === "flat") return "0.00 (0.00%)";
+  const sign = dir === "up" ? "+" : "−";
+  return `${sign}${Math.abs(change).toFixed(2)} (${sign}${Math.abs(rate).toFixed(2)}%)`;
+}
+
 // 지수 하나의 시장 상태 — 값이 없으면(조회 실패) 0 이나 대체 값을 그리지 않는다.
 // 이평선이 없으면 지수값만 그린다.
 function IndexStateBlock({ label, state }: { label: string; state?: IndexState | null }) {
@@ -703,11 +710,19 @@ function IndexStateBlock({ label, state }: { label: string; state?: IndexState |
   }
   const gaps = maGaps(state.value, state.maState);
   const arrangement = maArrangement(state.maState);
+  const day = state.change != null && state.changeRate != null ? { change: state.change, changeRate: state.changeRate } : null;
+  const dir = day ? changeDirection(day) : null;
+  const dirColor = dir === "up" ? "text-red-500" : dir === "down" ? "text-blue-500" : dir === "flat" ? "text-slate-500" : "";
   return (
     <div className="min-w-0">
       <p className="flex items-baseline gap-2 text-slate-900 dark:text-zinc-50">
         <span className="text-sm font-semibold text-slate-500 dark:text-zinc-400">{label}</span>
-        <span className="text-2xl font-extrabold tabular-nums">{state.value.toFixed(2)}</span>
+        <span data-testid={`index-value-${label}`} className={`text-2xl font-extrabold tabular-nums ${dirColor}`}>{state.value.toFixed(2)}</span>
+        {day && (
+          <span data-testid={`index-change-${label}`} className={`text-xs font-semibold tabular-nums ${dirColor}`}>
+            {formatIndexChange(day.change, day.changeRate, dir!)}
+          </span>
+        )}
         {arrangement && (
           <span
             className="text-sm font-semibold text-slate-600 dark:text-zinc-300"

@@ -625,6 +625,15 @@ describe("GET /api/screening/overnight — 윗꼬리는 진입 조건이 아니�
     expect(s.reasons.at(-1)).toMatch(/^공격형 사유: 거래량 증가폭 완화\(\d+%\)$/);
   });
 
+  it("지수 전일 대비를 이평선용 일봉의 직전 봉으로 계산한다(추가 호출 없음)", async () => {
+    h.indexDaily.mockResolvedValue(Array.from({ length: 130 }, (_, i) => ({ stck_bsop_date: String(20261030 - i), bstp_nmix_prpr: i === 0 ? "808" : "800" })));
+    const r = await run({});
+    expect(h.indexDaily).toHaveBeenCalledTimes(2); // 코스닥·코스피 각 1회 — 늘지 않았다
+    expect(r.body.kosdaqState.change).toBeCloseTo(8, 6);
+    expect(r.body.kosdaqState.changeRate).toBeCloseTo(1, 6);
+    expect(r.body.kospiState.changeRate).toBeCloseTo(1, 6);
+  });
+
   it("정배열이 아니면 윗꼬리와 무관하게 제외다", async () => {
     h.stockDaily.mockResolvedValue(makeCandles({ tailPct: 1 }).map((c) => ({ ...c, stck_clpr: "10000" })));
     const r = await call();

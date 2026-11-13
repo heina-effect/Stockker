@@ -39,3 +39,22 @@ export function formatGapPct(p: number): string {
   if (r === 0) return "0.0%";
   return `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}%`;
 }
+
+// 전일 대비(2026-11-13) — 지수 일봉은 이평선 계산 때문에 이미 받아 두므로 직전 봉 종가로 계산한다. 추가 호출 없음.
+export interface IndexDayChange {
+  change: number; // 오늘 − 전일
+  changeRate: number; // (오늘 − 전일) / 전일 × 100
+}
+
+export function indexDayChange(value: number, prevClose: number): IndexDayChange | null {
+  if (!(value > 0) || !(prevClose > 0)) return null;
+  return { change: value - prevClose, changeRate: (value / prevClose - 1) * 100 };
+}
+
+export type ChangeDirection = "up" | "down" | "flat";
+
+// 화면 표시 자릿수(소수 둘째 자리 변동폭)에서 0 이면 보합
+export function changeDirection(c: IndexDayChange): ChangeDirection {
+  const r = Math.round(c.change * 100);
+  return r > 0 ? "up" : r < 0 ? "down" : "flat";
+}

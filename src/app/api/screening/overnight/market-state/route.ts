@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDomesticIndexDaily } from "@/server/kis/rest-client";
 import { createCacheScope, runInCacheScope } from "@/server/kis/cache";
 import { withRateLimitRetry } from "@/server/screening/rate-limit-retry";
+import { indexDayChange } from "@/app/overnight/market-state";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,9 @@ const MEMO_TTL_MS = 60_000;
 interface IndexState {
   value: number;
   maState: { ma5: number; ma20: number; ma60: number; ma120: number } | null;
+  // 전일 대비 — 직전 봉이 없으면 null
+  change: number | null;
+  changeRate: number | null;
 }
 interface MarketState {
   ok: true;
@@ -35,8 +39,11 @@ async function fetchIndexState(code: string): Promise<IndexState | null> {
     const candles = await withRateLimitRetry(() => getDomesticIndexDaily(code));
     const value = Number(candles?.[0]?.bstp_nmix_prpr || 0);
     if (!(value > 0)) return null;
+    const day = indexDayChange(value, Number(candles?.[1]?.bstp_nmix_prpr || 0));
     return {
       value,
+      change: day?.change ?? null,
+      changeRate: day?.changeRate ?? null,
       // 120봉 미만이면 null — 화면은 지수값만 그린다
       maState: candles.length >= 120
         ? { ma5: movingAverage(candles, 5), ma20: movingAverage(candles, 20), ma60: movingAverage(candles, 60), ma120: movingAverage(candles, 120) }

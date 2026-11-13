@@ -27,6 +27,7 @@ import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { isRateLimitError, withRateLimitRetry } from "@/server/screening/rate-limit-retry";
 import { AGGRESSIVE_REASON_PREFIX, OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
+import { indexDayChange, type IndexDayChange } from "@/app/overnight/market-state";
 import { OVERNIGHT_DISCLAIMER } from "@/lib/screening/saved-result";
 
 // 헬퍼: 이동평균선(MA) 계산 (최신 데이터가 0번 인덱스임)
@@ -117,6 +118,9 @@ async function runScreening(req: Request, scope: CacheScope) {
   let analyzedSymbols = new Set<string>();
   let reduceWeight = false;
   let kosdaqClose = 0;
+  // 전일 대비 — 이평선 계산용으로 받은 지수 일봉의 직전 봉 종가로 계산한다(추가 호출 없음, 2026-11-13)
+  let kosdaqDay: IndexDayChange | null = null;
+  let kospiDay: IndexDayChange | null = null;
   let latestTradingDate = "";
   // 조회 시작 시각의 저장 창. 저장 판정은 이것과 저장 직전 시각 둘 다 본다(아래 저장 시간대 제한 참고)
   const fetchStartWindow = getKSTPersistWindow();
@@ -144,6 +148,7 @@ async function runScreening(req: Request, scope: CacheScope) {
 
       if (kosdaqIndexDaily && kosdaqIndexDaily.length >= 120) {
         kosdaqClose = Number(kosdaqIndexDaily[0].bstp_nmix_prpr || 0);
+        kosdaqDay = indexDayChange(kosdaqClose, Number(kosdaqIndexDaily[1]?.bstp_nmix_prpr || 0));
         kosdaqMAState = {
           ma5: calculateMA(kosdaqIndexDaily, 5, "bstp_nmix_prpr"),
           ma20: calculateMA(kosdaqIndexDaily, 20, "bstp_nmix_prpr"),
@@ -159,6 +164,7 @@ async function runScreening(req: Request, scope: CacheScope) {
 
       if (kospiIndexDaily && kospiIndexDaily.length >= 120) {
         kospiClose = Number(kospiIndexDaily[0].bstp_nmix_prpr || 0);
+        kospiDay = indexDayChange(kospiClose, Number(kospiIndexDaily[1]?.bstp_nmix_prpr || 0));
         const kospiMA5 = calculateMA(kospiIndexDaily, 5, "bstp_nmix_prpr");
         const kospiMA20 = calculateMA(kospiIndexDaily, 20, "bstp_nmix_prpr");
         const kospiMA60 = calculateMA(kospiIndexDaily, 60, "bstp_nmix_prpr");
@@ -908,11 +914,15 @@ async function runScreening(req: Request, scope: CacheScope) {
       ...(trajectoryUpdate ? { trajectoryUpdate } : {}),
       kosdaqState: {
         value: kosdaqClose,
+        change: kosdaqDay?.change ?? null,
+        changeRate: kosdaqDay?.changeRate ?? null,
         maState: kosdaqMAState,
         reduceWeight
       },
       kospiState: {
         value: kospiClose,
+        change: kospiDay?.change ?? null,
+        changeRate: kospiDay?.changeRate ?? null,
         // 120봉 미만이면 null — 화면은 지수값만 그린다
         maState: kospiMAState,
         reduceWeight: kospiReduceWeight

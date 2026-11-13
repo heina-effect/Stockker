@@ -206,6 +206,47 @@ describe("저장분 열람", () => {
     });
   });
 
+  // 지수 등락 색(2026-11-13) — 상승 red-500 / 하락 blue-500 / 보합 slate-500, 전일 대비는 text-xs
+  describe("지수 전일 대비", () => {
+    const withChange = (kosdaq: [number, number] | null, kospi: [number, number] | null) => ({
+      ...market,
+      kosdaqState: { value: 700.5, maState: null, change: kosdaq?.[0] ?? null, changeRate: kosdaq?.[1] ?? null },
+      kospiState: { value: 2500.5, maState: null, change: kospi?.[0] ?? null, changeRate: kospi?.[1] ?? null },
+    });
+
+    it("상승은 빨강, 하락은 파랑으로 지수와 전일 대비를 그린다", async () => {
+      mockApi({ [LATEST]: json(200, saved()), [MARKET]: json(200, withChange([8.25, 1.1916], [-30.5, -1.2050])) });
+      render(<OvernightScreeningPage />);
+      const up = await screen.findByTestId("index-change-코스닥");
+      expect(up.textContent).toBe("+8.25 (+1.19%)");
+      expect(up.className).toContain("text-red-500");
+      expect(up.className).toContain("text-xs");
+      expect(screen.getByTestId("index-value-코스닥").className).toContain("text-red-500");
+      const down = screen.getByTestId("index-change-코스피");
+      expect(down.textContent).toBe("−30.50 (−1.21%)");
+      expect(down.className).toContain("text-blue-500");
+      expect(screen.getByTestId("index-value-코스피").className).toContain("text-blue-500");
+    });
+
+    it("보합은 회색 0.00 (0.00%)", async () => {
+      mockApi({ [LATEST]: json(200, saved()), [MARKET]: json(200, withChange([0, 0], [0.001, 0.00004])) });
+      render(<OvernightScreeningPage />);
+      const flat = await screen.findByTestId("index-change-코스닥");
+      expect(flat.textContent).toBe("0.00 (0.00%)");
+      expect(flat.className).toContain("text-slate-500");
+      expect(screen.getByTestId("index-value-코스닥").className).toContain("text-slate-500");
+      expect(screen.getByTestId("index-change-코스피").textContent).toBe("0.00 (0.00%)");
+    });
+
+    it("전일 대비가 없는 응답이면 지수만 무색으로 그린다", async () => {
+      mockApi({ [LATEST]: json(200, saved()), [MARKET]: json(200, market) });
+      render(<OvernightScreeningPage />);
+      const v = await screen.findByTestId("index-value-코스닥");
+      expect(v.className).not.toMatch(/red-500|blue-500|slate-500/);
+      expect(screen.queryByTestId("index-change-코스닥")).toBeNull();
+    });
+  });
+
   it("저장 결과가 없으면 빈 상태를 보이고 새로 조회는 남는다", async () => {
     mockApi({
       [LATEST]: json(200, saved({ empty: true, tradeDate: null, savedAt: null, isToday: false, results: { normal: [], aggressive: [], exclude: [] } })),
