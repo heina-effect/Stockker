@@ -132,6 +132,60 @@ describe("저장분 열람", () => {
     expect(screen.queryByRole("note")).toBeNull();
   });
 
+  // 정석·공격형은 2026-11-13 윗꼬리 게이트 제거 전까지 82일간 0건이라 지표 카드가 그려진 적이 없다
+  describe("정석·공격형 카드", () => {
+    const withMetrics = (symbol: string, name: string, classification: string, tailRatio: number) => ({
+      symbol, name, price: 10000, changeRate: 5, classification,
+      reasons: ["주봉·일봉 정배열 충족", `윗꼬리 ${tailRatio.toFixed(1)}% (참고값, 판정 미사용)`],
+      metrics: { volumeRatio: 250, tailRatio, freshnessCount: classification === "normal" ? 4 : 0, rsi14: 58, quantSignal: false },
+    });
+    const filled = saved({
+      results: {
+        normal: [withMetrics("000001", "정석종목", "normal", 9.4)],
+        aggressive: [withMetrics("000002", "공격형종목", "aggressive", 12.6), withMetrics("000003", "공격형둘", "aggressive", 1.2)],
+        exclude: [],
+      },
+    });
+
+    it("정석 탭에 지표·사유·상세 링크를 그린다", async () => {
+      mockApi({ [LATEST]: json(200, filled), [MARKET]: json(200, market) });
+      render(<OvernightScreeningPage />);
+      expect(await screen.findByText("정석종목")).toBeTruthy();
+      expect(screen.getByText("정석 통과")).toBeTruthy();
+      expect(screen.getByText("9.4%")).toBeTruthy();
+      expect(screen.getByText("4/4 개")).toBeTruthy();
+      expect(screen.getByText("통과 및 검증 근거")).toBeTruthy();
+      expect(screen.getByText("윗꼬리 9.4% (참고값, 판정 미사용)")).toBeTruthy();
+      expect(screen.getByText("상세분석 ➔")).toBeTruthy();
+    });
+
+    it("윗꼬리 값에 통과·미달 색을 입히지 않는다", async () => {
+      mockApi({ [LATEST]: json(200, filled), [MARKET]: json(200, market) });
+      render(<OvernightScreeningPage />);
+      const tail = await screen.findByText("9.4%");
+      expect(tail.className).not.toMatch(/rose|emerald/);
+    });
+
+    it("공격형 탭으로 바꾸면 공격형 카드를 그린다", async () => {
+      mockApi({ [LATEST]: json(200, filled), [MARKET]: json(200, market) });
+      render(<OvernightScreeningPage />);
+      fireEvent.click(await screen.findByRole("button", { name: /공격형 추세 지속/ }));
+      expect(await screen.findByText("공격형종목")).toBeTruthy();
+      expect(screen.getByText("공격형둘")).toBeTruthy();
+      expect(screen.getAllByText("공격형 추세")).toHaveLength(2);
+      expect(screen.queryByText("정석종목")).toBeNull();
+    });
+
+    it("홈 카드가 분류별 종목 수를 그린다", async () => {
+      mockApi({ [LATEST]: json(200, filled), [MARKET]: json(200, market) });
+      render(<OvernightScreeningCard />);
+      expect(await screen.findByText("정석 오버나이트 통과")).toBeTruthy();
+      const count = (label: string) => screen.getByText(label).closest("a")?.textContent ?? "";
+      expect(count("정석 오버나이트 통과")).toContain("1");
+      expect(count("공격형 추세 지속")).toContain("2");
+    });
+  });
+
   it("저장 결과가 없으면 빈 상태를 보이고 새로 조회는 남는다", async () => {
     mockApi({
       [LATEST]: json(200, saved({ empty: true, tradeDate: null, savedAt: null, isToday: false, results: { normal: [], aggressive: [], exclude: [] } })),

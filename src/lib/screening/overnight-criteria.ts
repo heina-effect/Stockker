@@ -19,7 +19,7 @@ export const OVERNIGHT_CRITERIA = {
     maPeriods: [5, 20, 60, 120] as const, // 일봉·주봉 정배열 판정 이동평균
     minHistoryBars: 120, // 일봉·주봉 이 값 미만이면 분석 보류
     minVolumeRatio: 200, // 거래량 20일 평균 대비 이상(%) — 당일 제외 20일
-    maxTailRatio: 3.5, // 윗꼬리 (고가−종가)/고가 이하(%)
+    maxTailRatio: 3.5, // 윗꼬리 (고가−종가)/고가(%) — 2026-11-13 부터 진입 게이트에서 제외. 값은 기록·표시용
     excludeChangeRate: 20, // 당일 등락률 이상이면 제외(%)
     limitUpChangeRate: 25, // 상한가 근접 — 사유만 다르게 적는다
   },
@@ -31,6 +31,6 @@ export const OVERNIGHT_CRITERIA = {
     bigCandleVolumeMultiple: 2, // 장대양봉 거래량 ≥ 직전 20일 평균 × 이 값
     contractionRatio: 0.5, // 조정기 거래량·변동폭이 장대양봉의 이 비율 이하
   },
-  // 공격형: 주 필터 중 정배열·윗꼬리는 통과, 신선도 미달이거나 거래량비가 이 구간
+  // 공격형: 주 필터 중 정배열은 통과, 신선도 미달이거나 거래량비가 이 구간
   aggressiveVolumeRatio: { min: 150, max: 200 },
 } as const;

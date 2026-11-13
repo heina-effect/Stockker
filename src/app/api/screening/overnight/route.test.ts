@@ -494,3 +494,111 @@ describe("GET /api/screening/overnight — 장중 저장 차단", () => {
     expect(h.invariant.mock.calls[0][1]).toEqual(day0.map((r) => ({ symbol: r.symbol, date: "20261030" })));
   });
 });
+
+// 윗꼬리 게이트 제거(2026-11-13) — 윗꼬리는 normal·aggressive 진입을 막지 않는다. 값은 계속 계산·저장한다.
+describe("GET /api/screening/overnight — 윗꼬리는 진입 조건이 아니다", () => {
+  // 최신이 0번. 종가가 과거로 갈수록 낮아 일봉·주봉 MA5>MA20>MA60>MA120 정배열이 된다(주봉도 같은 목을 쓴다).
+  type Opts = { tailPct?: number; day0Volume?: number; bigCandle?: boolean; missingHigh?: boolean };
+  function makeCandles({ tailPct = 10, day0Volume = 3000, bigCandle = true, missingHigh = false }: Opts = {}) {
+    return Array.from({ length: 130 }, (_, i) => {
+      const close = 10000 - i * 10;
+      let open = close, high = close + 10, low = close - 10, vol = 1000;
+      if (i === 0) {
+        vol = day0Volume;
+        high = missingHigh ? 0 : Math.round(close / (1 - tailPct / 100)); // (고가−종가)/고가 = tailPct
+      }
+      // 3거래일 전 장대양봉(시가 대비 +12%, 거래량 10배) — 조정기(1·2일 전)는 거래량·변동폭이 작아 신선도 4/4
+      if (bigCandle && i === 3) { open = Math.round(close / 1.12); low = open - 10; vol = 10000; }
+      return {
+        stck_bsop_date: String(20261030 - i),
+        stck_clpr: String(close), stck_oprc: String(open), stck_hgpr: String(high), stck_lwpr: String(low), acml_vol: String(vol),
+      };
+    });
+  }
+  const run = async (opts: Opts, query = "") => {
+    h.stockDaily.mockResolvedValue(makeCandles(opts));
+    return call(query);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    h.configured = true;
+    h.indexDaily.mockResolvedValue([]);
+    h.volumeRank.mockResolvedValue([{ mksc_shrn_iscd: "000001", hts_kor_isnm: "테스트", stck_prpr: "10000", prdy_ctrt: "5", acml_tr_pbmn: "2000000000", vol_tnrt: "10" }]);
+    h.searchMaster.mockReturnValue([]);
+    h.stockDetail = async () => ({ vol_tnrt: "10" });
+    h.upsert.mockResolvedValue({ error: null });
+    h.savedInfo.mockResolvedValue(null);
+    h.forceLog.mockResolvedValue(undefined);
+    h.supabase = { from: () => ({ upsert: h.upsert }) };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-30T06:41:00Z")); // KST 15:41
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    h.stockDetail = null;
+    h.supabase = null;
+  });
+
+  it("윗꼬리가 기존 기준(3.5%)을 넘어도 나머지를 통과하면 정석이다", async () => {
+    const r = await run({ tailPct: 10 });
+    expect(r.body.results.normal).toHaveLength(1);
+    const s = r.body.results.normal[0];
+    expect(s.metrics.tailRatio).toBeCloseTo(10, 0);
+    expect(s.metrics.freshnessCount).toBe(4);
+    expect(s.metrics.volumeRatio).toBeGreaterThanOrEqual(200);
+    expect(s.reasons.some((x: string) => x.includes("판정 미사용"))).toBe(true);
+    expect(r.body.results.exclude).toHaveLength(0);
+  });
+
+  it("신선도 미달이면 윗꼬리가 커도 공격형이다", async () => {
+    const r = await run({ tailPct: 15, bigCandle: false, day0Volume: 1000 });
+    expect(r.body.results.normal).toHaveLength(0);
+    expect(r.body.results.aggressive).toHaveLength(1);
+    expect(r.body.results.aggressive[0].metrics.tailRatio).toBeCloseTo(15, 0);
+  });
+
+  it("제외 사유에 '윗꼬리 비율 초과'를 쓰지 않는다", async () => {
+    h.stockDetail = async () => ({ vol_tnrt: "1" }); // 회전율 미달로 제외
+    const r = await run({ tailPct: 20 });
+    expect(r.body.results.exclude).toHaveLength(1);
+    const reasons: string[] = r.body.results.exclude[0].reasons;
+    expect(reasons.some((x) => x.startsWith("회전율 기준 미달"))).toBe(true);
+    expect(reasons.some((x) => x.includes("윗꼬리 비율 초과"))).toBe(false);
+  });
+
+  it("고가가 없으면 '윗꼬리 계산 불가'는 남지만 진입을 막지 않는다", async () => {
+    const r = await run({ missingHigh: true });
+    expect(r.body.results.normal).toHaveLength(1);
+    expect(r.body.results.normal[0].reasons).toContain("윗꼬리 계산 불가 (참고값, 판정 미사용)");
+    h.stockDetail = async () => ({ vol_tnrt: "1" });
+    const ex = await run({ missingHigh: true });
+    expect(ex.body.results.exclude[0].reasons).toContain("윗꼬리 계산 불가 (당일 일봉 고가 데이터 부족)");
+  });
+
+  it("정석·공격형 모두 tail_ratio 를 저장한다", async () => {
+    await run({ tailPct: 10 }, "?save=1");
+    const items = h.save.mock.calls[0][0].items as { classification: string; tailRatio: number | null }[];
+    expect(items).toEqual([expect.objectContaining({ classification: "normal" })]);
+    expect(items[0].tailRatio).toBeCloseTo(10, 0);
+    vi.clearAllMocks();
+    h.upsert.mockResolvedValue({ error: null });
+    h.savedInfo.mockResolvedValue(null);
+    await run({ tailPct: 15, bigCandle: false, day0Volume: 1000 }, "?save=1");
+    const agg = h.save.mock.calls[0][0].items as { classification: string; tailRatio: number | null }[];
+    expect(agg).toEqual([expect.objectContaining({ classification: "aggressive" })]);
+    expect(agg[0].tailRatio).toBeCloseTo(15, 0);
+  });
+
+  it("정배열이 아니면 윗꼬리와 무관하게 제외다", async () => {
+    h.stockDaily.mockResolvedValue(makeCandles({ tailPct: 1 }).map((c) => ({ ...c, stck_clpr: "10000" })));
+    const r = await call();
+    expect(r.body.results.normal).toHaveLength(0);
+    expect(r.body.results.aggressive).toHaveLength(0);
+    expect(r.body.results.exclude[0].reasons.some((x: string) => x.startsWith("정배열 미달"))).toBe(true);
+  });
+});

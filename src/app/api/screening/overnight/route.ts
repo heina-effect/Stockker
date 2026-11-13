@@ -482,7 +482,10 @@ async function runScreening(req: Request, scope: CacheScope) {
         reasons.push(`거래량 비율 미달 (20일 평균 대비 ${volumeRatio.toFixed(1)}%, 기준 ${C.main.minVolumeRatio}% 이상)`);
       }
 
-      // 1-5. 윗꼬리 제한: (당일 고가 - 당일 종가) / 당일 고가 <= 3.5%
+      // 1-5. 윗꼬리 비율: (당일 고가 - 당일 종가) / 당일 고가
+      //   2026-11-13 부터 진입 게이트가 아니다 — 운영 기록 4구간 측정에서 예측력이 없었다
+      //   (docs/release/known-issues.md "윗꼬리(tail_ratio)는 결과를 예측하지 못한다"). 계산·metrics·DB 저장은
+      //   그대로 둔다. normal 버킷이 쌓이면 그 안에서 다시 재야 하기 때문이다.
       //   ※ volume-rank API(stock)는 고가(stck_hgpr)를 반환하지 않으므로 당일 확정
       //     일봉(dailyCandles[0]) 기준으로 계산한다. 분자/분모 모두 일봉으로 통일하며
       //     실시간 현재가(price)는 tailRatio 계산에 사용하지 않는다.
@@ -490,14 +493,10 @@ async function runScreening(req: Request, scope: CacheScope) {
       const dailyClose = Number(dailyCandles?.[0]?.stck_clpr || price);
       const tailDataMissing = dailyHigh <= 0;
       const tailRatio = tailDataMissing ? 0 : ((dailyHigh - dailyClose) / dailyHigh) * 100;
-      // 데이터 부족(고가 누락)은 "진짜 윗꼬리 0%"가 아니므로 안전 통과로 취급하지 않는다.
-      const isTailSafe = !tailDataMissing && tailRatio <= C.main.maxTailRatio;
-
+      // 고가 누락은 데이터 결손이라 사유에 남긴다(진입을 막지는 않는다). 결손 행의 tailRatio 0 은 "진짜 0%"가 아니다.
       if (tailDataMissing) {
         console.warn(`[Overnight API] Tail data missing for ${name} (${symbol}) — dailyCandles[0].stck_hgpr 누락, tailRatio 계산 불가`);
         reasons.push("윗꼬리 계산 불가 (당일 일봉 고가 데이터 부족)");
-      } else if (!isTailSafe) {
-        reasons.push(`윗꼬리 비율 초과 (${tailRatio.toFixed(1)}%, 기준 ${C.main.maxTailRatio}% 이하)`);
       }
 
       // 2단계: 테마 신선도 검사 (4개 중 3개 이상)
@@ -632,7 +631,7 @@ async function runScreening(req: Request, scope: CacheScope) {
       }
 
       // 3버킷 분류 판단
-      const is1stStagePass = isDailyAligned && isWeeklyAligned && isVolumeSpike && isTailSafe && !isExcluded;
+      const is1stStagePass = isDailyAligned && isWeeklyAligned && isVolumeSpike && !isExcluded;
       const isFreshnessPass = freshnessCount >= C.freshness.minPass;
       const weightSuggestion = reduceWeight ? 0.5 : 1.0;
 
@@ -640,7 +639,7 @@ async function runScreening(req: Request, scope: CacheScope) {
         reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
         "주봉·일봉 정배열 충족",
         `거래량 급증(${volumeRatio.toFixed(0)}%)`,
-        `안정적인 윗꼬리(${tailRatio.toFixed(1)}%)`,
+        tailDataMissing ? "윗꼬리 계산 불가 (참고값, 판정 미사용)" : `윗꼬리 ${tailRatio.toFixed(1)}% (참고값, 판정 미사용)`,
         ...freshnessDetails
       ];
       if (foreignBuyLimit) {
@@ -668,7 +667,7 @@ async function runScreening(req: Request, scope: CacheScope) {
           reasons: normalReasons,
           metrics: { volumeRatio, tailRatio, freshnessCount, turnoverRate: detailVolTnrt, rsi14, quantSignal, latestIndicator, day0Open, day0High, day0Low, day0Close: entryClose, currentVolume }
         });
-      } else if (!isExcluded && isTailSafe && (isDailyAligned && isWeeklyAligned) && (freshnessCount < C.freshness.minPass || (volumeRatio >= C.aggressiveVolumeRatio.min && volumeRatio < C.aggressiveVolumeRatio.max))) {
+      } else if (!isExcluded && (isDailyAligned && isWeeklyAligned) && (freshnessCount < C.freshness.minPass || (volumeRatio >= C.aggressiveVolumeRatio.min && volumeRatio < C.aggressiveVolumeRatio.max))) {
         aggressiveBucket.push({
           symbol,
           name,

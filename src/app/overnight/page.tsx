@@ -524,7 +524,8 @@ function OvernightScreeningContent() {
                       </div>
                       <div>
                         <div className="text-[10px] text-slate-400 dark:text-zinc-500">윗꼬리 비율</div>
-                        <div className={`text-xs font-bold ${stock.metrics.tailRatio <= 3.5 ? "text-emerald-500" : "text-rose-500"}`}>
+                        {/* 2026-11-13 부터 판정에 쓰지 않는 참고값이라 통과·미달 색을 입히지 않는다 */}
+                        <div className="text-xs font-bold text-slate-600 dark:text-zinc-300">
                           {stock.metrics.tailRatio.toFixed(1)}%
                         </div>
                       </div>
@@ -668,7 +669,7 @@ function ScreeningPipelineGuide() {
     ["1차 후보", `등락률 +${C.primary.minChangeRate}% 이상 & 거래대금 ${C.primary.minTradingValue / 100_000_000}억 이상 → 회전율 상위 ${C.primary.maxTargets}개`],
     [
       "주 필터",
-      `회전율 ${C.main.minTurnoverRate}% 이상 · 일봉·주봉 정배열(${ma}) · 거래량 20일 평균의 ${C.main.minVolumeRatio}% 이상 · 윗꼬리 ${C.main.maxTailRatio}% 이하 · 등락률 +${C.main.excludeChangeRate}% 이상 제외 · 위험종목 제외(투자주의·경고·위험·유의, 거래정지, 정리매매, 단기과열)`,
+      `회전율 ${C.main.minTurnoverRate}% 이상 · 일봉·주봉 정배열(${ma}) · 거래량 20일 평균의 ${C.main.minVolumeRatio}% 이상 · 등락률 +${C.main.excludeChangeRate}% 이상 제외 · 위험종목 제외(투자주의·경고·위험·유의, 거래정지, 정리매매, 단기과열)`,
     ],
     [
       "테마 신선도",
@@ -676,7 +677,7 @@ function ScreeningPipelineGuide() {
     ],
     [
       "분류",
-      `정석 = 주 필터 + 테마 신선도 통과 / 공격형 = 정배열·윗꼬리 통과, 테마 신선도 미달 또는 거래량 ${C.aggressiveVolumeRatio.min}~${C.aggressiveVolumeRatio.max}% / 나머지는 제외 탭. 이력 ${C.main.minHistoryBars}봉 미만은 분석 보류`,
+      `정석 = 주 필터 + 테마 신선도 통과 / 공격형 = 정배열 통과, 테마 신선도 미달 또는 거래량 ${C.aggressiveVolumeRatio.min}~${C.aggressiveVolumeRatio.max}% / 나머지는 제외 탭. 이력 ${C.main.minHistoryBars}봉 미만은 분석 보류. 윗꼬리 비율은 2026-11-13 부터 판정에 쓰지 않고 참고값으로만 표시`,
     ],
   ];
   return (
