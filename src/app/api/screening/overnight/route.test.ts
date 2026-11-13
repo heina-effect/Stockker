@@ -594,6 +594,37 @@ describe("GET /api/screening/overnight — 윗꼬리는 진입 조건이 아니�
     expect(agg[0].tailRatio).toBeCloseTo(15, 0);
   });
 
+  // 2026-11-13 공격형 근거 — 거시 지표 문구가 정배열 문구를 대신하던 양자택일을 풀었다
+  it("거시 지표 불안정 + 신선도 0 이어도 공격형 근거에 정배열 충족이 남고, 분류 사유는 마지막 줄이다", async () => {
+    // 코스닥 지수가 평평하면 이평선이 같아 정배열이 아니다 → reduceWeight
+    h.indexDaily.mockResolvedValue(Array.from({ length: 130 }, (_, i) => ({ stck_bsop_date: String(20261030 - i), bstp_nmix_prpr: "800" })));
+    const r = await run({ tailPct: 15, bigCandle: false, day0Volume: 1000 });
+    expect(r.body.kosdaqState.reduceWeight).toBe(true);
+    const s = r.body.results.aggressive[0];
+    expect(s.metrics.freshnessCount).toBe(0);
+    expect(s.reasons).toEqual([
+      "거시 지표 불안정",
+      "주봉·일봉 정배열 충족",
+      expect.stringMatching(/^거래량 \d+%$/),
+      "윗꼬리 15.0% (참고값, 판정 미사용)",
+      "공격형 사유: 테마 신선도 0/3 미달",
+    ]);
+  });
+
+  it("거시 지표가 정상이면 공격형 첫 줄도 '거시 지표 정상'이다", async () => {
+    const r = await run({ tailPct: 15, bigCandle: false, day0Volume: 1000 });
+    expect(r.body.results.aggressive[0].reasons[0]).toBe("거시 지표 정상");
+    expect(r.body.results.aggressive[0].reasons).toContain("주봉·일봉 정배열 충족");
+  });
+
+  it("신선도를 채우고 거래량이 150~200% 면 분류 사유는 거래량 증가폭 완화다", async () => {
+    // 당일 2200 / 직전 20일 평균 1450(장대양봉 10000 포함) ≈ 152% → 150~200% 구간
+    const r = await run({ tailPct: 5, day0Volume: 2200 });
+    const s = r.body.results.aggressive[0];
+    expect(s.metrics.freshnessCount).toBeGreaterThanOrEqual(3);
+    expect(s.reasons.at(-1)).toMatch(/^공격형 사유: 거래량 증가폭 완화\(\d+%\)$/);
+  });
+
   it("정배열이 아니면 윗꼬리와 무관하게 제외다", async () => {
     h.stockDaily.mockResolvedValue(makeCandles({ tailPct: 1 }).map((c) => ({ ...c, stck_clpr: "10000" })));
     const r = await call();

@@ -176,6 +176,22 @@ describe("저장분 열람", () => {
       expect(screen.queryByText("정석종목")).toBeNull();
     });
 
+    it("거시 불안정·신선도 0 공격형 카드에 정배열 충족과 분류 사유 줄을 따로 그린다", async () => {
+      const agg = {
+        ...withMetrics("000004", "불안정공격형", "aggressive", 3.0),
+        reasons: ["거시 지표 불안정", "주봉·일봉 정배열 충족", "거래량 260%", "윗꼬리 3.0% (참고값, 판정 미사용)", "공격형 사유: 테마 신선도 0/3 미달"],
+      };
+      mockApi({ [LATEST]: json(200, saved({ results: { normal: [], aggressive: [agg], exclude: [] } })), [MARKET]: json(200, market) });
+      render(<OvernightScreeningPage />);
+      fireEvent.click(await screen.findByRole("button", { name: /공격형 추세 지속/ }));
+      expect(await screen.findByText("주봉·일봉 정배열 충족")).toBeTruthy();
+      expect(screen.getByText("거시 지표 불안정")).toBeTruthy();
+      const cls = screen.getByText("공격형 사유: 테마 신선도 0/3 미달").closest("li")!;
+      expect(cls.getAttribute("data-kind")).toBe("classification-reason");
+      expect(cls.textContent).toContain("→");
+      expect(screen.getByText("주봉·일봉 정배열 충족").closest("li")!.getAttribute("data-kind")).toBeNull();
+    });
+
     it("홈 카드가 분류별 종목 수를 그린다", async () => {
       mockApi({ [LATEST]: json(200, filled), [MARKET]: json(200, market) });
       render(<OvernightScreeningCard />);

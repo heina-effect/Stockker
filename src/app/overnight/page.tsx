@@ -18,7 +18,7 @@ import { formatGapPct, maArrangement, maGaps } from "./market-state";
 import { useMarketState, type IndexState } from "./use-market-state";
 import { persistSkipLabel } from "@/lib/screening/persist-skip-label";
 import { kstClock, savedResultTitle, tradeDateLabel } from "@/lib/screening/saved-result";
-import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
+import { AGGRESSIVE_REASON_PREFIX, OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
 import { SurfaceCard } from "@/components/common/surface-card";
 
 interface ScreeningStock {
@@ -555,7 +555,13 @@ function OvernightScreeningContent() {
                       {stock.classification === "exclude" ? "탈락 사유" : "통과 및 검증 근거"}
                     </h4>
                     <ul className="space-y-1">
-                      {stock.reasons.map((reason, idx) => (
+                      {stock.reasons.map((reason, idx) => reason.startsWith(AGGRESSIVE_REASON_PREFIX) ? (
+                        // 분류 사유(정석이 아닌 이유) — 통과 근거와 구분해 적는다
+                        <li key={idx} data-kind="classification-reason" className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 flex items-start gap-1.5 leading-relaxed border-t border-dashed border-slate-200 dark:border-zinc-800 pt-1.5 mt-1.5">
+                          <span className="text-indigo-500 flex-shrink-0 mt-0.5">→</span>
+                          {reason}
+                        </li>
+                      ) : (
                         <li key={idx} className="text-xs text-slate-600 dark:text-zinc-300 flex items-start gap-1.5 leading-relaxed">
                           {stock.classification === "exclude" ? (
                             <span className="text-rose-500 flex-shrink-0 mt-0.5">•</span>

@@ -34,3 +34,6 @@ export const OVERNIGHT_CRITERIA = {
   // 공격형: 주 필터 중 정배열은 통과, 신선도 미달이거나 거래량비가 이 구간
   aggressiveVolumeRatio: { min: 150, max: 200 },
 } as const;
+
+// 공격형 카드의 마지막 사유 줄 접두어 — 통과 근거가 아니라 "정석이 아닌 이유"(분류 사유)라 화면이 따로 표시한다(2026-11-13)
+export const AGGRESSIVE_REASON_PREFIX = "공격형 사유: ";

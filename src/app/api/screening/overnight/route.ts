@@ -26,7 +26,7 @@ import { computeIndicatorSeries } from "@/server/screening/indicators";
 import { QUANT_SIGNAL_CRITERIA } from "@/server/screening/quant-signal";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 import { isRateLimitError, withRateLimitRetry } from "@/server/screening/rate-limit-retry";
-import { OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
+import { AGGRESSIVE_REASON_PREFIX, OVERNIGHT_CRITERIA as C } from "@/lib/screening/overnight-criteria";
 import { OVERNIGHT_DISCLAIMER } from "@/lib/screening/saved-result";
 
 // 헬퍼: 이동평균선(MA) 계산 (최신 데이터가 0번 인덱스임)
@@ -646,13 +646,23 @@ async function runScreening(req: Request, scope: CacheScope) {
         normalReasons.push("외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)");
       }
 
+      // 공격형도 실제 근거를 다 적고, 정석이 아닌 이유는 마지막 줄에 따로 적는다(2026-11-13).
+      // 예전에는 거시 지표 문구와 정배열 문구가 양자택일이라 reduceWeight 면 정배열 통과가 화면에서 사라졌다.
       const aggressiveReasons = [
-        reduceWeight ? "거시 지표 불안정" : "정배열 만족",
-        freshnessCount < C.freshness.minPass ? "테마 신선도 조건 일부 미달(공격형 진입)" : `거래량 증가폭 다소 완화(${volumeRatio.toFixed(0)}%)`
+        reduceWeight ? "거시 지표 불안정" : "거시 지표 정상",
+        "주봉·일봉 정배열 충족",
+        `거래량 ${volumeRatio.toFixed(0)}%`,
+        tailDataMissing ? "윗꼬리 계산 불가 (참고값, 판정 미사용)" : `윗꼬리 ${tailRatio.toFixed(1)}% (참고값, 판정 미사용)`,
+        ...freshnessDetails
       ];
       if (foreignBuyLimit) {
         aggressiveReasons.push("외국인 당일 대량 순매수 확인 (익일 추가매수 여력 적음 우려)");
       }
+      aggressiveReasons.push(
+        freshnessCount < C.freshness.minPass
+          ? `${AGGRESSIVE_REASON_PREFIX}테마 신선도 ${freshnessCount}/${C.freshness.minPass} 미달`
+          : `${AGGRESSIVE_REASON_PREFIX}거래량 증가폭 완화(${volumeRatio.toFixed(0)}%)`
+      );
 
       if (!isExcluded && is1stStagePass && isFreshnessPass) {
         normalBucket.push({
