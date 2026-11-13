@@ -344,7 +344,9 @@ function OvernightScreeningContent() {
             </h2>
             {market && (
               <span className="text-xs text-slate-500 dark:text-zinc-400">
-                {kstClock(market.fetchedAt)} 조회{isSaved && " · 아래 선별 결과와 시점이 다릅니다"}
+                {isSaved
+                  ? `${kstClock(market.fetchedAt)} 조회 · 아래 선별 결과는 ${data.savedAt ? `${kstClock(data.savedAt)} ` : ""}저장분이라 시점이 다릅니다`
+                  : `${kstClock(market.fetchedAt)} 새로 조회 (저장 안 됨 · 페이지를 떠나면 사라집니다)`}
               </span>
             )}
           </div>
@@ -580,18 +582,6 @@ function OvernightScreeningContent() {
                     </ul>
                   </div>
                 </div>
-
-                {/* 상세 링크 */}
-                {stock.classification !== "exclude" && (
-                  <div className="bg-indigo-50/30 dark:bg-zinc-950 border border-indigo-100/30 dark:border-zinc-800/60 p-3 rounded-xl mt-4 flex items-center justify-end">
-                    <Link
-                      href={`/stocks/${stock.symbol}`}
-                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                    >
-                      상세분석 ➔
-                    </Link>
-                  </div>
-                )}
               </SurfaceCard>
             ))
           )}

@@ -86,6 +86,8 @@ describe("저장분 열람", () => {
     expect(screen.getByText("지금 조회한 선별 결과")).toBeTruthy();
     expect(screen.getByText("701.50")).toBeTruthy();
     expect(screen.queryByText(/시점이 다릅니다/)).toBeNull();
+    // 새로 조회 값은 저장되지 않아 다시 들어오면 저장분으로 돌아간다 — 그 사실을 시점 표시에 적는다
+    expect(screen.getByText("18:11 새로 조회 (저장 안 됨 · 페이지를 떠나면 사라집니다)")).toBeTruthy();
   });
 
   it("버튼이 실패하면 저장분을 그대로 보이고 알린다", async () => {
@@ -115,7 +117,7 @@ describe("저장분 열람", () => {
     mockApi({ [LATEST]: json(200, saved()), [MARKET]: json(200, market) });
     render(<OvernightScreeningPage />);
     expect(await screen.findByText("11월 5일 15:41 선별 결과")).toBeTruthy();
-    expect(await screen.findByText(/18:10 조회 · 아래 선별 결과와 시점이 다릅니다/)).toBeTruthy();
+    expect(await screen.findByText("18:10 조회 · 아래 선별 결과는 15:41 저장분이라 시점이 다릅니다")).toBeTruthy();
   });
 
   it("오늘 결과가 아니면 맨 위에 알린다", async () => {
@@ -156,7 +158,9 @@ describe("저장분 열람", () => {
       expect(screen.getByText("4/4 개")).toBeTruthy();
       expect(screen.getByText("통과 및 검증 근거")).toBeTruthy();
       expect(screen.getByText("윗꼬리 9.4% (참고값, 판정 미사용)")).toBeTruthy();
-      expect(screen.getByText("상세분석 ➔")).toBeTruthy();
+      // 상세는 종목명 링크로 간다. 같은 곳으로 가던 "상세분석 ➔" 링크는 지웠다(2026-11-13)
+      expect(screen.getByRole("link", { name: "정석종목" }).getAttribute("href")).toBe("/stocks/000001");
+      expect(screen.queryByText("상세분석 ➔")).toBeNull();
     });
 
     it("윗꼬리 값에 통과·미달 색을 입히지 않는다", async () => {
