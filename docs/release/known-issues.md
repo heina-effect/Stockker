@@ -32,6 +32,8 @@
   - 판정 규칙은 [윗꼬리 측정](#p3-윗꼬리tail_ratio는-결과를-예측하지-못한다--게이트-제거-2026-11-13)과 같다. A 가 B·C·D 각각보다 높고 차이가 √(SE_A²+SE_X²) 의 2배 이상이면 게이트에 근거가 있다. day1·day3 이 엇갈리면 day3 을 따른다
   - 그 전에는 숫자를 해석하지 않는다. 중간에 보고 기준·경계·n 을 바꾸지 않는다
   - 측정 스크립트: `analysis/tail-ratio-bins.mjs`. 분류 필터만 normal·aggressive 로 바꿔 쓴다
+  - 기록
+    - 2026-11-16: normal 0건 / aggressive 0건 / exclude 5건, 누적 normal+aggressive 0
 
 ### 사용자 확인 대기
 
