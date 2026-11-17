@@ -34,6 +34,7 @@
   - 측정 스크립트: `analysis/tail-ratio-bins.mjs`. 분류 필터만 normal·aggressive 로 바꿔 쓴다
   - 기록
     - 2026-11-16: normal 0건 / aggressive 0건 / exclude 5건, 누적 normal+aggressive 0
+    - 2026-11-17: normal 0건 / aggressive 0건 / exclude 3건, 누적 normal+aggressive 0
 
 ### 사용자 확인 대기
 
